@@ -49,7 +49,6 @@ pub struct VoiceState {
     pub token: String,
     pub endpoint: String,
     pub session_id: String,
-    pub last_connected_token: Option<String>,
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -511,15 +510,11 @@ pub async fn start_playback(
 }
 
 pub async fn connect_player(player: &mut PlayerState, user_id: UserId) -> Result<(), String> {
-    if Some(&player.voice.token) == player.voice.last_connected_token.as_ref() {
-        return Ok(());
-    }
 
     let gid = player.guild_id.parse::<u64>().map_err(|e| e.to_string())?;
     let guild_id_int = NonZeroU64::new(gid).ok_or("Invalid guild ID 0")?;
     let guild_id_songbird = GuildId::from(guild_id_int);
 
-    player.voice.last_connected_token = Some(player.voice.token.clone());
 
     let mut driver = player.driver.lock().await;
 

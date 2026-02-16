@@ -365,7 +365,6 @@ pub async fn update_player(
                 token: v.token,
                 endpoint: v.endpoint,
                 session_id: v.session_id,
-                last_connected_token: p.voice.last_connected_token.clone(),
             };
             if let Some(uid) = session.user_id {
                 let _ = crate::server::connect_player(p, uid).await;
