@@ -1,5 +1,4 @@
 pub mod http;
-pub mod http_stream;
 pub mod manager;
 pub mod plugin;
 pub mod spotify;

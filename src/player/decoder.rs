@@ -1,5 +1,5 @@
 use super::resampler::Resampler;
-use crate::sources::http_stream::HttpReader;
+use crate::audio::reader::RemoteReader;
 use flume::{Receiver, Sender};
 use std::thread;
 use symphonia::core::audio::SampleBuffer;
@@ -25,7 +25,7 @@ pub fn start_decoding(url: String) -> Receiver<i16> {
 
 fn decode_loop(url: String, tx: Sender<i16>) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Connecting to {}...", url);
-    let source = HttpReader::new(&url)?;
+    let source = RemoteReader::new(&url)?;
     debug!("Connected. Probing stream...");
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
 
