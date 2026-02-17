@@ -85,7 +85,7 @@ impl VoiceGateway {
         let mut heartbeat_interval = 30000;
         let mut ssrc = 0;
         let mut udp_addr: Option<SocketAddr> = None;
-        let mut secret_key: Option<[u8; 32]> = None;
+        let mut secret_key = None;
         let mut selected_mode = "xsalsa20_poly1305".to_string();
         let mut connected_users = HashSet::<u64>::new();
         connected_users.insert(self.user_id);
