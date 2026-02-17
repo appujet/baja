@@ -77,6 +77,7 @@ pub async fn start_playback(
         track: track_data.clone(),
     });
     session.send_message(&start_event).await;
+    tracing::debug!("Sent TrackStartEvent for guild {} track {}", player.guild_id, track_data.info.title);
 
     let guild_id = player.guild_id.clone();
     let handle_clone = player.track_handle.as_ref().unwrap().clone();

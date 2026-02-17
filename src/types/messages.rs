@@ -25,14 +25,17 @@ pub enum OutgoingMessage {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LavalinkEvent {
     #[serde(rename = "TrackStartEvent")]
+    #[serde(rename_all = "camelCase")]
     TrackStart { guild_id: String, track: Track },
     #[serde(rename = "TrackEndEvent")]
+    #[serde(rename_all = "camelCase")]
     TrackEnd {
         guild_id: String,
         track: Track,
         reason: TrackEndReason,
     },
     #[serde(rename = "TrackExceptionEvent")]
+    #[serde(rename_all = "camelCase")]
     #[allow(dead_code)]
     TrackException {
         guild_id: String,
@@ -40,6 +43,7 @@ pub enum LavalinkEvent {
         exception: TrackException,
     },
     #[serde(rename = "TrackStuckEvent")]
+    #[serde(rename_all = "camelCase")]
     #[allow(dead_code)]
     TrackStuck {
         guild_id: String,
@@ -47,6 +51,7 @@ pub enum LavalinkEvent {
         threshold_ms: u64,
     },
     #[serde(rename = "WebSocketClosedEvent")]
+    #[serde(rename_all = "camelCase")]
     #[allow(dead_code)]
     WebSocketClosed {
         guild_id: String,

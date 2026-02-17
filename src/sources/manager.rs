@@ -40,31 +40,20 @@ impl SourceManager {
         }
     }
 
-    /// Get the actual playback URL for an identifier
-    ///
-    /// This resolves search queries or platform URLs into direct audio stream URLs.
-    /// Used by the player to get the actual URL to stream from.
+  
     pub async fn get_playback_url(&self, identifier: &str) -> Option<String> {
-        // Clean the identifier
-        let clean = identifier
-            .trim()
-            .trim_start_matches('<')
-            .trim_end_matches('>');
-
-        // Try each source in order
         for source in &self.sources {
-            if source.can_handle(clean) {
+            if source.can_handle(identifier) {
                 tracing::debug!(
                     "Resolving playback URL for '{}' with source: {}",
-                    clean,
+                    identifier,
                     source.name()
                 );
-                return source.get_playback_url(clean).await;
+                return source.get_playback_url(identifier).await;
             }
         }
-
         // No source could handle it
-        tracing::warn!("No source could resolve playback URL for: {}", clean);
+        tracing::warn!("No source could resolve playback URL for: {}", identifier);
         None
     }
 }
