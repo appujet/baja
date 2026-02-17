@@ -417,89 +417,101 @@ pub async fn start_playback(
     player.position = 0;
     player.paused = false;
 
-    let url = if let Ok(decoded) = BASE64_STANDARD.decode(&track) {
+    // Decode the track if it's base64 encoded
+    let identifier = if let Ok(decoded) = BASE64_STANDARD.decode(&track) {
         String::from_utf8(decoded).unwrap_or(track.clone())
     } else {
         track.clone()
     };
 
-    if url.starts_with("http") {
-        let rx = crate::player::start_decoding(url);
-        let (handle, state, vol, pos) = TrackHandle::new();
-
-        {
-            let engine = player.engine.lock().await;
-            let mut mixer = engine.mixer.lock().await;
-            mixer.add_track(rx, state, vol, pos);
+    // Use SourceManager to resolve the actual playback URL
+    let source_manager = crate::sources::SourceManager::new();
+    let playback_url = match source_manager.get_playback_url(&identifier).await {
+        Some(url) => url,
+        None => {
+            error!("Failed to resolve playback URL for: {}", identifier);
+            return;
         }
+    };
 
-        player.track_handle = Some(handle);
+    info!("Starting playback: {} -> {}", identifier, playback_url);
 
-        let event = OutgoingMessage::Event {
-            event: PlayerEvent::TrackStartEvent {
-                guild_id: player.guild_id.clone(),
-                track: track.clone(),
-            },
-        };
-        if let Ok(json) = serde_json::to_string(&event) {
-            let _ = sender.send(Message::Text(json.into()));
-        }
+    // Start decoding the resolved URL
+    let rx = crate::player::start_decoding(playback_url);
+    let (handle, state, vol, pos) = TrackHandle::new();
 
-        // Spawn a task to monitor this specific track and send updates/end event
-        let tx_clone = sender.clone();
-        let guild_id_clone = player.guild_id.clone();
-        let track_clone = track.clone();
-        let handle_clone = player.track_handle.as_ref().unwrap().clone();
+    {
+        let engine = player.engine.lock().await;
+        let mut mixer = engine.mixer.lock().await;
+        mixer.add_track(rx, state, vol, pos);
+    }
 
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
-            let mut last_update = std::time::Instant::now();
+    player.track_handle = Some(handle);
 
-            loop {
-                interval.tick().await;
+    let event = OutgoingMessage::Event {
+        event: PlayerEvent::TrackStartEvent {
+            guild_id: player.guild_id.clone(),
+            track: track.clone(),
+        },
+    };
+    if let Ok(json) = serde_json::to_string(&event) {
+        let _ = sender.send(Message::Text(json.into()));
+    }
 
-                let current_state = handle_clone.get_state().await;
-                if current_state == PlaybackState::Stopped {
-                    info!(
-                        "Sending TrackEndEvent for guild {}: {}",
-                        guild_id_clone, track_clone
-                    );
-                    let event = OutgoingMessage::Event {
-                        event: PlayerEvent::TrackEndEvent {
-                            guild_id: guild_id_clone,
-                            track: track_clone,
-                            reason: "FINISHED".to_string(),
-                        },
-                    };
-                    if let Ok(json) = serde_json::to_string(&event) {
-                        let _ = tx_clone.send(Message::Text(json.into()));
-                    }
-                    break;
+    // Spawn a task to monitor this specific track and send updates/end event
+    let tx_clone = sender.clone();
+    let guild_id_clone = player.guild_id.clone();
+    let track_clone = track.clone();
+    let handle_clone = player.track_handle.as_ref().unwrap().clone();
+
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        let mut last_update = std::time::Instant::now();
+
+        loop {
+            interval.tick().await;
+
+            let current_state = handle_clone.get_state().await;
+            if current_state == PlaybackState::Stopped {
+                info!(
+                    "Sending TrackEndEvent for guild {}: {}",
+                    guild_id_clone, track_clone
+                );
+                let event = OutgoingMessage::Event {
+                    event: PlayerEvent::TrackEndEvent {
+                        guild_id: guild_id_clone,
+                        track: track_clone,
+                        reason: "FINISHED".to_string(),
+                    },
+                };
+                if let Ok(json) = serde_json::to_string(&event) {
+                    let _ = tx_clone.send(Message::Text(json.into()));
                 }
+                break;
+            }
 
-                if last_update.elapsed() >= std::time::Duration::from_secs(5) {
-                    last_update = std::time::Instant::now();
-                    let update = OutgoingMessage::PlayerUpdate {
-                        guild_id: guild_id_clone.clone(),
-                        state: PlayerUpdateState {
-                            time: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis() as u64,
-                            position: handle_clone.get_position(),
-                            connected: true,
-                            ping: 0,
-                        },
-                    };
-                    if let Ok(json) = serde_json::to_string(&update) {
-                        if tx_clone.send(Message::Text(json.into())).is_err() {
-                            break;
-                        }
+            if last_update.elapsed() >= std::time::Duration::from_secs(5) {
+                last_update = std::time::Instant::now();
+                let update = OutgoingMessage::PlayerUpdate {
+                    guild_id: guild_id_clone.clone(),
+                    state: PlayerUpdateState {
+                        time: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as u64,
+                        position: handle_clone.get_position(),
+                        connected: true,
+                        ping: 0,
+                    },
+                };
+                if let Ok(json) = serde_json::to_string(&update) {
+                    if tx_clone.send(Message::Text(json.into())).is_err() {
+                        break;
                     }
                 }
             }
-        });
-    }
+        }
+    });
 }
 
 pub async fn connect_player(player: &mut PlayerState, user_id: UserId) -> Result<(), String> {

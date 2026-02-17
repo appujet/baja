@@ -4,11 +4,12 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-mod api;
 mod audio;
 mod player;
+mod rest;
 mod server;
 mod source;
+mod sources;
 mod voice;
 
 #[tokio::main]
@@ -21,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let app = Router::new()
         .route("/v4/websocket", get(server::websocket_handler))
-        .merge(api::router())
+        .merge(rest::router())
         .with_state(shared_state);
 
     let address = SocketAddr::from(([0, 0, 0, 0], 2333));
