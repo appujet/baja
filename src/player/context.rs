@@ -1,5 +1,6 @@
 use crate::audio::playback::TrackHandle;
-use crate::types;
+use crate::player::{Filters, Player, PlayerState, VoiceState};
+use crate::track::{Track, TrackInfo};
 use base64::prelude::*;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -22,7 +23,7 @@ pub struct PlayerContext {
     pub position: u64,
     pub voice: VoiceConnectionState,
     pub engine: Arc<Mutex<crate::voice::VoiceEngine>>,
-    pub filters: types::Filters,
+    pub filters: Filters,
     pub end_time: Option<u64>,
     pub stop_signal: Arc<std::sync::atomic::AtomicBool>,
     pub gateway_task: Option<tokio::task::JoinHandle<()>>,
@@ -39,25 +40,25 @@ impl PlayerContext {
             position: 0,
             voice: VoiceConnectionState::default(),
             engine: Arc::new(Mutex::new(crate::voice::VoiceEngine::new())),
-            filters: types::Filters::default(),
+            filters: Filters::default(),
             end_time: None,
             stop_signal: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             gateway_task: None,
         }
     }
 
-    pub fn to_player_response(&self) -> types::Player {
+    pub fn to_player_response(&self) -> Player {
         let current_pos = self
             .track_handle
             .as_ref()
             .map(|h| h.get_position())
             .unwrap_or(self.position);
 
-        types::Player {
+        Player {
             guild_id: self.guild_id.clone(),
-            track: self.track.as_ref().map(|t| types::Track {
+            track: self.track.as_ref().map(|t| Track {
                 encoded: BASE64_STANDARD.encode(t.as_bytes()),
-                info: types::TrackInfo {
+                info: TrackInfo {
                     identifier: t.clone(),
                     is_seekable: true,
                     author: String::new(),
@@ -75,13 +76,13 @@ impl PlayerContext {
             }),
             volume: self.volume,
             paused: self.paused,
-            state: types::PlayerState {
+            state: PlayerState {
                 time: crate::server::now_ms(),
                 position: current_pos,
                 connected: !self.voice.token.is_empty(),
                 ping: -1,
             },
-            voice: types::VoiceState {
+            voice: VoiceState {
                 token: self.voice.token.clone(),
                 endpoint: self.voice.endpoint.clone(),
                 session_id: self.voice.session_id.clone(),

@@ -2,6 +2,8 @@ use crate::rest::models::*;
 use crate::server::AppState;
 use crate::sources::SourceManager;
 use crate::types;
+use crate::player::{Filters, Player, PlayerState, PlayerUpdate, VoiceState};
+use crate::track::{LoadResult, Track, TrackInfo};
 use crate::server::now_ms;
 use crate::player::{PlayerContext, VoiceConnectionState};
 use axum::{
@@ -15,7 +17,7 @@ use std::sync::Arc;
 pub async fn load_tracks(
     Query(params): Query<LoadTracksQuery>,
     State(_state): State<Arc<AppState>>,
-) -> Json<types::LoadResult> {
+) -> Json<LoadResult> {
     let identifier = params.identifier;
     tracing::debug!("Load tracks: '{}'", identifier);
 
@@ -26,9 +28,9 @@ pub async fn load_tracks(
     Json(match response.load_type {
         LoadType::Track => {
             if let LoadData::Track(t) = response.data {
-                types::LoadResult::Track(types::Track {
+                LoadResult::Track(Track {
                     encoded: t.encoded,
-                    info: types::TrackInfo {
+                    info: TrackInfo {
                         identifier: t.info.identifier,
                         is_seekable: t.info.is_seekable,
                         author: t.info.author,
@@ -45,10 +47,10 @@ pub async fn load_tracks(
                     user_data: serde_json::json!({}),
                 })
             } else {
-                types::LoadResult::Empty {}
+                LoadResult::Empty {}
             }
         }
-        _ => types::LoadResult::Empty {},
+        _ => LoadResult::Empty {},
     })
 }
 
@@ -109,7 +111,7 @@ pub async fn get_players(
 ) -> impl IntoResponse {
     match state.sessions.get(&session_id) {
         Some(session) => {
-            let players: Vec<types::Player> = session
+            let players: Vec<Player> = session
                 .players
                 .iter()
                 .map(|p| p.to_player_response())
@@ -142,19 +144,19 @@ pub async fn get_player(
                 .into_response(),
             None => {
                 // Return empty player (Lavalink behavior: player exists implicitly)
-                let empty = types::Player {
+                let empty = Player {
                     guild_id: guild_id.clone(),
                     track: None,
                     volume: 100,
                     paused: false,
-                    state: types::PlayerState {
+                    state: PlayerState {
                         time: now_ms(),
                         position: 0,
                         connected: false,
                         ping: -1,
                     },
-                    voice: types::VoiceState::default(),
-                    filters: types::Filters::default(),
+                    voice: VoiceState::default(),
+                    filters: Filters::default(),
                 };
                 (StatusCode::OK, Json(serde_json::to_value(empty).unwrap())).into_response()
             }
@@ -178,7 +180,7 @@ pub async fn update_player(
     Path((session_id, guild_id)): Path<(String, String)>,
     Query(params): Query<std::collections::HashMap<String, String>>,
     State(state): State<Arc<AppState>>,
-    Json(body): Json<types::PlayerUpdate>,
+    Json(body): Json<PlayerUpdate>,
 ) -> impl IntoResponse {
     tracing::debug!(
         "Update player: session={} guild={} body={:?}",
@@ -284,9 +286,9 @@ pub async fn update_player(
                         let end_event = types::OutgoingMessage::Event(
                             types::LavalinkEvent::TrackEnd {
                                 guild_id: guild_id.clone(),
-                                track: types::Track {
+                                track: Track {
                                     encoded,
-                                    info: types::TrackInfo {
+                                    info: TrackInfo {
                                         identifier: String::new(),
                                         is_seekable: false,
                                         author: String::new(),

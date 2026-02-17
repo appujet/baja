@@ -9,6 +9,7 @@ mod rest;
 mod server;
 
 mod sources;
+mod track;
 mod types;
 mod voice;
 mod ws;

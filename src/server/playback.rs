@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tracing::{info, error};
 use crate::server::Session;
-use crate::player::PlayerContext;
+use crate::player::{PlayerContext, PlayerState};
 use crate::audio::playback::{PlaybackState, TrackHandle};
 use crate::types;
 use base64::prelude::*;
@@ -109,7 +109,7 @@ pub async fn start_playback(
                 last_update = std::time::Instant::now();
                 let update = types::OutgoingMessage::PlayerUpdate {
                     guild_id: guild_id.clone(),
-                    state: types::PlayerState {
+                    state: PlayerState {
                         time: crate::server::now_ms(),
                         position: handle_clone.get_position(),
                         connected: true,

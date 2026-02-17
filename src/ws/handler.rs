@@ -3,6 +3,7 @@ use axum::extract::ws::{Message, WebSocket};
 use tracing::{error, info, warn};
 use crate::server::{AppState, Session, UserId};
 use crate::types;
+use crate::player::PlayerState;
 use crate::ws::messages::IncomingMessage;
 use crate::ws::ops::handle_op;
 use crate::server::{now_ms, collect_stats};
@@ -64,7 +65,7 @@ pub async fn handle_socket(
         for player in session.players.iter() {
             let update = types::OutgoingMessage::PlayerUpdate {
                 guild_id: player.guild_id.clone(),
-                state: types::PlayerState {
+                state: PlayerState {
                     time: now_ms(),
                     position: player.track_handle.as_ref().map(|h| h.get_position()).unwrap_or(player.position),
                     connected: !player.voice.token.is_empty(),

@@ -1,5 +1,5 @@
-use super::player::PlayerState;
-use super::track::Track;
+use crate::player::PlayerState;
+use crate::track::Track;
 use serde::Serialize;
 
 /// Messages sent from server to client over WebSocket.

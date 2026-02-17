@@ -1,4 +1,4 @@
-use super::Severity;
+use crate::types::Severity;
 use serde::{Deserialize, Serialize};
 
 /// A single audio track with encoded data and metadata.

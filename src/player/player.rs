@@ -1,4 +1,4 @@
-use super::track::Track;
+use crate::track::Track;
 use serde::{Deserialize, Serialize};
 
 /// Full player state as returned by REST endpoints.
