@@ -67,7 +67,7 @@ impl SourceManager {
         // Try each source in order
         for source in &self.sources {
             if source.can_handle(identifier) {
-                tracing::info!("Loading '{}' with source: {}", identifier, source.name());
+                tracing::debug!("Loading '{}' with source: {}", identifier, source.name());
                 return source.load(identifier).await;
             }
         }
@@ -94,7 +94,7 @@ impl SourceManager {
         // Try each source in order
         for source in &self.sources {
             if source.can_handle(clean) {
-                tracing::info!(
+                tracing::debug!(
                     "Resolving playback URL for '{}' with source: {}",
                     clean,
                     source.name()

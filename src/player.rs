@@ -93,9 +93,9 @@ pub fn start_decoding(url: String) -> Receiver<i16> {
 }
 
 fn decode_loop(url: String, tx: Sender<i16>) -> Result<(), Box<dyn std::error::Error>> {
-    info!("Connecting to {}...", url);
+    tracing::debug!("Connecting to {}...", url);
     let source = HttpSource::new(&url)?;
-    info!("Connected. Probing stream...");
+    tracing::debug!("Connected. Probing stream...");
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
 
     let mut hint = Hint::new();
@@ -125,7 +125,7 @@ fn decode_loop(url: String, tx: Sender<i16>) -> Result<(), Box<dyn std::error::E
     let target_rate = 48000;
     let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
 
-    info!(
+    tracing::debug!(
         "Source: {}Hz {} channels, Target: {}Hz",
         source_rate, channels, target_rate
     );

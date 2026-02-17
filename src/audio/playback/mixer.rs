@@ -38,7 +38,7 @@ impl Mixer {
         });
     }
 
-    pub async fn mix(&mut self, buf: &mut [i16]) {
+    pub async fn mix(&mut self, buf: &mut [i16]) -> bool {
         if self.mix_buf.len() != buf.len() {
             self.mix_buf.resize(buf.len(), 0);
         }
@@ -57,6 +57,8 @@ impl Mixer {
             }
         });
 
+        let mut has_audio = false;
+
         for track in self.tracks.iter_mut() {
             let mut state_lock = track.state.lock().await;
             if *state_lock != PlaybackState::Playing {
@@ -68,11 +70,14 @@ impl Mixer {
             // Read samples from track
             let mut i = 0;
             let mut finished = false;
+            let mut track_contributed = false;
+
             while i < buf.len() {
                 match track.rx.try_recv() {
                     Ok(sample) => {
                         self.mix_buf[i] += (sample as f32 * vol) as i32;
                         i += 1;
+                        track_contributed = true;
                     }
                     Err(flume::TryRecvError::Disconnected) => {
                         finished = true;
@@ -80,6 +85,10 @@ impl Mixer {
                     }
                     Err(flume::TryRecvError::Empty) => break,
                 }
+            }
+
+            if track_contributed {
+                has_audio = true;
             }
 
             // Update position (stereo: samples / 2 = frames)
@@ -94,5 +103,7 @@ impl Mixer {
         for (i, &sample) in self.mix_buf.iter().enumerate() {
             buf[i] = sample.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
         }
+
+        has_audio
     }
 }

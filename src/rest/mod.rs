@@ -5,21 +5,36 @@ use crate::server::AppState;
 use axum::{Router, routing::get};
 use std::sync::Arc;
 
-/// Use Case:
-/// This module implements the Lavalink v4 REST API.
-/// It allows external clients (like WD or Discord.js) to:
-/// 1. Load tracks via /v4/loadtracks (Universal identifier resolution)
-/// 2. Get node info via /v4/info
-/// 3. Manage players (play, pause, volume, etc.) via /v4/sessions/{session}/players/{guild}
+/// Lavalink v4 REST API router.
 ///
-/// The track loading system uses a plugin-based architecture where each source
-/// (HTTP, YouTube, Spotify, etc.) is a separate module in src/sources/
+/// Endpoints:
+/// - GET  /v4/loadtracks — resolve identifier to tracks
+/// - GET  /v4/info — server info
+/// - GET  /v4/stats — server stats
+/// - GET  /v4/sessions/{sessionId}/players — list all players
+/// - GET  /v4/sessions/{sessionId}/players/{guildId} — get player
+/// - PATCH /v4/sessions/{sessionId}/players/{guildId} — update player
+/// - DELETE /v4/sessions/{sessionId}/players/{guildId} — destroy player
+/// - PATCH /v4/sessions/{sessionId} — update session (resume config)
+/// - GET  /version — version string (NOT prefixed with /v4)
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/v4/loadtracks", get(handlers::load_tracks))
         .route("/v4/info", get(handlers::get_info))
+        .route("/v4/stats", get(handlers::get_stats))
+        .route("/version", get(handlers::get_version))
+        .route(
+            "/v4/sessions/{session_id}/players",
+            get(handlers::get_players),
+        )
         .route(
             "/v4/sessions/{session_id}/players/{guild_id}",
-            get(handlers::get_player).patch(handlers::update_player),
+            get(handlers::get_player)
+                .patch(handlers::update_player)
+                .delete(handlers::destroy_player),
+        )
+        .route(
+            "/v4/sessions/{session_id}",
+            axum::routing::patch(handlers::update_session),
         )
 }
