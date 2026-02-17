@@ -515,7 +515,7 @@ pub async fn start_playback(
 }
 
 pub async fn connect_player(player: &mut PlayerState, user_id: UserId) -> Result<(), String> {
-    let mut engine = player.engine.lock().await;
+    let engine = player.engine.lock().await;
 
     let guild_id_u64 = player.guild_id.parse::<u64>().unwrap_or(0);
     let channel_id = player

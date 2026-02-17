@@ -14,10 +14,10 @@ impl Encoder {
 
     pub fn encode(
         &mut self,
-        input: &[f32],
+        input: &[i16],
         output: &mut [u8],
     ) -> Result<usize, Box<dyn std::error::Error>> {
-        let size = self.encoder.encode_float(input, output)?;
+        let size = self.encoder.encode(input, output)?;
         Ok(size)
     }
 }

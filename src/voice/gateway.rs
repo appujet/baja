@@ -419,7 +419,7 @@ async fn speak_loop(
 
     let mut sequence: u16 = 0;
     let mut timestamp: u32 = 0;
-    let mut pcm_buf = vec![0.0f32; 1920];
+    let mut pcm_buf = vec![0i16; 1920];
     let mut opus_buf = vec![0u8; 4000];
 
     loop {

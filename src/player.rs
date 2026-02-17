@@ -12,8 +12,75 @@ use symphonia::core::probe::Hint;
 use crate::source::HttpSource;
 use tracing::{error, info};
 
-pub fn start_decoding(url: String) -> Receiver<f32> {
-    let (tx, rx) = flume::bounded::<f32>(1024 * 100);
+struct Resampler {
+    ratio: f64,
+    index: f64,
+    last_samples: Vec<i16>,
+    channels: usize,
+}
+
+impl Resampler {
+    fn new(source_rate: u32, target_rate: u32, channels: usize) -> Self {
+        Self {
+            ratio: source_rate as f64 / target_rate as f64,
+            index: 0.0,
+            last_samples: vec![0; channels],
+            channels,
+        }
+    }
+
+    fn process(
+        &mut self,
+        input: &[i16],
+        tx: &Sender<i16>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let num_frames = input.len() / self.channels;
+
+        while self.index < num_frames as f64 {
+            let idx = self.index as usize;
+            let fract = self.index.fract();
+
+            for c in 0..self.channels {
+                let s1 = if idx == 0 {
+                    self.last_samples[c] as f64
+                } else {
+                    input[(idx - 1) * self.channels + c] as f64
+                };
+
+                let s2 = if idx < num_frames {
+                    input[idx * self.channels + c] as f64
+                } else {
+                    // Should not happen with while condition, but safety check
+                    input[(num_frames - 1) * self.channels + c] as f64
+                };
+
+                // Linear interpolation on i16
+                let s = s1 * (1.0 - fract) + s2 * fract;
+
+                if tx.send(s as i16).is_err() {
+                    return Ok(());
+                }
+            }
+
+            self.index += self.ratio;
+        }
+
+        // Update index relative to the new buffer start
+        self.index -= num_frames as f64;
+
+        // Store last samples for next chunk's start
+        if num_frames > 0 {
+            for c in 0..self.channels {
+                self.last_samples[c] = input[(num_frames - 1) * self.channels + c];
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub fn start_decoding(url: String) -> Receiver<i16> {
+    let (tx, rx) = flume::bounded::<i16>(512 * 1024);
 
     // Spawn the decoding thread
     thread::spawn(move || {
@@ -25,7 +92,7 @@ pub fn start_decoding(url: String) -> Receiver<f32> {
     rx
 }
 
-fn decode_loop(url: String, tx: Sender<f32>) -> Result<(), Box<dyn std::error::Error>> {
+fn decode_loop(url: String, tx: Sender<i16>) -> Result<(), Box<dyn std::error::Error>> {
     info!("Connecting to {}...", url);
     let source = HttpSource::new(&url)?;
     info!("Connected. Probing stream...");
@@ -64,6 +131,7 @@ fn decode_loop(url: String, tx: Sender<f32>) -> Result<(), Box<dyn std::error::E
     );
 
     let mut sample_buf = None;
+    let mut resampler = Resampler::new(source_rate, target_rate, channels);
 
     loop {
         let packet = match format.next_packet() {
@@ -88,7 +156,7 @@ fn decode_loop(url: String, tx: Sender<f32>) -> Result<(), Box<dyn std::error::E
                     Some(b) => b,
                     None => {
                         let duration = audio_buf.capacity() as u64;
-                        SampleBuffer::new(duration, spec)
+                        SampleBuffer::<i16>::new(duration, spec)
                     }
                 };
 
@@ -96,33 +164,7 @@ fn decode_loop(url: String, tx: Sender<f32>) -> Result<(), Box<dyn std::error::E
                 let samples = buf.samples();
 
                 if source_rate != target_rate {
-                    let ratio = source_rate as f64 / target_rate as f64;
-                    let mut src_idx = 0.0f64;
-                    let num_frames = samples.len() / channels;
-
-                    while src_idx < num_frames as f64 {
-                        let idx = src_idx as usize;
-                        let fract = src_idx.fract() as f32;
-
-                        if idx + 1 < num_frames {
-                            for c in 0..channels {
-                                let s1 = samples[idx * channels + c];
-                                let s2 = samples[(idx + 1) * channels + c];
-                                let s = s1 * (1.0 - fract) + s2 * fract;
-                                if tx.send(s).is_err() {
-                                    return Ok(());
-                                }
-                            }
-                        } else {
-                            for c in 0..channels {
-                                let s = samples[idx * channels + c];
-                                if tx.send(s).is_err() {
-                                    return Ok(());
-                                }
-                            }
-                        }
-                        src_idx += ratio;
-                    }
+                    resampler.process(samples, &tx)?;
                 } else {
                     for &s in samples {
                         if tx.send(s).is_err() {

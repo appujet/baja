@@ -8,7 +8,7 @@ pub struct Mixer {
 }
 
 struct MixerTrack {
-    rx: flume::Receiver<f32>,
+    rx: flume::Receiver<i16>,
     state: Arc<Mutex<PlaybackState>>,
     volume: Arc<Mutex<f32>>,
     position: Arc<AtomicU64>,
@@ -21,7 +21,7 @@ impl Mixer {
 
     pub fn add_track(
         &mut self,
-        rx: flume::Receiver<f32>,
+        rx: flume::Receiver<i16>,
         state: Arc<Mutex<PlaybackState>>,
         volume: Arc<Mutex<f32>>,
         position: Arc<AtomicU64>,
@@ -34,14 +34,17 @@ impl Mixer {
         });
     }
 
-    pub async fn mix(&mut self, buf: &mut [f32]) {
-        // Clear buffer
-        for s in buf.iter_mut() {
-            *s = 0.0;
-        }
+    pub async fn mix(&mut self, buf: &mut [i16]) {
+        let mut mix_buf = vec![0i32; buf.len()];
 
         // Clean up stopped tracks
-        self.tracks.retain(|_| true);
+        self.tracks.retain(|t| {
+            if let Ok(state) = t.state.try_lock() {
+                *state != PlaybackState::Stopped
+            } else {
+                true
+            }
+        });
 
         for track in self.tracks.iter_mut() {
             let mut state_lock = track.state.lock().await;
@@ -57,7 +60,7 @@ impl Mixer {
             while i < buf.len() {
                 match track.rx.try_recv() {
                     Ok(sample) => {
-                        buf[i] += sample * vol;
+                        mix_buf[i] += (sample as f32 * vol) as i32;
                         i += 1;
                     }
                     Err(flume::TryRecvError::Disconnected) => {
@@ -76,14 +79,9 @@ impl Mixer {
             }
         }
 
-        // Apply basic limiting/Soft clipping
-        for s in buf.iter_mut() {
-            if *s > 1.0 {
-                *s = 1.0;
-            }
-            if *s < -1.0 {
-                *s = -1.0;
-            }
+        // Convert back to i16 with saturation
+        for (i, &sample) in mix_buf.iter().enumerate() {
+            buf[i] = sample.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
         }
     }
 }
