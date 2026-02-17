@@ -5,9 +5,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 mod api;
+mod audio;
 mod player;
 mod server;
 mod source;
+mod voice;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

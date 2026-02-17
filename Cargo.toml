@@ -29,7 +29,10 @@ rand_agents = "^1.0.0"
 
 
 symphonia = { version = "0.5.5", features = ["all"] }
-songbird = { version = "0.5.0", default-features = false, features = ["driver", "tungstenite", "rustls", "builtin-queue"] }
+davey = "0.1.1"
+audiopus = "0.3.0-rc.0"
+tokio-tungstenite = { version = "0.26.2", features = ["rustls-tls-native-roots"] }
+tokio-util = { version = "0.7.13", features = ["codec"] }
 rustypipe = { version = "0.11.4", features = ["rustls-tls-native-roots"] }
 uuid = { version = "1.21.0", features = ["v4", "v7", "serde"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "stream"] }
@@ -37,4 +40,5 @@ tokio = { version = "1.49.0", features = ["tracing", "macros", "signal", "rt-mul
 rubato = "0.16.1"
 axum = { version = "0.8.1", features = ["ws"] }
 tower-http = { version = "0.6.2", features = ["trace", "cors"] }
+xsalsa20poly1305 = "0.9.1"
 

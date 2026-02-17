@@ -1,3 +1,5 @@
+use crate::audio::playback::{PlaybackState, TrackHandle};
+use crate::voice::VoiceGateway;
 use axum::{
     extract::{
         State,
@@ -9,13 +11,9 @@ use axum::{
 use base64::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
-use songbird::{
-    Config, ConnectionInfo,
-    driver::Driver,
-    id::{GuildId, UserId},
-    tracks::TrackHandle,
-};
 use std::{collections::HashMap, num::NonZeroU64, sync::Arc};
+pub type UserId = u64;
+pub type GuildId = u64;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
@@ -31,6 +29,16 @@ pub struct Session {
     pub user_id: Option<UserId>,
 }
 
+use crate::voice::VoiceEngine;
+
+#[derive(Clone, Default)]
+pub struct VoiceState {
+    pub token: String,
+    pub endpoint: String,
+    pub session_id: String,
+    pub channel_id: Option<String>,
+}
+
 #[allow(dead_code)]
 #[derive(Clone)]
 pub struct PlayerState {
@@ -40,15 +48,8 @@ pub struct PlayerState {
     pub track: Option<String>,
     pub position: u64,
     pub voice: VoiceState,
-    pub driver: Arc<Mutex<Driver>>,
     pub track_handle: Option<TrackHandle>,
-}
-
-#[derive(Clone, Default)]
-pub struct VoiceState {
-    pub token: String,
-    pub endpoint: String,
-    pub session_id: String,
+    pub engine: Arc<Mutex<VoiceEngine>>,
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -122,19 +123,21 @@ pub struct PlayerUpdateState {
 #[serde(tag = "type")]
 pub enum PlayerEvent {
     #[serde(rename = "TrackStartEvent")]
-    #[serde(rename_all = "camelCase")]
-    TrackStartEvent { guild_id: String, track: String },
+    TrackStartEvent {
+        #[serde(rename = "guildId")]
+        guild_id: String,
+        track: String,
+    },
     #[serde(rename = "TrackEndEvent")]
-    #[serde(rename_all = "camelCase")]
     TrackEndEvent {
+        #[serde(rename = "guildId")]
         guild_id: String,
         track: String,
         reason: String,
     },
-    #[allow(dead_code)]
     #[serde(rename = "TrackExceptionEvent")]
-    #[serde(rename_all = "camelCase")]
     TrackExceptionEvent {
+        #[serde(rename = "guildId")]
         guild_id: String,
         track: String,
         exception: Exception,
@@ -328,22 +331,18 @@ async fn handle_op(
 
                 let mut players = session.players.lock().await;
 
-                let player = players.entry(guild_id.clone()).or_insert_with(|| {
-                    // Create Driver with aggressive retry config
-                    let mut config = Config::default();
-                    config.driver_timeout = Some(std::time::Duration::from_secs(5));
-                    let driver = Driver::new(config);
-                    PlayerState {
+                let player = players
+                    .entry(guild_id.clone())
+                    .or_insert_with(|| PlayerState {
                         guild_id: guild_id.clone(),
                         volume: 100,
                         paused: false,
                         track: None,
                         position: 0,
                         voice: VoiceState::default(),
-                        driver: Arc::new(Mutex::new(driver)),
                         track_handle: None,
-                    }
-                });
+                        engine: Arc::new(Mutex::new(VoiceEngine::new())),
+                    });
 
                 // Update voice state
                 player.voice.session_id = voice_session_id.clone();
@@ -360,23 +359,18 @@ async fn handle_op(
             if let Some(session) = sessions.get(session_id) {
                 let mut players = session.players.lock().await;
 
-                // Ensure player exists (VoiceUpdate should have created it, but safe to check)
-                let _gid = guild_id.parse::<u64>().map_err(|e| e.to_string())?;
-                // We don't need GuildId here for map lookup
-
-                let player = players.entry(guild_id.clone()).or_insert_with(|| {
-                    let driver = Driver::new(Config::default());
-                    PlayerState {
+                let player = players
+                    .entry(guild_id.clone())
+                    .or_insert_with(|| PlayerState {
                         guild_id: guild_id.clone(),
                         volume: 100,
                         paused: false,
                         track: None,
                         position: 0,
                         voice: VoiceState::default(),
-                        driver: Arc::new(Mutex::new(driver)),
                         track_handle: None,
-                    }
-                });
+                        engine: Arc::new(Mutex::new(VoiceEngine::new())),
+                    });
 
                 start_playback(player, track, session.sender.clone()).await;
             }
@@ -403,10 +397,7 @@ async fn handle_op(
             let sessions = state.sessions.lock().await;
             if let Some(session) = sessions.get(session_id) {
                 let mut players = session.players.lock().await;
-                if let Some(player) = players.remove(&guild_id) {
-                    let mut driver = player.driver.lock().await;
-                    driver.leave();
-                }
+                let _ = players.remove(&guild_id);
             }
         }
     }
@@ -418,36 +409,32 @@ pub async fn start_playback(
     track: String,
     sender: flume::Sender<Message>,
 ) {
-    // Stop previous track if any
     if let Some(handle) = &player.track_handle {
         let _ = handle.stop();
     }
 
-    // Update track info
     player.track = Some(track.clone());
     player.position = 0;
     player.paused = false;
 
-    // Play new track
-    let mut driver = player.driver.lock().await;
-
-    // Decode track if it's base64 encoded URL
     let url = if let Ok(decoded) = BASE64_STANDARD.decode(&track) {
-        if let Ok(s) = String::from_utf8(decoded) {
-            s
-        } else {
-            track.clone()
-        }
+        String::from_utf8(decoded).unwrap_or(track.clone())
     } else {
         track.clone()
     };
 
     if url.starts_with("http") {
-        let input = crate::player::play_url(url);
-        let handle = driver.play_input(input);
-        player.track_handle = Some(handle.clone());
+        let rx = crate::player::start_decoding(url);
+        let (handle, state, vol, pos) = TrackHandle::new();
 
-        // Send TrackStartEvent immediately
+        {
+            let engine = player.engine.lock().await;
+            let mut mixer = engine.mixer.lock().await;
+            mixer.add_track(rx, state, vol, pos);
+        }
+
+        player.track_handle = Some(handle);
+
         let event = OutgoingMessage::Event {
             event: PlayerEvent::TrackStartEvent {
                 guild_id: player.guild_id.clone(),
@@ -462,47 +449,53 @@ pub async fn start_playback(
         let tx_clone = sender.clone();
         let guild_id_clone = player.guild_id.clone();
         let track_clone = track.clone();
-        let handle_clone = handle.clone();
+        let handle_clone = player.track_handle.as_ref().unwrap().clone();
 
         tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+            let mut last_update = std::time::Instant::now();
+
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                // Check if still playing
-                match handle_clone.get_info().await {
-                    Ok(info) => {
-                        if info.playing.is_done() {
-                            let end_event = OutgoingMessage::Event {
-                                event: PlayerEvent::TrackEndEvent {
-                                    guild_id: guild_id_clone.clone(),
-                                    track: track_clone,
-                                    reason: "finished".to_string(),
-                                },
-                            };
-                            if let Ok(json) = serde_json::to_string(&end_event) {
-                                let _ = tx_clone.send(Message::Text(json.into()));
-                            }
+                interval.tick().await;
+
+                let current_state = handle_clone.get_state().await;
+                if current_state == PlaybackState::Stopped {
+                    info!(
+                        "Sending TrackEndEvent for guild {}: {}",
+                        guild_id_clone, track_clone
+                    );
+                    let event = OutgoingMessage::Event {
+                        event: PlayerEvent::TrackEndEvent {
+                            guild_id: guild_id_clone,
+                            track: track_clone,
+                            reason: "FINISHED".to_string(),
+                        },
+                    };
+                    if let Ok(json) = serde_json::to_string(&event) {
+                        let _ = tx_clone.send(Message::Text(json.into()));
+                    }
+                    break;
+                }
+
+                if last_update.elapsed() >= std::time::Duration::from_secs(5) {
+                    last_update = std::time::Instant::now();
+                    let update = OutgoingMessage::PlayerUpdate {
+                        guild_id: guild_id_clone.clone(),
+                        state: PlayerUpdateState {
+                            time: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as u64,
+                            position: handle_clone.get_position(),
+                            connected: true,
+                            ping: 0,
+                        },
+                    };
+                    if let Ok(json) = serde_json::to_string(&update) {
+                        if tx_clone.send(Message::Text(json.into())).is_err() {
                             break;
                         }
-
-                        // Send PlayerUpdate
-                        let position = info.position.as_millis() as u64;
-                        let update = OutgoingMessage::PlayerUpdate {
-                            guild_id: guild_id_clone.clone(),
-                            state: PlayerUpdateState {
-                                time: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_millis() as u64,
-                                position,
-                                connected: true,
-                                ping: 10,
-                            },
-                        };
-                        if let Ok(json) = serde_json::to_string(&update) {
-                            let _ = tx_clone.send(Message::Text(json.into()));
-                        }
                     }
-                    Err(_) => break, // Handle dropped/error
                 }
             }
         });
@@ -510,35 +503,30 @@ pub async fn start_playback(
 }
 
 pub async fn connect_player(player: &mut PlayerState, user_id: UserId) -> Result<(), String> {
+    let mut engine = player.engine.lock().await;
 
-    let gid = player.guild_id.parse::<u64>().map_err(|e| e.to_string())?;
-    let guild_id_int = NonZeroU64::new(gid).ok_or("Invalid guild ID 0")?;
-    let guild_id_songbird = GuildId::from(guild_id_int);
+    let guild_id_u64 = player.guild_id.parse::<u64>().unwrap_or(0);
+    let channel_id = player
+        .voice
+        .channel_id
+        .as_ref()
+        .and_then(|id| id.parse::<u64>().ok())
+        .unwrap_or(guild_id_u64);
 
-
-    let mut driver = player.driver.lock().await;
-
-    let info = ConnectionInfo {
-        guild_id: guild_id_songbird,
+    let mixer = engine.mixer.clone();
+    let gateway = VoiceGateway::new(
+        player.guild_id.clone(),
         user_id,
-        session_id: player.voice.session_id.clone(),
-        token: player.voice.token.clone(),
-        endpoint: player.voice.endpoint.clone(),
-        channel_id: None,
-    };
-
-    info!(
-        "Connecting to voice server for guild {} (endpoint: {})",
-        player.guild_id, info.endpoint
+        channel_id,
+        player.voice.session_id.clone(),
+        player.voice.token.clone(),
+        player.voice.endpoint.clone(),
+        mixer,
     );
-    let connect_future = driver.connect(info);
 
-    // We MUST spawn a task to drive the connection future if we don't await it here.
-    // Songbird's connect() returns a future that needs to be polled to completion.
     tokio::spawn(async move {
-        match connect_future.await {
-            Ok(_) => info!("Voice connection success"),
-            Err(e) => error!("Voice connection failed: {}", e),
+        if let Err(e) = gateway.run().await {
+            error!("Voice gateway error: {}", e);
         }
     });
 

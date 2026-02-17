@@ -7,7 +7,6 @@ use axum::{
 };
 use base64::prelude::*;
 use serde::{Deserialize, Serialize};
-use songbird::{Config, driver::Driver};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
@@ -150,6 +149,7 @@ pub struct PlayerUpdateVoice {
     pub token: String,
     pub endpoint: String,
     pub session_id: String,
+    pub channel_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -329,21 +329,21 @@ pub async fn update_player(
     let mut sessions = state.sessions.lock().await;
     if let Some(session) = sessions.get_mut(&session_id) {
         let mut players = session.players.lock().await;
-        let p = players.entry(guild_id.clone()).or_insert_with(|| {
-            let mut config = Config::default();
-            config.driver_timeout = Some(std::time::Duration::from_secs(5));
-            let driver = Driver::new(config);
-            PlayerState {
+        let p = players
+            .entry(guild_id.clone())
+            .or_insert_with(|| PlayerState {
                 guild_id: guild_id.clone(),
                 volume: 100,
                 paused: false,
                 track: None,
                 position: 0,
-                voice: VoiceState::default(),
-                driver: Arc::new(Mutex::new(driver)),
+                voice: VoiceState {
+                    channel_id: None,
+                    ..VoiceState::default()
+                },
                 track_handle: None,
-            }
-        });
+                engine: Arc::new(Mutex::new(crate::voice::VoiceEngine::new())),
+            });
 
         if let Some(v) = body.volume {
             p.volume = v;
@@ -365,6 +365,7 @@ pub async fn update_player(
                 token: v.token,
                 endpoint: v.endpoint,
                 session_id: v.session_id,
+                channel_id: v.channel_id,
             };
             if let Some(uid) = session.user_id {
                 let _ = crate::server::connect_player(p, uid).await;
