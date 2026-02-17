@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(shared_state);
 
     let address = SocketAddr::from(([0, 0, 0, 0], 2333));
-    println!("Baja server listening on {}", address);
+    println!("Lavalink Server listening on {}", address);
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     axum::serve(listener, app).await?;
