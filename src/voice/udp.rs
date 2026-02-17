@@ -1,6 +1,6 @@
 use davey::{AeadInPlace as AesAeadInPlace, Aes256Gcm, KeyInit as AesKeyInit};
 use std::net::UdpSocket;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 use xsalsa20poly1305::XSalsa20Poly1305;
 use xsalsa20poly1305::aead::{Aead as SalsaAead, KeyInit as SalsaKeyInit};
 
@@ -16,7 +16,11 @@ pub struct UdpBackend {
     mode: EncryptionMode,
     salsa_cipher: Option<XSalsa20Poly1305>,
     aes_cipher: Option<Aes256Gcm>,
-    nonce_counter: AtomicU32,
+
+    // Internal state management to match NodeLink's Connection class
+    sequence: AtomicU16,
+    timestamp: AtomicU32,
+    nonce: AtomicU32,
 }
 
 impl UdpBackend {
@@ -51,16 +55,20 @@ impl UdpBackend {
             mode,
             salsa_cipher,
             aes_cipher,
-            nonce_counter: AtomicU32::new(1), // Start at 1 to match index.js
+            sequence: AtomicU16::new(0),
+            timestamp: AtomicU32::new(0),
+            nonce: AtomicU32::new(0),
         })
     }
 
-    pub fn send_opus_packet(
-        &self,
-        payload: &[u8],
-        sequence: u16,
-        timestamp: u32,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn send_opus_packet(&self, payload: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+        // Increment sequence and timestamp like NodeLink
+        let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
+        let timestamp = self.timestamp.fetch_add(960, Ordering::SeqCst);
+
+        // Nonce is incremented before use in NodeLink
+        let current_nonce = self.nonce.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
+
         let mut header = [0u8; 12];
         header[0] = 0x80; // Version 2
         header[1] = 0x78; // Payload Type (Opus)
@@ -70,10 +78,8 @@ impl UdpBackend {
 
         match self.mode {
             EncryptionMode::XSalsa20Poly1305 => {
-                let current_nonce = self.nonce_counter.fetch_add(1, Ordering::SeqCst);
                 let mut nonce = [0u8; 24];
-                // For xsalsa20_poly1305, Discord usually wants the header used as part of nonce or similar
-                // but the common implementation just uses the header as the first 12 bytes.
+                // For xsalsa20_poly1305, Discord expects the header as the first 12 bytes
                 nonce[0..12].copy_from_slice(&header);
 
                 let encrypted = self
@@ -90,10 +96,10 @@ impl UdpBackend {
                 self.socket.send_to(&packet, self.address)?;
             }
             EncryptionMode::Aes256Gcm => {
-                let counter = self.nonce_counter.fetch_add(1, Ordering::SeqCst);
-                let counter_bytes = counter.to_be_bytes();
+                let counter_bytes = current_nonce.to_be_bytes();
 
                 let mut nonce_bytes = [0u8; 12];
+                // NodeLink writes the 4-byte counter to the first 4 bytes of the 12-byte nonce
                 nonce_bytes[0..4].copy_from_slice(&counter_bytes);
 
                 let mut buffer = payload.to_vec();

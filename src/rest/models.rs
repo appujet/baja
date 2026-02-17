@@ -22,9 +22,12 @@ pub struct LoadTracksResponse {
 #[serde(untagged)]
 pub enum LoadData {
     Track(Track),
+    #[allow(dead_code)]
     Tracks(Vec<Track>),
+    #[allow(dead_code)]
     Playlist(PlaylistData),
     Empty(serde_json::Value),
+    #[allow(dead_code)]
     Error(Exception),
 }
 
@@ -41,9 +44,12 @@ pub struct PlaylistData {
 #[serde(rename_all = "camelCase")]
 pub enum LoadType {
     Track,
+    #[allow(dead_code)]
     Playlist,
+    #[allow(dead_code)]
     Search,
     Empty,
+    #[allow(dead_code)]
     Error,
 }
 

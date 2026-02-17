@@ -1,7 +1,7 @@
 use davey::{DaveSession, ProposalsOperationType};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU16;
-use tracing::{info, warn};
+use tracing::info;
 
 pub struct DaveHandler {
     session: Option<DaveSession>,

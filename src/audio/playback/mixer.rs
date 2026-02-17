@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 
 pub struct Mixer {
     tracks: Vec<MixerTrack>,
+    mix_buf: Vec<i32>,
 }
 
 struct MixerTrack {
@@ -16,7 +17,10 @@ struct MixerTrack {
 
 impl Mixer {
     pub fn new() -> Self {
-        Self { tracks: Vec::new() }
+        Self {
+            tracks: Vec::new(),
+            mix_buf: Vec::with_capacity(1920),
+        }
     }
 
     pub fn add_track(
@@ -35,7 +39,14 @@ impl Mixer {
     }
 
     pub async fn mix(&mut self, buf: &mut [i16]) {
-        let mut mix_buf = vec![0i32; buf.len()];
+        if self.mix_buf.len() != buf.len() {
+            self.mix_buf.resize(buf.len(), 0);
+        }
+
+        // Reset buffer
+        for s in self.mix_buf.iter_mut() {
+            *s = 0;
+        }
 
         // Clean up stopped tracks
         self.tracks.retain(|t| {
@@ -60,7 +71,7 @@ impl Mixer {
             while i < buf.len() {
                 match track.rx.try_recv() {
                     Ok(sample) => {
-                        mix_buf[i] += (sample as f32 * vol) as i32;
+                        self.mix_buf[i] += (sample as f32 * vol) as i32;
                         i += 1;
                     }
                     Err(flume::TryRecvError::Disconnected) => {
@@ -80,7 +91,7 @@ impl Mixer {
         }
 
         // Convert back to i16 with saturation
-        for (i, &sample) in mix_buf.iter().enumerate() {
+        for (i, &sample) in self.mix_buf.iter().enumerate() {
             buf[i] = sample.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
         }
     }

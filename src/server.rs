@@ -13,7 +13,6 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::{collections::HashMap, num::NonZeroU64, sync::Arc};
 pub type UserId = u64;
-pub type GuildId = u64;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
@@ -135,6 +134,7 @@ pub enum PlayerEvent {
         track: String,
         reason: String,
     },
+    #[allow(dead_code)]
     #[serde(rename = "TrackExceptionEvent")]
     TrackExceptionEvent {
         #[serde(rename = "guildId")]

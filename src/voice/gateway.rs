@@ -8,7 +8,7 @@ use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 use tokio::net::UdpSocket as TokioUdpSocket;
 use tokio::sync::Mutex;
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::{error, info, warn};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -52,7 +52,7 @@ impl VoiceGateway {
         let url = format!("wss://{}/?v=8", self.endpoint);
         info!("Connecting to voice gateway: {}", url);
 
-        let (ws_stream, _) = connect_async(url).await?;
+        let (ws_stream, _) = tokio_tungstenite::connect_async(url).await?;
         let (mut write, mut read) = ws_stream.split();
 
         // 1. Identify
@@ -411,14 +411,12 @@ async fn speak_loop(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::audio::opus::Encoder;
     use crate::voice::udp::UdpBackend;
-
     let mut encoder = Encoder::new()?;
     let udp = UdpBackend::new(socket, addr, ssrc, key, &mode)?;
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(20));
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // Use Burst to catch up if we fall behind, preventing perceived packet loss gaps
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
 
-    let mut sequence: u16 = 0;
-    let mut timestamp: u32 = 0;
     let mut pcm_buf = vec![0i16; 1920];
     let mut opus_buf = vec![0u8; 4000];
 
@@ -433,9 +431,7 @@ async fn speak_loop(
         if size > 0 {
             let mut dave_lock = dave.lock().await;
             let encrypted_opus = dave_lock.encrypt_opus(&opus_buf[..size])?;
-            udp.send_opus_packet(&encrypted_opus, sequence, timestamp)?;
-            sequence = sequence.wrapping_add(1);
-            timestamp = timestamp.wrapping_add(960);
+            udp.send_opus_packet(&encrypted_opus)?;
         }
     }
 }

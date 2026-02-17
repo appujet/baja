@@ -6,4 +6,3 @@ pub mod udp;
 pub use dave::DaveHandler;
 pub use engine::VoiceEngine;
 pub use gateway::VoiceGateway;
-pub use udp::UdpBackend;
