@@ -2,7 +2,7 @@ pub mod handlers;
 pub mod models;
 
 use crate::server::AppState;
-use axum::{Router, routing::get};
+use axum::{routing::get, Router};
 use std::sync::Arc;
 
 /// Lavalink v4 REST API router.

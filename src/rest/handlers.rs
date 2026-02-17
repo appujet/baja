@@ -1,14 +1,15 @@
 use crate::rest::models::*;
-use crate::server::{AppState, PlayerContext};
+use crate::server::AppState;
 use crate::sources::SourceManager;
 use crate::types;
+use crate::server::now_ms;
+use crate::player::{PlayerContext, VoiceConnectionState};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
 };
 use std::sync::Arc;
-use tracing::info;
 
 /// GET /v4/loadtracks?identifier=...
 pub async fn load_tracks(
@@ -242,7 +243,7 @@ pub async fn update_player(
 
     // Apply voice
     if let Some(voice) = body.voice {
-        player.voice = crate::server::VoiceConnectionState {
+        player.voice = VoiceConnectionState {
             token: voice.token,
             endpoint: voice.endpoint,
             session_id: voice.session_id,
@@ -435,11 +436,4 @@ pub async fn update_session(
         )
             .into_response(),
     }
-}
-
-fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
 }

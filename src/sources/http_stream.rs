@@ -1,7 +1,7 @@
 use std::io::{Read, Seek, SeekFrom};
 use symphonia::core::io::MediaSource;
 
-pub struct HttpSource {
+pub struct HttpReader {
     url: String,
     client: reqwest::blocking::Client,
     response: reqwest::blocking::Response,
@@ -9,7 +9,7 @@ pub struct HttpSource {
     len: Option<u64>,
 }
 
-impl HttpSource {
+impl HttpReader {
     pub fn new(url: &str) -> Result<Self, reqwest::Error> {
         let client = reqwest::blocking::Client::builder()
             .user_agent("Mozilla/5.0")
@@ -26,7 +26,7 @@ impl HttpSource {
     }
 }
 
-impl Read for HttpSource {
+impl Read for HttpReader {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match self.response.read(buf) {
             Ok(n) => {
@@ -38,7 +38,7 @@ impl Read for HttpSource {
     }
 }
 
-impl Seek for HttpSource {
+impl Seek for HttpReader {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
         let new_pos = match pos {
             SeekFrom::Start(p) => p,
@@ -72,7 +72,7 @@ impl Seek for HttpSource {
     }
 }
 
-impl MediaSource for HttpSource {
+impl MediaSource for HttpReader {
     fn is_seekable(&self) -> bool {
         self.len.is_some()
     }

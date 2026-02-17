@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use tokio::net::UdpSocket as TokioUdpSocket;
 use tokio::sync::Mutex;
-use tokio_tungstenite::tungstenite::protocol::{frame::coding::CloseCode, CloseFrame, Message};
+use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::{error, info, warn};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -189,7 +189,6 @@ impl VoiceGateway {
 
         let mut ssrc = 0;
         let mut udp_addr: Option<SocketAddr> = None;
-        let mut secret_key = None;
         let mut selected_mode = "xsalsa20_poly1305".to_string();
         let mut connected_users = HashSet::<u64>::new();
         connected_users.insert(self.user_id);
@@ -338,9 +337,8 @@ impl VoiceGateway {
                                 for (i, v) in ka.iter().enumerate().take(32) {
                                     key[i] = v.as_u64().unwrap_or(0) as u8;
                                 }
-                                secret_key = Some(key);
 
-                                if let (Some(addr), Some(k)) = (udp_addr, secret_key) {
+                                if let Some(addr) = udp_addr {
                                     let mixer = self.mixer.clone();
                                     let dave_clone = dave.clone();
                                     let socket_clone = udp_socket.try_clone().map_err(map_boxed_err)?;
@@ -356,7 +354,7 @@ impl VoiceGateway {
                                             socket_clone,
                                             addr,
                                             ssrc,
-                                            k,
+                                            key,
                                             mode_clone,
                                             dave_clone,
                                         )
