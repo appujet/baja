@@ -9,7 +9,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use tokio::net::UdpSocket as TokioUdpSocket;
 use tokio::sync::Mutex;
-use tokio_tungstenite::tungstenite::protocol::{frame::coding::CloseCode, CloseFrame, Message};
+use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -39,6 +40,7 @@ pub struct VoiceGateway {
     token: String,
     endpoint: String,
     mixer: Arc<Mutex<Mixer>>,
+    cancel_token: CancellationToken,
 }
 
 const MAX_RECONNECT_ATTEMPTS: u32 = 5;
@@ -48,6 +50,12 @@ fn map_boxed_err<E: std::fmt::Display>(
     e: E,
 ) -> Box<dyn std::error::Error + Send + Sync> {
     Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+}
+
+impl Drop for VoiceGateway {
+    fn drop(&mut self) {
+        self.cancel_token.cancel();
+    }
 }
 
 impl VoiceGateway {
@@ -68,6 +76,7 @@ impl VoiceGateway {
             token,
             endpoint,
             mixer,
+            cancel_token: CancellationToken::new(),
         }
     }
 
@@ -189,7 +198,6 @@ impl VoiceGateway {
 
         let mut ssrc = 0;
         let mut udp_addr: Option<SocketAddr> = None;
-        let mut secret_key = None;
         let mut selected_mode = "xsalsa20_poly1305".to_string();
         let mut connected_users = HashSet::<u64>::new();
         connected_users.insert(self.user_id);
@@ -338,13 +346,13 @@ impl VoiceGateway {
                                 for (i, v) in ka.iter().enumerate().take(32) {
                                     key[i] = v.as_u64().unwrap_or(0) as u8;
                                 }
-                                secret_key = Some(key);
 
-                                if let (Some(addr), Some(k)) = (udp_addr, secret_key) {
+                                if let Some(addr) = udp_addr {
                                     let mixer = self.mixer.clone();
                                     let dave_clone = dave.clone();
                                     let socket_clone = udp_socket.try_clone().map_err(map_boxed_err)?;
                                     let mode_clone = selected_mode.clone();
+                                    let cancel_clone = self.cancel_token.clone();
 
                                     info!(
                                         "Starting speak loop for SSRC {} with mode {}",
@@ -356,9 +364,10 @@ impl VoiceGateway {
                                             socket_clone,
                                             addr,
                                             ssrc,
-                                            k,
+                                            key,
                                             mode_clone,
                                             dave_clone,
+                                            cancel_clone,
                                         )
                                         .await
                                         {
@@ -543,7 +552,7 @@ impl VoiceGateway {
                                 }
                             }
                         }
-                        _ => info!(
+                        _ => tracing::debug!(
                             "Received unknown binary op {} (seq {})",
                             op, seq
                         ),
@@ -569,10 +578,11 @@ impl VoiceGateway {
             }
         };
 
-        // Clean up: abort heartbeat, drop tx to signal write task to exit
+        // Clean up: abort heartbeat, drop tx to signal write task to exit, cancel speak loops
         if let Some(h) = heartbeat_handle {
             h.abort();
         }
+        self.cancel_token.cancel();
         drop(tx);
         drop(tx_hb);
         // Give the write task a moment to exit cleanly
@@ -627,6 +637,7 @@ async fn speak_loop(
     key: [u8; 32],
     mode: String,
     dave: Arc<Mutex<DaveHandler>>,
+    cancel_token: CancellationToken,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use crate::audio::opus::Encoder;
     use crate::voice::udp::UdpBackend;
@@ -641,36 +652,43 @@ async fn speak_loop(
     let mut silence_frames = 0;
 
     loop {
-        interval.tick().await;
-        let has_audio;
-        {
-            let mut mixer_lock = mixer.lock().await;
-            has_audio = mixer_lock.mix(&mut pcm_buf).await;
-        }
-
-        if has_audio {
-            silence_frames = 0;
-        } else {
-            silence_frames += 1;
-            // Send 5 frames of silence to distinguish "end of speech" from "packet loss"
-            if silence_frames > 5 {
-                continue;
+        tokio::select! {
+            _ = cancel_token.cancelled() => {
+                break;
             }
-        }
+            _ = interval.tick() => {
+                let has_audio;
+                {
+                    let mut mixer_lock = mixer.lock().await;
+                    has_audio = mixer_lock.mix(&mut pcm_buf).await;
+                }
 
-        let size = encoder.encode(&pcm_buf, &mut opus_buf).map_err(map_boxed_err)?;
-        if size > 0 {
-            let mut dave_lock = dave.lock().await;
-            match dave_lock.encrypt_opus(&opus_buf[..size]) {
-                Ok(encrypted_opus) => {
-                    if let Err(e) = udp.send_opus_packet(&encrypted_opus) {
-                        tracing::warn!("Failed to send UDP packet: {}", e);
+                if has_audio {
+                    silence_frames = 0;
+                } else {
+                    silence_frames += 1;
+                    // Send 5 frames of silence to distinguish "end of speech" from "packet loss"
+                    if silence_frames > 5 {
+                        continue;
                     }
                 }
-                Err(e) => {
-                    tracing::error!("DAVE encryption failed: {}", e);
+
+                let size = encoder.encode(&pcm_buf, &mut opus_buf).map_err(map_boxed_err)?;
+                if size > 0 {
+                    let mut dave_lock = dave.lock().await;
+                    match dave_lock.encrypt_opus(&opus_buf[..size]) {
+                        Ok(encrypted_opus) => {
+                            if let Err(e) = udp.send_opus_packet(&encrypted_opus) {
+                                tracing::warn!("Failed to send UDP packet: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("DAVE encryption failed: {}", e);
+                        }
+                    }
                 }
             }
         }
     }
+    Ok(())
 }

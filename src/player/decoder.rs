@@ -1,88 +1,19 @@
-use std::thread;
-
+use super::resampler::Resampler;
+use crate::audio::reader::RemoteReader;
 use flume::{Receiver, Sender};
+use std::thread;
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
+use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-
-use crate::source::HttpSource;
-use tracing::{error, info};
-
-struct Resampler {
-    ratio: f64,
-    index: f64,
-    last_samples: Vec<i16>,
-    channels: usize,
-}
-
-impl Resampler {
-    fn new(source_rate: u32, target_rate: u32, channels: usize) -> Self {
-        Self {
-            ratio: source_rate as f64 / target_rate as f64,
-            index: 0.0,
-            last_samples: vec![0; channels],
-            channels,
-        }
-    }
-
-    fn process(
-        &mut self,
-        input: &[i16],
-        tx: &Sender<i16>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let num_frames = input.len() / self.channels;
-
-        while self.index < num_frames as f64 {
-            let idx = self.index as usize;
-            let fract = self.index.fract();
-
-            for c in 0..self.channels {
-                let s1 = if idx == 0 {
-                    self.last_samples[c] as f64
-                } else {
-                    input[(idx - 1) * self.channels + c] as f64
-                };
-
-                let s2 = if idx < num_frames {
-                    input[idx * self.channels + c] as f64
-                } else {
-                    // Should not happen with while condition, but safety check
-                    input[(num_frames - 1) * self.channels + c] as f64
-                };
-
-                // Linear interpolation on i16
-                let s = s1 * (1.0 - fract) + s2 * fract;
-
-                if tx.send(s as i16).is_err() {
-                    return Ok(());
-                }
-            }
-
-            self.index += self.ratio;
-        }
-
-        // Update index relative to the new buffer start
-        self.index -= num_frames as f64;
-
-        // Store last samples for next chunk's start
-        if num_frames > 0 {
-            for c in 0..self.channels {
-                self.last_samples[c] = input[(num_frames - 1) * self.channels + c];
-            }
-        }
-
-        Ok(())
-    }
-}
+use tracing::{debug, error};
 
 pub fn start_decoding(url: String) -> Receiver<i16> {
     let (tx, rx) = flume::bounded::<i16>(512 * 1024);
 
-    // Spawn the decoding thread
     thread::spawn(move || {
         if let Err(e) = decode_loop(url, tx) {
             error!("Decoding error: {}", e);
@@ -93,9 +24,9 @@ pub fn start_decoding(url: String) -> Receiver<i16> {
 }
 
 fn decode_loop(url: String, tx: Sender<i16>) -> Result<(), Box<dyn std::error::Error>> {
-    tracing::debug!("Connecting to {}...", url);
-    let source = HttpSource::new(&url)?;
-    tracing::debug!("Connected. Probing stream...");
+    debug!("Connecting to {}...", url);
+    let source = RemoteReader::new(&url)?;
+    debug!("Connected. Probing stream...");
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
 
     let mut hint = Hint::new();
@@ -125,7 +56,7 @@ fn decode_loop(url: String, tx: Sender<i16>) -> Result<(), Box<dyn std::error::E
     let target_rate = 48000;
     let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
 
-    tracing::debug!(
+    debug!(
         "Source: {}Hz {} channels, Target: {}Hz",
         source_rate, channels, target_rate
     );
@@ -142,7 +73,7 @@ fn decode_loop(url: String, tx: Sender<i16>) -> Result<(), Box<dyn std::error::E
                 error!("decode error: {}", e);
                 continue;
             }
-            Err(_) => break, // EOF
+            Err(_) => break,
         };
 
         if packet.track_id() != track_id {

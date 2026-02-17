@@ -7,10 +7,12 @@ mod audio;
 mod player;
 mod rest;
 mod server;
-mod source;
+
 mod sources;
 mod types;
 mod voice;
+mod ws;
+mod utils;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let app = Router::new()
-        .route("/v4/websocket", get(server::websocket_handler))
+        .route("/v4/websocket", get(ws::websocket_handler))
         .merge(rest::router())
         .with_state(shared_state);
 
