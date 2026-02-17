@@ -25,6 +25,7 @@ pub struct PlayerContext {
     pub filters: types::Filters,
     pub end_time: Option<u64>,
     pub stop_signal: Arc<std::sync::atomic::AtomicBool>,
+    pub gateway_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl PlayerContext {
@@ -41,6 +42,7 @@ impl PlayerContext {
             filters: types::Filters::default(),
             end_time: None,
             stop_signal: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            gateway_task: None,
         }
     }
 

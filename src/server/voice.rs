@@ -10,7 +10,7 @@ pub async fn connect_voice(
     guild_id: String,
     user_id: UserId,
     voice: VoiceConnectionState,
-) -> Result<(), String> {
+) -> tokio::task::JoinHandle<()> {
     let engine_lock = engine.lock().await;
     let channel_id = voice
         .channel_id
@@ -33,7 +33,5 @@ pub async fn connect_voice(
         if let Err(e) = gateway.run().await {
             error!("Voice gateway error: {}", e);
         }
-    });
-
-    Ok(())
+    })
 }

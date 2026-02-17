@@ -29,20 +29,42 @@ pub async fn handle_op(
                     .insert(guild_id.clone(), PlayerContext::new(guild_id.clone()));
             }
 
-            let mut player = session.players.get_mut(&guild_id).unwrap();
-            player.voice = crate::player::VoiceConnectionState {
-                token,
-                endpoint,
-                session_id: voice_session_id,
-                channel_id,
-            };
-
             if let Some(uid) = session.user_id {
-                let engine = player.engine.clone();
-                let guild = player.guild_id.clone();
-                let voice_state = player.voice.clone();
-                drop(player);
-                let _ = crate::server::connect_voice(engine, guild, uid, voice_state).await;
+                let mut changed = false;
+                {
+                    let mut player = session.players.get_mut(&guild_id).unwrap();
+                    if player.voice.token != token
+                        || player.voice.endpoint != endpoint
+                        || player.voice.session_id != voice_session_id
+                        || player.voice.channel_id != channel_id
+                    {
+                        player.voice = crate::player::VoiceConnectionState {
+                            token,
+                            endpoint,
+                            session_id: voice_session_id,
+                            channel_id,
+                        };
+                        changed = true;
+                    }
+                }
+
+                if changed || session.players.get(&guild_id).map(|p| p.gateway_task.is_none()).unwrap_or(true) {
+                    let mut player = session.players.get_mut(&guild_id).unwrap();
+                    let engine = player.engine.clone();
+                    let guild = player.guild_id.clone();
+                    let voice_state = player.voice.clone();
+
+                    if let Some(task) = player.gateway_task.take() {
+                        task.abort();
+                    }
+
+                    drop(player);
+                    let new_task = crate::server::connect_voice(engine, guild, uid, voice_state).await;
+
+                    if let Some(mut player) = session.players.get_mut(&guild_id) {
+                        player.gateway_task = Some(new_task);
+                    }
+                }
             }
         }
         IncomingMessage::Play { guild_id, track } => {
@@ -65,7 +87,11 @@ pub async fn handle_op(
             }
         }
         IncomingMessage::Destroy { guild_id } => {
-            session.players.remove(&guild_id);
+            if let Some((_, mut player)) = session.players.remove(&guild_id) {
+                if let Some(task) = player.gateway_task.take() {
+                    task.abort();
+                }
+            }
         }
     }
 
