@@ -10,27 +10,35 @@ pub struct Config {
     pub filters: FiltersConfig,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-pub struct FiltersConfig {
-    #[serde(default)]
-    pub enabled: EnabledFiltersConfig,
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct EnabledFiltersConfig {
+pub struct FiltersConfig {
+    #[serde(default = "default_true")]
     pub volume: bool,
+    #[serde(default = "default_true")]
     pub equalizer: bool,
+    #[serde(default = "default_true")]
     pub karaoke: bool,
+    #[serde(default = "default_true")]
     pub timescale: bool,
+    #[serde(default = "default_true")]
     pub tremolo: bool,
+    #[serde(default = "default_true")]
     pub vibrato: bool,
+    #[serde(default = "default_true")]
     pub distortion: bool,
+    #[serde(default = "default_true")]
     pub rotation: bool,
+    #[serde(default = "default_true")]
     pub channel_mix: bool,
+    #[serde(default = "default_true")]
     pub low_pass: bool,
 }
 
-impl Default for EnabledFiltersConfig {
+fn default_true() -> bool {
+    true
+}
+
+impl Default for FiltersConfig {
     fn default() -> Self {
         Self {
             volume: true,
@@ -47,7 +55,7 @@ impl Default for EnabledFiltersConfig {
     }
 }
 
-impl EnabledFiltersConfig {
+impl FiltersConfig {
     pub fn is_enabled(&self, name: &str) -> bool {
         match name {
             "volume" => self.volume,
@@ -58,10 +66,9 @@ impl EnabledFiltersConfig {
             "vibrato" => self.vibrato,
             "distortion" => self.distortion,
             "rotation" => self.rotation,
-            "channel_mix" => self.channel_mix,
-            "low_pass" => self.low_pass,
-            _ => true, // Unknown filters are allowed by default or should be handled by plugin logic?
-                       // For now, strict validation only for known core filters.
+            "channel_mix" | "channelMix" => self.channel_mix,
+            "low_pass" | "lowPass" => self.low_pass,
+            _ => true, // Default to true for unknown filters (e.g. plugins) to avoid breaking changes
         }
     }
 }
@@ -98,7 +105,7 @@ impl Config {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let config_str = std::fs::read_to_string("config.toml").unwrap_or_else(|_| "".to_string());
         if config_str.is_empty() {
-             return Err("config.toml not found or empty".into());
+            return Err("config.toml not found or empty".into());
         }
         let config: Config = toml::from_str(&config_str)?;
         Ok(config)

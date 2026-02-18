@@ -126,7 +126,7 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<api::Info> {
         source_managers: state.source_manager.source_names(),
         filters: Filters::names()
             .into_iter()
-            .filter(|name| state.config.filters.enabled.is_enabled(name))
+            .filter(|name| state.config.filters.is_enabled(name))
             .collect(),
         plugins: vec![],
     })

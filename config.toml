@@ -15,7 +15,6 @@ http = true
 local = false
 
 [filters]
-[filters.enabled]
 volume = true
 equalizer = true
 karaoke = true

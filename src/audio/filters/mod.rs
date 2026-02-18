@@ -12,43 +12,42 @@ pub mod tremolo;
 pub mod vibrato;
 pub mod volume;
 
-use crate::playback::Filters;
 use crate::config::FiltersConfig;
+use crate::playback::Filters;
 
 /// Validate if the requested filters are allowed by the server configuration.
 /// Returns a list of disabled filter names that were requested.
 pub fn validate_filters(filters: &Filters, config: &FiltersConfig) -> Vec<String> {
     let mut invalid = Vec::new();
-    let enabled = &config.enabled;
 
-    if filters.volume.is_some() && !enabled.volume {
+    if filters.volume.is_some() && !config.volume {
         invalid.push("volume".to_string());
     }
-    if filters.equalizer.is_some() && !enabled.equalizer {
+    if filters.equalizer.is_some() && !config.equalizer {
         invalid.push("equalizer".to_string());
     }
-    if filters.karaoke.is_some() && !enabled.karaoke {
+    if filters.karaoke.is_some() && !config.karaoke {
         invalid.push("karaoke".to_string());
     }
-    if filters.timescale.is_some() && !enabled.timescale {
+    if filters.timescale.is_some() && !config.timescale {
         invalid.push("timescale".to_string());
     }
-    if filters.tremolo.is_some() && !enabled.tremolo {
+    if filters.tremolo.is_some() && !config.tremolo {
         invalid.push("tremolo".to_string());
     }
-    if filters.vibrato.is_some() && !enabled.vibrato {
+    if filters.vibrato.is_some() && !config.vibrato {
         invalid.push("vibrato".to_string());
     }
-    if filters.distortion.is_some() && !enabled.distortion {
+    if filters.distortion.is_some() && !config.distortion {
         invalid.push("distortion".to_string());
     }
-    if filters.rotation.is_some() && !enabled.rotation {
+    if filters.rotation.is_some() && !config.rotation {
         invalid.push("rotation".to_string());
     }
-    if filters.channel_mix.is_some() && !enabled.channel_mix {
+    if filters.channel_mix.is_some() && !config.channel_mix {
         invalid.push("channelMix".to_string());
     }
-    if filters.low_pass.is_some() && !enabled.low_pass {
+    if filters.low_pass.is_some() && !config.low_pass {
         invalid.push("lowPass".to_string());
     }
 
@@ -112,10 +111,7 @@ impl FilterChain {
 
         // Tremolo
         if let Some(ref t) = config.tremolo {
-            let f = tremolo::TremoloFilter::new(
-                t.frequency.unwrap_or(2.0),
-                t.depth.unwrap_or(0.5),
-            );
+            let f = tremolo::TremoloFilter::new(t.frequency.unwrap_or(2.0), t.depth.unwrap_or(0.5));
             if f.is_enabled() {
                 filters.push(Box::new(f));
             }
@@ -123,10 +119,7 @@ impl FilterChain {
 
         // Vibrato
         if let Some(ref v) = config.vibrato {
-            let f = vibrato::VibratoFilter::new(
-                v.frequency.unwrap_or(2.0),
-                v.depth.unwrap_or(0.5),
-            );
+            let f = vibrato::VibratoFilter::new(v.frequency.unwrap_or(2.0), v.depth.unwrap_or(0.5));
             if f.is_enabled() {
                 filters.push(Box::new(f));
             }
