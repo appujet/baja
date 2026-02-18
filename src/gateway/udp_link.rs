@@ -99,7 +99,7 @@ impl UdpBackend {
                 let counter_bytes = current_nonce.to_be_bytes();
 
                 let mut nonce_bytes = [0u8; 12];
-                // NodeLink writes the 4-byte counter to the first 4 bytes of the 12-byte nonce
+                // Rustalink writes the 4-byte counter to the first 4 bytes of the 12-byte nonce
                 nonce_bytes[0..4].copy_from_slice(&counter_bytes);
 
                 let mut buffer = payload.to_vec();

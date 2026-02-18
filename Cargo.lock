@@ -210,47 +210,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "baja"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "audiopus",
- "axum",
- "base64",
- "blowfish",
- "byteorder",
- "bytesize",
- "cap",
- "cbc",
- "dashmap",
- "davey",
- "dotenv",
- "flume",
- "futures",
- "hex",
- "md5",
- "perf_monitor",
- "rand_agents",
- "regex",
- "reqwest",
- "rubato",
- "rustypipe",
- "serde",
- "serde_json",
- "symphonia",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "tokio-util",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "xsalsa20poly1305",
-]
-
-[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2859,6 +2818,47 @@ dependencies = [
  "num-integer",
  "num-traits",
  "realfft",
+]
+
+[[package]]
+name = "rustalink"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "audiopus",
+ "axum",
+ "base64",
+ "blowfish",
+ "byteorder",
+ "bytesize",
+ "cap",
+ "cbc",
+ "dashmap",
+ "davey",
+ "dotenv",
+ "flume",
+ "futures",
+ "hex",
+ "md5",
+ "perf_monitor",
+ "rand_agents",
+ "regex",
+ "reqwest",
+ "rubato",
+ "rustypipe",
+ "serde",
+ "serde_json",
+ "symphonia",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tokio-util",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "xsalsa20poly1305",
 ]
 
 [[package]]

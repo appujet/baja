@@ -40,7 +40,7 @@ ws://<host>:<port>/v4/websocket
 |-----------------|--------|----------|----------------------------------------------------------------|
 | `Authorization` | string | ✅       | The configured Lavalink password                               |
 | `User-Id`       | string | ✅       | The Discord bot's user (snowflake) ID                          |
-| `Client-Name`   | string | ✅       | Identifier in `NAME/VERSION` format (e.g. `baja/1.0.0`)       |
+| `Client-Name`   | string | ✅       | Identifier in `NAME/VERSION` format (e.g. `rustalink/1.0.0`)       |
 | `Session-Id`    | string | ❌       | Previous session ID — send this to **resume** a session        |
 
 ### REST Authentication

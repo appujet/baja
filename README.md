@@ -1,6 +1,6 @@
-# Baja 🦈
+# rustalink 🦈
 
-**Baja** is a high-performance, v4-compatible Lavalink server implementation written in **Rust**. Built with efficiency and modern features in mind, it aims to provide a robust alternative for Discord bot audio providers.
+**rustalink** is a high-performance, v4-compatible Lavalink server implementation written in **Rust**. Built with efficiency and modern features in mind, it aims to provide a robust alternative for Discord bot audio providers.
 
 ## 🚀 Progress Tracking
 
@@ -38,7 +38,7 @@ The following table outlines the current implementation status of various featur
 ---
 
 ## 🛠️ Performance
-Baja is designed to be extremely lightweight, leveraging Rust's zero-cost abstractions and asynchronous runtime (**Tokio**) to handle hundreds of concurrent streams with minimal CPU and memory footprint.
+rustalink is designed to be extremely lightweight, leveraging Rust's zero-cost abstractions and asynchronous runtime (**Tokio**) to handle hundreds of concurrent streams with minimal CPU and memory footprint.
 
 ## ⚙️ Requirements
 - **Rust** (Edition 2024)

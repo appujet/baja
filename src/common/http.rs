@@ -1,10 +1,10 @@
-use reqwest::{blocking, Client, Error};
+use reqwest::{Client, Error, blocking};
 use std::time::Duration;
 
 pub struct HttpClient;
 
 impl HttpClient {
-    pub const USER_AGENT: &'static str = "Mozilla/5.0 (compatible; Baja/0.1.0)";
+    pub const USER_AGENT: &'static str = "Mozilla/5.0 (compatible; rustalink/0.1.0)";
 
     pub fn new() -> Result<Client, Error> {
         Client::builder()
