@@ -15,7 +15,7 @@ http = true
 local = false
 jiosaavn = true
 
-
+[mirrors]
 providers = [
   #"ytsearch:\"%ISRC%\"",
   #"ytsearch:%QUERY%",

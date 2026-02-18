@@ -142,6 +142,90 @@ impl SpotifySource {
         Some(token)
     }
 
+    fn base62_to_hex(&self, id: &str) -> String {
+        let alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        let mut bn = 0u128;
+        for c in id.chars() {
+            if let Some(idx) = alphabet.find(c) {
+                // Handle potential overflow for 131-bit numbers by keeping top 128 bits accurately
+                // Most IDs will fit in 128 bits.
+                bn = bn.wrapping_mul(62).wrapping_add(idx as u128);
+            }
+        }
+        format!("{:032x}", bn)
+    }
+
+    async fn fetch_metadata_isrc(&self, id: &str) -> Option<String> {
+        let token = self.get_token().await?;
+        let hex_id = self.base62_to_hex(id);
+        let url = format!(
+            "https://spclient.wg.spotify.com/metadata/4/track/{}?market=from_token",
+            hex_id
+        );
+
+        debug!(
+            "Fetching Spotify metadata ISRC for {} (hex: {})",
+            id, hex_id
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(token)
+            .header("App-Platform", "WebPlayer")
+            .header("Spotify-App-Version", "1.2.81.104.g225ec0e6")
+            .send()
+            .await
+            .ok()?;
+
+        if !resp.status().is_success() {
+            debug!("Metadata API returned {} for {}", resp.status(), id);
+            return None;
+        }
+
+        let body_bytes = resp.bytes().await.ok()?;
+
+        // Search for ISRC in binary data
+        let isrc_marker = b"isrc";
+        if let Some(pos) = body_bytes.windows(4).position(|w| w == isrc_marker) {
+            let start = pos;
+            let end = std::cmp::min(pos + 64, body_bytes.len());
+            let chunk = &body_bytes[start..end];
+
+            // Convert chunk to a lossy string for regex (safe slicing)
+            let chunk_str = String::from_utf8_lossy(chunk);
+            let re = Regex::new(r"[A-Z0-9]{12}").unwrap();
+            if let Some(mat) = re.find(&chunk_str) {
+                let isrc = mat.as_str().to_string();
+                debug!("Found ISRC in metadata body via regex: {}", isrc);
+                return Some(isrc);
+            }
+        }
+
+        // Try to parse as JSON if the above fails (rare for this endpoint)
+        if let Ok(json_str) = std::str::from_utf8(&body_bytes) {
+            if let Ok(json) = serde_json::from_str::<Value>(json_str) {
+                if let Some(isrc) = json
+                    .get("external_id")
+                    .and_then(|ids| ids.as_array())
+                    .and_then(|items| {
+                        items
+                            .iter()
+                            .find(|i| i.get("type").and_then(|v| v.as_str()) == Some("isrc"))
+                    })
+                    .and_then(|i| i.get("id"))
+                    .and_then(|v| v.as_str())
+                {
+                    debug!("Found ISRC in metadata JSON: {}", isrc);
+                    return Some(isrc.to_string());
+                }
+            }
+        }
+
+        debug!("No ISRC found in metadata for {}", id);
+        None
+    }
+
     async fn partner_api_request(
         &self,
         operation: &str,
@@ -209,14 +293,7 @@ impl SpotifySource {
         {
             for item in items {
                 if let Some(track_data) = item.get("item").and_then(|v| v.get("data")) {
-                    if let Some(mut track_info) = self.parse_generic_track(track_data, None) {
-                        // Fetch ISRC for top results if missing to improve mirroring
-                        if tracks.is_empty() && track_info.isrc.is_none() {
-                            if let Some(full_info) = self.fetch_track(&track_info.identifier).await
-                            {
-                                track_info.isrc = full_info.isrc;
-                            }
-                        }
+                    if let Some(track_info) = self.parse_generic_track(track_data, None).await {
                         tracks.push(Track::new(track_info));
                     }
                 }
@@ -230,10 +307,39 @@ impl SpotifySource {
         }
     }
 
-    fn parse_generic_track(&self, track: &Value, artwork_url: Option<String>) -> Option<TrackInfo> {
-        let uri = track.get("uri")?.as_str()?;
+    async fn parse_generic_track(
+        &self,
+        track_val: &Value,
+        artwork_url: Option<String>,
+    ) -> Option<TrackInfo> {
+        // Some structures wrap the track info in a "track" property
+        let track = if track_val.get("uri").is_some() {
+            track_val
+        } else if let Some(inner) = track_val.get("track") {
+            inner
+        } else {
+            debug!(
+                "Track data missing uri and no nested track property: {:?}",
+                track_val
+            );
+            return None;
+        };
+
+        let uri = match track.get("uri").and_then(|v| v.as_str()) {
+            Some(u) => u,
+            None => {
+                debug!("Track missing uri: {:?}", track);
+                return None;
+            }
+        };
         let id = uri.split(':').last()?;
-        let title = track.get("name")?.as_str()?.to_string();
+        let title = match track.get("name").and_then(|v| v.as_str()) {
+            Some(t) => t.to_string(),
+            None => {
+                debug!("Track missing name: {:?}", track);
+                return None;
+            }
+        };
 
         let author = if let Some(artists) = track
             .get("artists")
@@ -242,47 +348,127 @@ impl SpotifySource {
         {
             artists
                 .iter()
-                .filter_map(|a| a.get("profile")?.get("name")?.as_str())
+                .filter_map(|a| {
+                    a.get("profile")
+                        .and_then(|p| p.get("name"))
+                        .or_else(|| a.get("name"))
+                        .and_then(|v| v.as_str())
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
+        } else if let Some(first_artist) = track
+            .get("firstArtist")
+            .and_then(|a| a.get("items"))
+            .and_then(|i| i.as_array())
+            .and_then(|i| i.first())
+        {
+            let first_name = first_artist
+                .get("profile")
+                .and_then(|p| p.get("name"))
+                .or_else(|| first_artist.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown");
+            let mut all_artists = vec![first_name];
+
+            if let Some(others) = track
+                .get("otherArtists")
+                .and_then(|a| a.get("items"))
+                .and_then(|i| i.as_array())
+            {
+                for artist in others {
+                    if let Some(name) = artist
+                        .get("profile")
+                        .and_then(|p| p.get("name"))
+                        .or_else(|| artist.get("name"))
+                        .and_then(|v| v.as_str())
+                    {
+                        all_artists.push(name);
+                    }
+                }
+            }
+            all_artists.join(", ")
         } else if let Some(artists) = track.get("artists").and_then(|a| a.as_array()) {
-            // Some responses have a direct array of artists
             artists
                 .iter()
-                .filter_map(|a| a.get("name")?.as_str())
+                .filter_map(|a| {
+                    a.get("name")
+                        .or_else(|| a.get("profile").and_then(|p| p.get("name")))
+                        .and_then(|v| v.as_str())
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         } else {
-            "Unknown".to_string()
+            track
+                .get("artist")
+                .and_then(|a| a.get("name"))
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    track
+                        .get("artists")
+                        .and_then(|a| a.as_array())
+                        .and_then(|a| a.first())
+                        .and_then(|a| a.get("name"))
+                        .and_then(|v| v.as_str())
+                })
+                .unwrap_or("Unknown Artist")
+                .to_string()
         };
 
-        let length = track.get("duration")?.get("totalMilliseconds")?.as_u64()?;
+        let length = track
+            .get("duration")
+            .or_else(|| track.get("trackDuration"))
+            .and_then(|d| d.get("totalMilliseconds"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
 
         let final_artwork = artwork_url.or_else(|| {
             track
-                .get("albumOfTrack")?
-                .get("coverArt")?
-                .get("sources")?
-                .as_array()?
-                .first()?
-                .get("url")?
-                .as_str()?
-                .to_string()
-                .into()
+                .get("albumOfTrack")
+                .and_then(|a| a.get("coverArt"))
+                .and_then(|c| c.get("sources"))
+                .and_then(|s| s.as_array())
+                .and_then(|s| s.first())
+                .and_then(|i| i.get("url"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .or_else(|| {
+                    track
+                        .get("album")
+                        .and_then(|a| a.get("images"))
+                        .and_then(|i| i.as_array())
+                        .and_then(|i| i.first())
+                        .and_then(|i| i.get("url"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
         });
 
-        let isrc = track
+        let mut isrc = track
             .get("externalIds")
-            .and_then(|ids| ids.get("items"))
-            .and_then(|items| items.as_array())
-            .and_then(|items| {
-                items
-                    .iter()
-                    .find(|i| i.get("type").and_then(|v| v.as_str()) == Some("isrc"))
-            })
-            .and_then(|i| i.get("id"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .or_else(|| track.get("external_ids"))
+            .and_then(|ids| {
+                // Try direct isrc property first (common in search results)
+                if let Some(isrc) = ids.get("isrc").and_then(|v| v.as_str()) {
+                    return Some(isrc.to_string());
+                }
+
+                // Fallback to items list (common in fetchTrack)
+                ids.get("items")
+                    .and_then(|items| items.as_array())
+                    .and_then(|items| {
+                        items
+                            .iter()
+                            .find(|i| i.get("type").and_then(|v| v.as_str()) == Some("isrc"))
+                    })
+                    .and_then(|i| i.get("id"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            });
+
+        // Use metadata API as fallback (common for non-official search results)
+        if isrc.is_none() {
+            isrc = self.fetch_metadata_isrc(id).await;
+        }
 
         Some(TrackInfo {
             title,
@@ -310,7 +496,7 @@ impl SpotifySource {
             .partner_api_request("getTrack", variables, hash)
             .await?;
         let track = data.pointer("/data/trackUnion")?;
-        self.parse_generic_track(track, None)
+        self.parse_generic_track(track, None).await
     }
 
     async fn fetch_album(&self, id: &str) -> LoadResult {
@@ -318,7 +504,7 @@ impl SpotifySource {
             "uri": format!("spotify:album:{}", id),
             "locale": "en",
             "offset": 0,
-            "limit": 50
+            "limit": 300
         });
 
         let hash = "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10";
@@ -350,8 +536,9 @@ impl SpotifySource {
         if let Some(items) = album.pointer("/tracksV2/items").and_then(|i| i.as_array()) {
             for item in items {
                 if let Some(track_data) = item.get("track") {
-                    if let Some(track_info) =
-                        self.parse_generic_track(track_data, artwork_url.clone())
+                    if let Some(track_info) = self
+                        .parse_generic_track(track_data, artwork_url.clone())
+                        .await
                     {
                         tracks.push(Track::new(track_info));
                     }
@@ -377,7 +564,8 @@ impl SpotifySource {
         let variables = json!({
             "uri": format!("spotify:playlist:{}", id),
             "offset": 0,
-            "limit": 100
+            "limit": 100,
+            "enableWatchFeedEntrypoint": false
         });
 
         let hash = "bb67e0af06e8d6f52b531f97468ee4acd44cd0f82b988e15c2ea47b1148efc77";
@@ -424,18 +612,37 @@ impl SpotifySource {
             .pointer("/content/items")
             .and_then(|i| i.as_array())
         {
-            for item in items {
-                if let Some(item_data) = item.get("item").and_then(|v| v.get("data")) {
+            debug!("Playlist has {} items", items.len());
+            for (i, item) in items.iter().enumerate() {
+                // Handle both itemV2 (newer) and item (older) structures
+                if let Some(item_data) = item
+                    .get("itemV2")
+                    .or_else(|| item.get("item"))
+                    .and_then(|v| v.get("data"))
+                {
                     // Check if it's a track
-                    if item_data.get("__typename").and_then(|v| v.as_str()) == Some("Track") {
-                        if let Some(track_info) =
-                            self.parse_generic_track(item_data, artwork_url.clone())
+                    let typename = item_data.get("__typename").and_then(|v| v.as_str());
+                    if typename == Some("Track") || typename.is_none() {
+                        if let Some(track_info) = self
+                            .parse_generic_track(item_data, artwork_url.clone())
+                            .await
                         {
                             tracks.push(Track::new(track_info));
+                        } else {
+                            debug!("Failed to parse track at index {}", i);
                         }
+                    } else {
+                        debug!(
+                            "Item at index {} is not a Track (typename: {:?})",
+                            i, typename
+                        );
                     }
+                } else {
+                    debug!("Item at index {} has no data/itemV2", i);
                 }
             }
+        } else {
+            warn!("Playlist has no content/items");
         }
 
         if tracks.is_empty() {
@@ -456,7 +663,7 @@ impl SpotifySource {
         let variables = json!({
             "uri": format!("spotify:artist:{}", id),
             "locale": "en",
-            "includeUpcoming": false
+            "includePrerelease": true
         });
 
         let hash = "35648a112beb1794e39ab931365f6ae4a8d45e65396d641eeda94e4003d41497";
@@ -489,7 +696,7 @@ impl SpotifySource {
         {
             for item in top_tracks {
                 if let Some(track_data) = item.get("track") {
-                    if let Some(track_info) = self.parse_generic_track(track_data, None) {
+                    if let Some(track_info) = self.parse_generic_track(track_data, None).await {
                         tracks.push(Track::new(track_info));
                     }
                 }

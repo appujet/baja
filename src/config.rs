@@ -11,9 +11,15 @@ pub struct Config {
     #[serde(default)]
     pub jiosaavn: Option<JioSaavnConfig>,
     #[serde(default)]
-    pub providers: Vec<String>,
+    pub mirrors: Option<MirrorsConfig>,
     #[serde(default)]
     pub spotify: Option<SpotifyConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct MirrorsConfig {
+    #[serde(default)]
+    pub providers: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

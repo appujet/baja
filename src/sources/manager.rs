@@ -8,7 +8,7 @@ use std::sync::Arc;
 /// Source Manager - coordinates all registered source plugins
 pub struct SourceManager {
     sources: Vec<Box<dyn SourcePlugin>>,
-    providers: Vec<String>,
+    mirrors: Option<crate::config::MirrorsConfig>,
 }
 
 impl SourceManager {
@@ -34,7 +34,7 @@ impl SourceManager {
 
         Self {
             sources,
-            providers: config.providers.clone(),
+            mirrors: config.mirrors.clone(),
         }
     }
 
@@ -88,52 +88,58 @@ impl SourceManager {
         }
 
         // 2. If direct resolution failed (or no source handled it), try mirrors
-        let isrc = track_info.isrc.as_deref().unwrap_or("");
-        let query = format!("{} - {}", track_info.title, track_info.author);
+        if let Some(mirrors) = &self.mirrors {
+            let isrc = track_info.isrc.as_deref().unwrap_or("");
+            let query = format!("{} - {}", track_info.title, track_info.author);
 
-        if isrc.is_empty() {
-            tracing::debug!("Track has no ISRC");
-        }
-
-        for provider in &self.providers {
-            let search_query = provider.replace("%ISRC%", isrc).replace("%QUERY%", &query);
-
-            // Skip if ISRC is empty but provider requires it
-            if isrc.is_empty() && provider.contains("%ISRC%") {
-                continue;
+            if isrc.is_empty() {
+                tracing::debug!("Track has no ISRC");
             }
 
-            tracing::debug!("Attempting mirror provider: {}", search_query);
+            for provider in &mirrors.providers {
+                let search_query = provider.replace("%ISRC%", isrc).replace("%QUERY%", &query);
 
-            // Use the manager's own load() to resolve the mirror query (e.g. "ytsearch:Title - Artist")
-            match self.load(&search_query, routeplanner.clone()).await {
-                crate::api::tracks::LoadResult::Track(track) => {
-                    let nested_id = track.info.uri.as_deref().unwrap_or(&track.info.identifier);
-                    if let Some(url) = self
-                        .resolve_nested_id(nested_id, routeplanner.clone())
-                        .await
-                    {
-                        tracing::debug!("Mirror success: {} -> {}", search_query, url);
-                        return Some(url);
-                    }
+                // Skip if ISRC is empty but provider requires it
+                if isrc.is_empty() && provider.contains("%ISRC%") {
+                    continue;
                 }
-                crate::api::tracks::LoadResult::Search(tracks) => {
-                    if let Some(first_track) = tracks.first() {
-                        let nested_id = first_track
-                            .info
-                            .uri
-                            .as_deref()
-                            .unwrap_or(&first_track.info.identifier);
+
+                tracing::debug!("Attempting mirror provider: {}", search_query);
+
+                // Use the manager's own load() to resolve the mirror query (e.g. "ytsearch:Title - Artist")
+                match self.load(&search_query, routeplanner.clone()).await {
+                    crate::api::tracks::LoadResult::Track(track) => {
+                        let nested_id = track.info.uri.as_deref().unwrap_or(&track.info.identifier);
                         if let Some(url) = self
                             .resolve_nested_id(nested_id, routeplanner.clone())
                             .await
                         {
-                            tracing::debug!("Mirror success (search): {} -> {}", search_query, url);
+                            tracing::debug!("Mirror success: {} -> {}", search_query, url);
                             return Some(url);
                         }
                     }
+                    crate::api::tracks::LoadResult::Search(tracks) => {
+                        if let Some(first_track) = tracks.first() {
+                            let nested_id = first_track
+                                .info
+                                .uri
+                                .as_deref()
+                                .unwrap_or(&first_track.info.identifier);
+                            if let Some(url) = self
+                                .resolve_nested_id(nested_id, routeplanner.clone())
+                                .await
+                            {
+                                tracing::debug!(
+                                    "Mirror success (search): {} -> {}",
+                                    search_query,
+                                    url
+                                );
+                                return Some(url);
+                            }
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
 
