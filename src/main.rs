@@ -12,6 +12,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     rustalink::common::logger::init(&config);
 
+    println!(r#"
+    [32m____            __        ___       __  [0m
+   [32m/ __ \__  _______/ /_____ _/ (_)___  / /__[0m
+  [32m/ /_/ / / / / ___/ __/ __ `/ / / __ \/ //_/[0m   v{}
+ [32m/ _, _/ /_/ (__  ) /_/ /_/ / / / / / / ,<   [0m   Running on Rust
+[32m/_/ |_|\__,_/____/\__/\__,_/_/_/_/ /_/_/|_|  [0m   
+                                             
+    "#, env!("CARGO_PKG_VERSION"));
+
     info!("Lavalink Server starting...");
 
     let routeplanner = if config.route_planner.enabled && !config.route_planner.cidrs.is_empty() {

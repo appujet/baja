@@ -511,10 +511,23 @@ impl VoiceGateway {
                                 Ok(None) => {}
                                 Err(e) => {
                                     let err_str = e.to_string();
-                                    if err_str.contains("Message group ID differs") {
-                                        warn!("DAVE process proposals warning: {} (Likely waiting for Welcome)", err_str);
-                                    } else {
-                                        error!("DAVE process proposals error: {}", err_str);
+                                    warn!("DAVE process proposals error: {}. Recovering...", err_str);
+
+                                    // Recovery: Reset session -> Op 31 (Invalid) -> Op 26 (Key Package)
+                                    dave_lock.reset();
+   
+                                    // Send Op 31 INVALID_COMMIT_WELCOME
+                                    let invalid = VoiceGatewayMessage {
+                                        op: 31,
+                                        d: serde_json::json!({ "transition_id": 0 }), 
+                                    };
+                                    let _ = tx.send(Message::Text(serde_json::to_string(&invalid).unwrap().into()));
+
+                                    // Re-advertise Key Package (Op 26)
+                                    if let Ok(kp) = dave_lock.setup_session(1) {
+                                        let mut bin = vec![26]; // Op 26
+                                        bin.extend_from_slice(&kp);
+                                        let _ = tx.send(Message::Binary(bin.into()));
                                     }
                                 }
                             }
@@ -534,7 +547,25 @@ impl VoiceGateway {
                                     }
                                 }
                                 Err(e) => {
-                                    error!("DAVE process welcome error: {}", e)
+                                    warn!("DAVE process welcome error: {}. Recovering...", e);
+                                    
+                                    let tid = if payload.len() >= 2 {
+                                        u16::from_be_bytes([payload[0], payload[1]])
+                                    } else { 0 };
+
+                                    dave_lock.reset();
+
+                                    let invalid = VoiceGatewayMessage {
+                                        op: 31,
+                                        d: serde_json::json!({ "transition_id": tid }), 
+                                    };
+                                    let _ = tx.send(Message::Text(serde_json::to_string(&invalid).unwrap().into()));
+
+                                    if let Ok(kp) = dave_lock.setup_session(1) {
+                                        let mut bin = vec![26];
+                                        bin.extend_from_slice(&kp);
+                                        let _ = tx.send(Message::Binary(bin.into()));
+                                    }
                                 }
                             }
                         }
@@ -553,7 +584,25 @@ impl VoiceGateway {
                                     }
                                 }
                                 Err(e) => {
-                                    error!("DAVE process commit error: {}", e)
+                                    warn!("DAVE process commit error: {}. Recovering...", e);
+                                    
+                                    let tid = if payload.len() >= 2 {
+                                        u16::from_be_bytes([payload[0], payload[1]])
+                                    } else { 0 };
+
+                                    dave_lock.reset();
+
+                                    let invalid = VoiceGatewayMessage {
+                                        op: 31,
+                                        d: serde_json::json!({ "transition_id": tid }), 
+                                    };
+                                    let _ = tx.send(Message::Text(serde_json::to_string(&invalid).unwrap().into()));
+
+                                    if let Ok(kp) = dave_lock.setup_session(1) {
+                                        let mut bin = vec![26];
+                                        bin.extend_from_slice(&kp);
+                                        let _ = tx.send(Message::Binary(bin.into()));
+                                    }
                                 }
                             }
                         }

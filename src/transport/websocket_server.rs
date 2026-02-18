@@ -164,27 +164,38 @@ pub async fn handle_socket(
         }
     }
 
-    // Interval for stats heartbeat
+    // Interval for stats heartbeat (60s standard)
     let mut stats_interval = tokio::time::interval(std::time::Duration::from_secs(60));
     stats_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    // Interval for WebSocket Ping (30s to prevent idle disconnects)
+    let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+    ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let start_time = std::time::Instant::now();
 
     // Main event loop
     loop {
         tokio::select! {
+            _ = ping_interval.tick() => {
+                // Send Ping frame to keep connection alive
+                if let Err(e) = socket.send(Message::Ping(vec![].into())).await {
+                    error!("Socket send error (ping): session={} err={}", session_id, e);
+                    break;
+                }
+            }
             _ = stats_interval.tick() => {
-                 // Send stats only if not paused and this socket is active
-                 if !session.paused.load(Relaxed) {
-                     let stats = collect_stats(&state, start_time.elapsed().as_millis() as u64);
-                     let msg = api::OutgoingMessage::Stats(stats);
-                     if let Ok(json) = serde_json::to_string(&msg) {
-                        if let Err(e) = socket.send(Message::Text(json.into())).await {
-                             error!("Socket send error (stats): session={} err={}", session_id, e);
-                             break;
-                        }
+                     // Send stats only if not paused and this socket is active
+                     if !session.paused.load(Relaxed) {
+                         let stats = collect_stats(&state, start_time.elapsed().as_millis() as u64);
+                         let msg = api::OutgoingMessage::Stats(stats);
+                         if let Ok(json) = serde_json::to_string(&msg) {
+                            if let Err(e) = socket.send(Message::Text(json.into())).await {
+                                 error!("Socket send error (stats): session={} err={}", session_id, e);
+                                 break;
+                            }
+                         }
                      }
-                 }
             }
             Ok(msg) = rx.recv_async() => {
                 if let Err(e) = socket.send(msg).await {
@@ -205,6 +216,12 @@ pub async fn handle_socket(
                 match msg {
                     Message::Text(_) => {
                         warn!("Lavalink v4 does not support websocket messages. Please use the REST api.");
+                    }
+                    Message::Ping(payload) => {
+                        if let Err(e) = socket.send(Message::Pong(payload)).await {
+                             error!("Socket send error (pong): session={} err={}", session_id, e);
+                             break;
+                        }
                     }
                     Message::Close(_) => break,
                     _ => {}
