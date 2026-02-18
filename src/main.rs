@@ -8,13 +8,11 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("debug"));
-
-    tracing_subscriber::fmt().with_env_filter(env_filter).init();
-
     let config = rustalink::config::Config::load()?;
-    info!("Loaded config: {:?}", config);
+
+    rustalink::common::logger::init(&config);
+
+    info!("Lavalink Server starting...");
 
     let routeplanner = if config.route_planner.enabled && !config.route_planner.cidrs.is_empty() {
         Some(
@@ -39,8 +37,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/v4/websocket",
             get(transport::websocket_server::websocket_handler),
         )
-        .merge(transport::http_server::router())
-        .with_state(shared_state)
+        .with_state(shared_state.clone())
+        .merge(transport::http_server::router(shared_state.clone()))
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
     let ip: std::net::IpAddr = config.server.host.parse()?;

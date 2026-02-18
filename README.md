@@ -10,9 +10,9 @@ The following table outlines the current implementation status of various featur
 | Feature | Status | Description |
 | :--- | :---: | :--- |
 | **Lavalink v4 REST API** | 🚧 | Full compatibility with v4 endpoints |
-| **WebSocket Interface** | 🚧 | Event dispatching and real-time stats |
-| **Session Management** | 🚧 | Session creation, discovery, and cleanup |
-| **Resumable Sessions** | 🚧 | Connection persistence across restarts/disconnects |
+| **WebSocket Interface** | ✅ | Event dispatching and real-time stats |
+| **Session Management** | ✅ | Session creation, discovery, and cleanup |
+| **Resumable Sessions** | ✅ | Connection persistence across restarts/disconnects |
 | **Discord Gateway** | ✅ | Robust voice state and server update handling |
 | **Discord UDP** | ✅ | Direct audio data transmission to Discord |
 | **Discord DAVE** | ✅ | Support for E2EE (End-to-End Encryption) |

@@ -13,3 +13,8 @@ youtube = true
 spotify = true
 http = true
 local = false
+
+[logging]
+level = "info"
+# Optional: detailed module overrides. Example: "rustalink=debug,tokio=warn"
+# filters = "rustalink=debug"
