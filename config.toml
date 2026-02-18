@@ -1,0 +1,15 @@
+[server]
+host = "0.0.0.0"
+port = 2333
+password = "youshallnotpass"
+
+[route_planner]
+enabled = false
+cidrs = []
+excluded_ips = []
+
+[sources]
+youtube = true
+spotify = true
+http = true
+local = false

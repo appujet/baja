@@ -42,4 +42,6 @@ axum = { version = "0.8.1", features = ["ws"] }
 tower-http = { version = "0.6.2", features = ["trace", "cors"] }
 xsalsa20poly1305 = "0.9.1"
 ipnet = "2.11.0"
+rand = "0.8.5"
+toml = "1.0.2"
 

@@ -11,6 +11,7 @@ pub struct AppState {
     pub resumable_sessions: DashMap<String, Arc<Session>>,
     pub routeplanner: Option<Arc<dyn RoutePlanner>>,
     pub source_manager: Arc<SourceManager>,
+    pub config: crate::config::Config,
 }
 
 pub fn now_ms() -> u64 {

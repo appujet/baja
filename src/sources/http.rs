@@ -112,12 +112,28 @@ impl SourcePlugin for HttpSource {
     async fn load(
         &self,
         identifier: &str,
-        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+        routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
         debug!("Probing HTTP source: {}", identifier);
 
+        let client = if let Some(rp) = routeplanner {
+            if let Some(ip) = rp.get_address() {
+                debug!("Using rotated IP: {}", ip);
+                reqwest::Client::builder()
+                    .user_agent(crate::common::http::HttpClient::USER_AGENT)
+                    .timeout(std::time::Duration::from_secs(10))
+                    .local_address(ip)
+                    .build()
+                    .unwrap_or(self.client.clone())
+            } else {
+                self.client.clone()
+            }
+        } else {
+            self.client.clone()
+        };
+
         // 1. Try HEAD request
-        let mut resp = match self.client.head(identifier).send().await {
+        let mut resp = match client.head(identifier).send().await {
             Ok(r) => Some(r),
             Err(_) => None, // Fallback to GET
         };
@@ -128,8 +144,7 @@ impl SourcePlugin for HttpSource {
             .map(|r| !r.status().is_success())
             .unwrap_or(true)
         {
-            match self
-                .client
+            match client
                 .get(identifier)
                 .header("Range", "bytes=0-0")
                 .send()

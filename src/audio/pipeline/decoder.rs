@@ -3,7 +3,7 @@ use crate::audio::reader::RemoteReader;
 use flume::{Receiver, Sender};
 use std::thread;
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
+use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
@@ -11,11 +11,11 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use tracing::{debug, error};
 
-pub fn start_decoding(url: String) -> Receiver<i16> {
+pub fn start_decoding(url: String, local_addr: Option<std::net::IpAddr>) -> Receiver<i16> {
     let (tx, rx) = flume::bounded::<i16>(512 * 1024);
 
     thread::spawn(move || {
-        if let Err(e) = decode_loop(url, tx) {
+        if let Err(e) = decode_loop(url, local_addr, tx) {
             error!("Decoding error: {}", e);
         }
     });
@@ -23,9 +23,13 @@ pub fn start_decoding(url: String) -> Receiver<i16> {
     rx
 }
 
-fn decode_loop(url: String, tx: Sender<i16>) -> Result<(), Box<dyn std::error::Error>> {
-    debug!("Connecting to {}...", url);
-    let source = RemoteReader::new(&url)?;
+fn decode_loop(
+    url: String,
+    local_addr: Option<std::net::IpAddr>,
+    tx: Sender<i16>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    debug!("Connecting to {}... (via {:?})", url, local_addr);
+    let source = RemoteReader::new(&url, local_addr)?;
     debug!("Connected. Probing stream...");
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
 

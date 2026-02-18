@@ -8,18 +8,27 @@ pub struct RemoteReader {
     pos: u64,
     len: Option<u64>,
 }
-
 impl RemoteReader {
-    pub fn new(url: &str) -> Result<Self, reqwest::Error> {
-        let client = crate::common::http::HttpClient::new_blocking()?;
+    pub fn new(url: &str, local_addr: Option<std::net::IpAddr>) -> Result<Self, reqwest::Error> {
+        let mut builder = reqwest::blocking::Client::builder()
+            .user_agent(crate::common::http::HttpClient::USER_AGENT)
+            .timeout(std::time::Duration::from_secs(10));
+            
+        if let Some(ip) = local_addr {
+            builder = builder.local_address(ip);
+        }
+
+        let client = builder.build()?;
         let response = client.get(url).send()?;
         let len = response.content_length();
+        let pos = 0;
+
         Ok(Self {
             url: url.to_string(),
             client,
             response,
-            pos: 0,
-            len,
+            pos,
+            len: len.map(|l| l as u64),
         })
     }
 }

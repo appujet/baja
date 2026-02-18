@@ -1,6 +1,7 @@
 pub mod api;
 pub mod audio;
 pub mod common;
+pub mod config;
 pub mod gateway;
 pub mod monitoring;
 pub mod playback;

@@ -13,11 +13,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
+    let config = rustalink::config::Config::load()?;
+    info!("Loaded config: {:?}", config);
+
+    let routeplanner = if config.route_planner.enabled && !config.route_planner.cidrs.is_empty() {
+        Some(
+            Arc::new(rustalink::routeplanner::BalancingIpRoutePlanner::new(
+                config.route_planner.cidrs.clone(),
+            )) as Arc<dyn rustalink::routeplanner::RoutePlanner>,
+        )
+    } else {
+        None
+    };
+
     let shared_state = Arc::new(AppState {
         sessions: DashMap::new(),
         resumable_sessions: DashMap::new(),
-        routeplanner: None,
+        routeplanner,
         source_manager: Arc::new(rustalink::sources::SourceManager::new()),
+        config: config.clone(),
     });
 
     let app = Router::new()
@@ -29,7 +43,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(shared_state)
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
-    let address = SocketAddr::from(([0, 0, 0, 0], 2333));
+    let ip: std::net::IpAddr = config.server.host.parse()?;
+    let address = SocketAddr::from((ip, config.server.port));
     info!("Lavalink Server listening on {}", address);
 
     let listener = tokio::net::TcpListener::bind(address).await?;

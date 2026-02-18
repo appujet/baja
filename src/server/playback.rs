@@ -68,9 +68,18 @@ pub async fn start_playback(
         }
     };
 
-    info!("Playback: {} -> {}", identifier, playback_url);
+    let local_addr = if let Some(rp) = &routeplanner {
+        rp.get_address()
+    } else {
+        None
+    };
 
-    let rx = crate::audio::pipeline::decoder::start_decoding(playback_url);
+    info!(
+        "Playback: {} -> {} (via {:?})",
+        identifier, playback_url, local_addr
+    );
+
+    let rx = crate::audio::pipeline::decoder::start_decoding(playback_url, local_addr);
     let (handle, audio_state, vol, pos) = TrackHandle::new();
 
     {
