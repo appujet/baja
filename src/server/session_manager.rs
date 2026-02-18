@@ -1,12 +1,12 @@
-use crate::playback::PlayerContext;
 use crate::api;
+use crate::playback::PlayerContext;
+use axum::extract::ws::Message;
 use dashmap::DashMap;
 use tokio::sync::Mutex;
-use axum::extract::ws::Message;
 
 pub type UserId = u64;
 
-/// A single client session.
+/// client session.
 pub struct Session {
     pub session_id: String,
     pub user_id: Option<UserId>,
@@ -39,5 +39,29 @@ impl Session {
         if let Ok(json) = serde_json::to_string(msg) {
             self.send_json(&json).await;
         }
+    }
+
+    pub fn shutdown(&self) {
+        tracing::info!("Shutting down session: {}", self.session_id);
+        for item in self.players.iter() {
+            let player = item.value();
+            if let Some(task) = &player.gateway_task {
+                task.abort();
+            }
+        }
+        self.players.clear();
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        tracing::info!("Dropping session: {}", self.session_id);
+        for item in self.players.iter() {
+            let player = item.value();
+            if let Some(task) = &player.gateway_task {
+                task.abort();
+            }
+        }
+        self.players.clear();
     }
 }

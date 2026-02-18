@@ -15,6 +15,7 @@ use std::num::NonZeroU64;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
+use std::sync::atomic::Ordering::Relaxed;
 
 pub async fn websocket_handler(
     headers: HeaderMap,
@@ -174,7 +175,7 @@ pub async fn handle_socket(
         tokio::select! {
             _ = stats_interval.tick() => {
                  // Send stats only if not paused and this socket is active
-                 if !session.paused.load(std::sync::atomic::Ordering::Relaxed) {
+                 if !session.paused.load(Relaxed) {
                      let stats = collect_stats(&state, start_time.elapsed().as_millis() as u64);
                      let msg = api::OutgoingMessage::Stats(stats);
                      if let Ok(json) = serde_json::to_string(&msg) {
@@ -213,10 +214,10 @@ pub async fn handle_socket(
     }
 
     // Cleanup or pause for resume
-    if session.resumable.load(std::sync::atomic::Ordering::Relaxed) {
+    if session.resumable.load(Relaxed) {
         session
             .paused
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+            .store(true, Relaxed);
 
         // Race condition check: Ensure we haven't been replaced by a new connection
         {
@@ -231,23 +232,44 @@ pub async fn handle_socket(
         }
 
         state.sessions.remove(&session_id);
+
+        // "Shutdown resumable session with id ... because it has the same id as a newly disconnected resumable session."
+        if let Some((_, removed)) = state.resumable_sessions.remove(&session_id) {
+            warn!(
+                "Shutdown resumable session with id {} because it has the same id as a newly disconnected resumable session.",
+                removed.session_id
+            );
+            removed.shutdown();
+        }
+
         state
             .resumable_sessions
             .insert(session_id.clone(), session.clone());
 
         let timeout_secs = session
             .resume_timeout
-            .load(std::sync::atomic::Ordering::Relaxed);
+            .load(Relaxed);
+
+        info!(
+            "Connection closed (resumable). Session {} can be resumed within {} seconds.",
+            session_id, timeout_secs
+        );
+
         let state_cleanup = state.clone();
         let sid = session_id.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)).await;
-            if state_cleanup.resumable_sessions.remove(&sid).is_some() {
+            // If the session is still in resumable_sessions, it means it wasn't resumed.
+            if let Some((_, session)) = state_cleanup.resumable_sessions.remove(&sid) {
                 info!("Session resume timeout expired: {}", sid);
+                session.shutdown();
             }
         });
     } else {
-        state.sessions.remove(&session_id);
+        if let Some((_, session)) = state.sessions.remove(&session_id) {
+            info!("Connection closed (not resumable): {}", session_id);
+            session.shutdown();
+        }
     }
 }
 

@@ -93,7 +93,12 @@ pub async fn update_player(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PlayerUpdate>,
 ) -> impl IntoResponse {
-    tracing::info!("PATCH /v4/sessions/{}/players/{}\n{:?}", session_id, guild_id, body);
+    tracing::info!(
+        "PATCH /v4/sessions/{}/players/{}\n{:?}",
+        session_id,
+        guild_id,
+        body
+    );
 
     let session = match state.sessions.get(&session_id) {
         Some(s) => s.clone(),
@@ -126,11 +131,11 @@ pub async fn update_player(
 
     let mut player = session.players.get_mut(&guild_id).unwrap();
 
-    // Apply volume (Top-Level)
+    // Apply volume
     if let Some(vol) = body.volume {
         let vol = vol.clamp(0, 1000);
         player.volume = vol;
-        
+
         // Propagate to active track handle for immediate effect
         if let Some(handle) = &player.track_handle {
             let h = handle.clone();
@@ -156,12 +161,11 @@ pub async fn update_player(
         player.end_time = end_time;
     }
 
-    // Apply filters — Standard Lavalink Behavior (Full Replacement)
-    // "PATCH with filters → replaces the entire filter state, omitted filters are disabled"
-    // "Your bot library must track and resend all active filters every time any single one changes"
+    // Apply filters
     if let Some(filters) = body.filters {
         // Strict Validation: Check if requested filters are enabled in config
-        let invalid_filters = crate::audio::filters::validate_filters(&filters, &state.config.filters);
+        let invalid_filters =
+            crate::audio::filters::validate_filters(&filters, &state.config.filters);
         if !invalid_filters.is_empty() {
             let message = format!(
                 "Following filters are disabled in the config: {}",
@@ -169,16 +173,19 @@ pub async fn update_player(
             );
             return (
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::to_value(crate::common::LavalinkError::bad_request(
-                    message,
-                    format!("/v4/sessions/{}/players/{}", session_id, guild_id),
-                )).unwrap()),
+                Json(
+                    serde_json::to_value(crate::common::LavalinkError::bad_request(
+                        message,
+                        format!("/v4/sessions/{}/players/{}", session_id, guild_id),
+                    ))
+                    .unwrap(),
+                ),
             )
-            .into_response();
+                .into_response();
         }
 
         player.filters = filters;
-        
+
         // Rebuild the DSP filter chain
         let new_chain = crate::audio::filters::FilterChain::from_config(&player.filters);
         let fc = player.filter_chain.clone();
@@ -203,9 +210,14 @@ pub async fn update_player(
             let voice_state = player.voice.clone();
             let filter_chain = player.filter_chain.clone();
             drop(player);
-            let _ = crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain).await;
+            let handle =
+                crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain).await;
             // Re-acquire player for track handling below
             player = session.players.get_mut(&guild_id).unwrap();
+
+            if let Some(old_task) = player.gateway_task.replace(handle) {
+                old_task.abort();
+            }
         }
     }
 

@@ -6,10 +6,6 @@ use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE, HeaderMap};
 use std::sync::Arc;
 use tracing::debug;
 
-/// HTTP/HTTPS Source Plugin
-///
-/// Handles direct audio stream URLs.
-/// Supports both http:// and https:// protocols.
 pub struct HttpSource {
     url_regex: Regex,
     client: reqwest::Client,
@@ -18,7 +14,6 @@ pub struct HttpSource {
 impl HttpSource {
     pub fn new() -> Self {
         Self {
-            // Matches http:// or https:// URLs
             url_regex: Regex::new(r"^https?://").unwrap(),
             client: crate::common::http::HttpClient::new().unwrap(),
         }
@@ -132,13 +127,11 @@ impl SourcePlugin for HttpSource {
             self.client.clone()
         };
 
-        // 1. Try HEAD request
         let mut resp = match client.head(identifier).send().await {
             Ok(r) => Some(r),
             Err(_) => None, // Fallback to GET
         };
-
-        // 2. If HEAD fails or returns bad status, try GET (stream only)
+        
         if resp
             .as_ref()
             .map(|r| !r.status().is_success())

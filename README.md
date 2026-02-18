@@ -24,7 +24,7 @@ The following table outlines the current implementation status of various featur
 | **PCM Resampling** | ✅ | High-quality resampling to 48kHz |
 | **Audio Mixing** | ✅ | Multi-track mixing support |
 | **Opus Encoding** | ✅ | Low-latency encoding for Discord |
-| **Audio Filters** | 🚧 | Implementation of EQ, Karaoke, Timescale, etc. |
+| **Audio Filters** | ✅ | Implementation of EQ, Karaoke, Timescale, etc. |
 
 ### Audio Sources
 | Source | Status | Description |
