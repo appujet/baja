@@ -139,8 +139,8 @@ pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<api::Stats> {
     Json(crate::monitoring::collect_stats(&state, uptime))
 }
 
-/// GET /v4/version
+/// GET /version
 pub async fn get_version() -> String {
-    tracing::info!("GET /v4/version");
+    tracing::info!("GET /version");
     env!("CARGO_PKG_VERSION").to_string()
 }

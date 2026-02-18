@@ -41,4 +41,5 @@ rubato = "0.16.1"
 axum = { version = "0.8.1", features = ["ws"] }
 tower-http = { version = "0.6.2", features = ["trace", "cors"] }
 xsalsa20poly1305 = "0.9.1"
+ipnet = "2.11.0"
 
