@@ -110,7 +110,11 @@ impl SourcePlugin for HttpSource {
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
         debug!("Probing HTTP source: {}", identifier);
-
+        
+        // Note: We deliberately do NOT cache clients here when a RoutePlanner is used.
+        // RoutePlanners with large IPv6 blocks generate billions of unique IPs.
+        // Caching clients keyed by IP would lead to an unbounded memory leak.
+        // For /64 blocks, creating a new client per request is the safe, albeit slightly slower, approach.
         let client = if let Some(rp) = routeplanner {
             if let Some(ip) = rp.get_address() {
                 debug!("Using rotated IP: {}", ip);
