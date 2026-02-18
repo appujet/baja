@@ -11,7 +11,7 @@ pub struct RemoteReader {
 
 impl RemoteReader {
     pub fn new(url: &str) -> Result<Self, reqwest::Error> {
-        let client = crate::utils::http::HttpClient::new_blocking()?;
+        let client = crate::common::http::HttpClient::new_blocking()?;
         let response = client.get(url).send()?;
         let len = response.content_length();
         Ok(Self {

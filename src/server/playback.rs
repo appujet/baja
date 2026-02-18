@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use tracing::{info, error};
 use crate::server::Session;
-use crate::player::PlayerContext;
+use crate::playback::{PlayerContext, PlayerState};
 use crate::audio::playback::{PlaybackState, TrackHandle};
-use crate::types;
+use crate::api;
 use base64::prelude::*;
 
 pub async fn start_playback(
@@ -21,10 +21,10 @@ pub async fn start_playback(
 
         if is_playing {
             if let Some(track_data) = player.to_player_response().track {
-                let end_event = types::OutgoingMessage::Event(types::LavalinkEvent::TrackEnd {
+                let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
                     guild_id: player.guild_id.clone(),
                     track: track_data.clone(),
-                    reason: types::TrackEndReason::Replaced,
+                    reason: api::TrackEndReason::Replaced,
                 });
                 session.send_message(&end_event).await;
             }
@@ -59,7 +59,7 @@ pub async fn start_playback(
 
     info!("Playback: {} -> {}", identifier, playback_url);
 
-    let rx = crate::player::decoder::start_decoding(playback_url);
+    let rx = crate::audio::pipeline::decoder::start_decoding(playback_url);
     let (handle, audio_state, vol, pos) = TrackHandle::new();
 
     {
@@ -72,7 +72,7 @@ pub async fn start_playback(
     player.track_handle = Some(handle);
 
     let track_data = player.to_player_response().track.unwrap();
-    let start_event = types::OutgoingMessage::Event(types::LavalinkEvent::TrackStart {
+    let start_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackStart {
         guild_id: player.guild_id.clone(),
         track: track_data.clone(),
     });
@@ -95,10 +95,10 @@ pub async fn start_playback(
             let current_state = handle_clone.get_state().await;
             if current_state == PlaybackState::Stopped {
                 if !stop_signal.load(std::sync::atomic::Ordering::SeqCst) {
-                    let end_event = types::OutgoingMessage::Event(types::LavalinkEvent::TrackEnd {
+                    let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
                         guild_id: guild_id.clone(),
                         track: track_data_clone.clone(),
-                        reason: types::TrackEndReason::Finished,
+                        reason: api::TrackEndReason::Finished,
                     });
                     session_clone.send_message(&end_event).await;
                 }
@@ -107,9 +107,9 @@ pub async fn start_playback(
 
             if last_update.elapsed() >= std::time::Duration::from_secs(5) {
                 last_update = std::time::Instant::now();
-                let update = types::OutgoingMessage::PlayerUpdate {
+                let update = api::OutgoingMessage::PlayerUpdate {
                     guild_id: guild_id.clone(),
-                    state: types::PlayerState {
+                    state: PlayerState {
                         time: crate::server::now_ms(),
                         position: handle_clone.get_position(),
                         connected: true,

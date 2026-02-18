@@ -1,4 +1,3 @@
-use crate::rest::models::*;
 use async_trait::async_trait;
 
 /// Trait that all source plugins must implement.
@@ -20,8 +19,8 @@ pub trait SourcePlugin: Send + Sync {
 
     /// Resolve the identifier into track(s).
     ///
-    /// Returns a LoadTracksResponse with the appropriate load_type and data.
-    async fn load(&self, identifier: &str) -> LoadTracksResponse;
+    /// Returns a LoadResult with the appropriate load_type and data.
+    async fn load(&self, identifier: &str) -> crate::api::tracks::LoadResult;
 
     /// Get the actual playback URL for a given identifier.
     ///

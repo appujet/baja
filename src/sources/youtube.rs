@@ -1,4 +1,3 @@
-use crate::rest::models::*;
 use crate::sources::SourcePlugin;
 use async_trait::async_trait;
 use regex::Regex;
@@ -35,13 +34,10 @@ impl SourcePlugin for YouTubeSource {
         identifier.starts_with(&self.search_prefix) || self.url_regex.is_match(identifier)
     }
 
-    async fn load(&self, _identifier: &str) -> LoadTracksResponse {
+    async fn load(&self, _identifier: &str) -> crate::api::tracks::LoadResult {
         // TODO: Implement actual YouTube search/resolution
         // For now, return empty
-        LoadTracksResponse {
-            load_type: LoadType::Empty,
-            data: LoadData::Empty(serde_json::Value::Null),
-        }
+        crate::api::tracks::LoadResult::Empty {}
     }
 
     async fn get_playback_url(&self, identifier: &str) -> Option<String> {

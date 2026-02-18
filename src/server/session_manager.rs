@@ -1,5 +1,5 @@
-use crate::player::PlayerContext;
-use crate::types;
+use crate::playback::PlayerContext;
+use crate::api;
 use dashmap::DashMap;
 use tokio::sync::Mutex;
 use axum::extract::ws::Message;
@@ -35,7 +35,7 @@ impl Session {
     }
 
     /// Send a typed outgoing message.
-    pub async fn send_message(&self, msg: &types::OutgoingMessage) {
+    pub async fn send_message(&self, msg: &api::OutgoingMessage) {
         if let Ok(json) = serde_json::to_string(msg) {
             self.send_json(&json).await;
         }

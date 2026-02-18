@@ -1,4 +1,4 @@
-use crate::rest::models::*;
+use crate::api::tracks::{LoadError, LoadResult, Track, TrackInfo};
 use crate::sources::SourcePlugin;
 use async_trait::async_trait;
 use base64::prelude::*;
@@ -20,7 +20,7 @@ impl HttpSource {
         Self {
             // Matches http:// or https:// URLs
             url_regex: Regex::new(r"^https?://").unwrap(),
-            client: crate::utils::http::HttpClient::new().unwrap(),
+            client: crate::common::http::HttpClient::new().unwrap(),
         }
     }
 
@@ -90,7 +90,7 @@ impl HttpSource {
             is_stream,
             position: 0,
             title,
-            uri: url.to_string(),
+            uri: Some(url.to_string()),
             source_name: "http".to_string(),
             artwork_url,
             isrc: None,
@@ -108,7 +108,7 @@ impl SourcePlugin for HttpSource {
         self.url_regex.is_match(identifier)
     }
 
-    async fn load(&self, identifier: &str) -> LoadTracksResponse {
+    async fn load(&self, identifier: &str) -> LoadResult {
         debug!("Probing HTTP source: {}", identifier);
         
         // 1. Try HEAD request
@@ -124,27 +124,19 @@ impl SourcePlugin for HttpSource {
                     if r.status().is_success() {
                         resp = Some(r);
                     } else {
-                        let exception = Exception {
+                        return LoadResult::Error(LoadError {
                             message: format!("HTTP request failed with status: {}", r.status()),
-                            severity: "common".to_string(),
+                            severity: crate::common::Severity::Common,
                             cause: "".to_string(),
-                        };
-                        return LoadTracksResponse {
-                            load_type: LoadType::Error,
-                            data: LoadData::Error(exception),
-                        };
+                        });
                     }
                 },
                 Err(e) => {
-                    let exception = Exception {
+                    return LoadResult::Error(LoadError {
                         message: format!("HTTP request failed: {}", e),
-                        severity: "common".to_string(),
+                        severity: crate::common::Severity::Common,
                         cause: "".to_string(),
-                    };
-                    return LoadTracksResponse {
-                        load_type: LoadType::Error,
-                        data: LoadData::Error(exception),
-                    };
+                    });
                 }
             }
         }
@@ -157,27 +149,22 @@ impl SourcePlugin for HttpSource {
             .unwrap_or("");
 
         if !self.is_valid_content_type(content_type) {
-             let exception = Exception {
+             return LoadResult::Error(LoadError {
                 message: format!("Unsupported content type: {}", content_type),
-                severity: "common".to_string(),
+                severity: crate::common::Severity::Common,
                 cause: "".to_string(),
-            };
-            return LoadTracksResponse {
-                load_type: LoadType::Error,
-                data: LoadData::Error(exception),
-            };
+            });
         }
 
         let info = self.extract_metadata(identifier, headers);
         let encoded = BASE64_STANDARD.encode(identifier.as_bytes()); // Simplified encoding for now
 
-        LoadTracksResponse {
-            load_type: LoadType::Track,
-            data: LoadData::Track(Track {
-                encoded,
-                info,
-            }),
-        }
+        LoadResult::Track(Track {
+            encoded,
+            info,
+            plugin_info: serde_json::json!({}),
+            user_data: serde_json::json!({}),
+        })
     }
 
     async fn get_playback_url(&self, identifier: &str) -> Option<String> {

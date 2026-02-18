@@ -1,12 +1,38 @@
 use std::sync::Arc;
-use axum::extract::ws::{Message, WebSocket};
+use axum::{
+    extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
+    http::HeaderMap,
+    response::IntoResponse,
+};
+use std::num::NonZeroU64;
 use tracing::{error, info, warn};
 use crate::server::{AppState, Session, UserId};
-use crate::types;
-use crate::ws::messages::IncomingMessage;
-use crate::ws::ops::handle_op;
-use crate::server::{now_ms, collect_stats};
+use crate::api;
+use crate::playback::PlayerState;
+use crate::api::opcodes::{handle_op, IncomingMessage};
+use crate::server::now_ms;
+use crate::monitoring::collect_stats;
 use tokio::sync::Mutex;
+
+pub async fn websocket_handler(
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let user_id = headers
+        .get("user-id")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+        .and_then(NonZeroU64::new)
+        .map(UserId::from);
+
+    let client_session_id = headers
+        .get("session-id")
+        .and_then(|h| h.to_str().ok())
+        .map(String::from);
+
+    ws.on_upgrade(move |socket| handle_socket(socket, state, user_id, client_session_id))
+}
 
 pub async fn handle_socket(
     mut socket: WebSocket,
@@ -44,7 +70,7 @@ pub async fn handle_socket(
     info!("WebSocket connected: session={} resumed={}", session_id, resumed);
 
     // Send Ready
-    let ready = types::OutgoingMessage::Ready {
+    let ready = api::OutgoingMessage::Ready {
         resumed,
         session_id: session_id.clone(),
     };
@@ -62,9 +88,9 @@ pub async fn handle_socket(
             let _ = socket.send(Message::Text(json.into())).await;
         }
         for player in session.players.iter() {
-            let update = types::OutgoingMessage::PlayerUpdate {
+            let update = api::OutgoingMessage::PlayerUpdate {
                 guild_id: player.guild_id.clone(),
-                state: types::PlayerState {
+                state: PlayerState {
                     time: now_ms(),
                     position: player.track_handle.as_ref().map(|h| h.get_position()).unwrap_or(player.position),
                     connected: !player.voice.token.is_empty(),
@@ -88,7 +114,7 @@ pub async fn handle_socket(
                 continue;
             }
             let stats = collect_stats(&state_for_stats, start.elapsed().as_millis() as u64);
-            let msg = types::OutgoingMessage::Stats(stats);
+            let msg = api::OutgoingMessage::Stats(stats);
             session_for_stats.send_message(&msg).await;
         }
     });

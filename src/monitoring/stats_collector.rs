@@ -1,7 +1,7 @@
 use crate::server::AppState;
-use crate::types;
+use crate::api;
 
-pub fn collect_stats(state: &AppState, uptime: u64) -> types::Stats {
+pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
     let mut total_players = 0i32;
     let mut playing_players = 0i32;
 
@@ -16,17 +16,17 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> types::Stats {
 
     let (mem_used, mem_free, mem_total) = read_memory_stats();
 
-    types::Stats {
+    api::Stats {
         players: total_players,
         playing_players,
         uptime,
-        memory: types::Memory {
+        memory: api::Memory {
             free: mem_free,
             used: mem_used,
             allocated: mem_used,
             reservable: mem_total,
         },
-        cpu: types::Cpu {
+        cpu: api::Cpu {
             cores: num_cpus(),
             system_load: 0.0,
             lavalink_load: 0.0,

@@ -1,5 +1,5 @@
 use crate::audio::playback::Mixer;
-use crate::voice::DaveHandler;
+use crate::gateway::DaveHandler;
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -639,8 +639,8 @@ async fn speak_loop(
     dave: Arc<Mutex<DaveHandler>>,
     cancel_token: CancellationToken,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use crate::audio::opus::Encoder;
-    use crate::voice::udp::UdpBackend;
+    use crate::audio::pipeline::encoder::Encoder;
+    use crate::gateway::UdpBackend;
     let mut encoder = Encoder::new().map_err(map_boxed_err)?;
     let udp = UdpBackend::new(socket, addr, ssrc, key, &mode).map_err(map_boxed_err)?;
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(20));

@@ -1,4 +1,3 @@
-use crate::rest::models::*;
 use super::plugin::SourcePlugin;
 use super::http::HttpSource;
 use super::youtube::YouTubeSource;
@@ -23,7 +22,7 @@ impl SourceManager {
     }
 
     /// Load tracks using the first matching source
-    pub async fn load(&self, identifier: &str) -> LoadTracksResponse {
+    pub async fn load(&self, identifier: &str) -> crate::api::tracks::LoadResult {
         // Try each source in order
         for source in &self.sources {
             if source.can_handle(identifier) {
@@ -32,12 +31,8 @@ impl SourceManager {
             }
         }
 
-        // No source could handle it
         tracing::warn!("No source could handle identifier: {}", identifier);
-        LoadTracksResponse {
-            load_type: LoadType::Empty,
-            data: LoadData::Empty(serde_json::Value::Null),
-        }
+        crate::api::tracks::LoadResult::Empty {}
     }
 
   

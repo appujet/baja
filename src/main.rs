@@ -2,17 +2,9 @@ use axum::{Router, routing::get};
 use dashmap::DashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-
-mod audio;
-mod player;
-mod rest;
-mod server;
-
-mod sources;
-mod types;
-mod voice;
-mod ws;
-mod utils;
+use baja::server::AppState;
+use baja::transport;
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,18 +15,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter(env_filter)
         .init();
 
-    let shared_state = Arc::new(server::AppState {
+    let shared_state = Arc::new(AppState {
         sessions: DashMap::new(),
         resumable_sessions: DashMap::new(),
     });
 
     let app = Router::new()
-        .route("/v4/websocket", get(ws::websocket_handler))
-        .merge(rest::router())
+        .route("/v4/websocket", get(transport::websocket_server::websocket_handler))
+        .merge(transport::http_server::router())
         .with_state(shared_state);
 
     let address = SocketAddr::from(([0, 0, 0, 0], 2333));
-    println!("Lavalink Server listening on {}", address);
+    info!("Lavalink Server listening on {}", address);
 
     let listener = tokio::net::TcpListener::bind(address).await?;
     axum::serve(listener, app).await?;
