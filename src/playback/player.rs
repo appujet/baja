@@ -1,4 +1,5 @@
 use crate::api::tracks::Track;
+use crate::audio::filters::FilterChain;
 use crate::audio::playback::TrackHandle;
 use crate::playback::{Filters, Player, PlayerState, VoiceConnectionState, VoiceState};
 use std::sync::Arc;
@@ -15,6 +16,7 @@ pub struct PlayerContext {
     pub voice: VoiceConnectionState,
     pub engine: Arc<Mutex<crate::gateway::VoiceEngine>>,
     pub filters: Filters,
+    pub filter_chain: Arc<Mutex<FilterChain>>,
     pub end_time: Option<u64>,
     pub stop_signal: Arc<std::sync::atomic::AtomicBool>,
     pub gateway_task: Option<tokio::task::JoinHandle<()>>,
@@ -22,6 +24,8 @@ pub struct PlayerContext {
 
 impl PlayerContext {
     pub fn new(guild_id: String) -> Self {
+        let filters = Filters::default();
+        let filter_chain = Arc::new(Mutex::new(FilterChain::from_config(&filters)));
         Self {
             guild_id,
             volume: 100,
@@ -31,7 +35,8 @@ impl PlayerContext {
             position: 0,
             voice: VoiceConnectionState::default(),
             engine: Arc::new(Mutex::new(crate::gateway::VoiceEngine::new())),
-            filters: Filters::default(),
+            filters,
+            filter_chain,
             end_time: None,
             stop_signal: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             gateway_task: None,

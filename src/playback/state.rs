@@ -105,6 +105,25 @@ macro_rules! define_filters {
                     $($name.into()),*
                 ]
             }
+
+            /// Merge incoming partial filter update with existing state.
+            /// For each field: if the incoming value is `Some`, use it;
+            /// otherwise keep the existing value.
+            pub fn merge_from(&mut self, incoming: Filters) {
+                $(
+                    if incoming.$field.is_some() {
+                        self.$field = incoming.$field;
+                    }
+                )*
+            }
+
+            /// Returns true if every filter field is `None`.
+            /// This means the client sent `{"filters": {}}` to clear all filters.
+            pub fn is_all_none(&self) -> bool {
+                $(
+                    self.$field.is_none() &&
+                )* true
+            }
         }
     };
 }

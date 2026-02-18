@@ -93,7 +93,7 @@ pub async fn update_player(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PlayerUpdate>,
 ) -> impl IntoResponse {
-    tracing::info!("PATCH /v4/sessions/{}/players/{}", session_id, guild_id);
+    tracing::info!("PATCH /v4/sessions/{}/players/{}\n{:?}", session_id, guild_id, body);
 
     let session = match state.sessions.get(&session_id) {
         Some(s) => s.clone(),
@@ -126,9 +126,19 @@ pub async fn update_player(
 
     let mut player = session.players.get_mut(&guild_id).unwrap();
 
-    // Apply volume
+    // Apply volume (Top-Level)
     if let Some(vol) = body.volume {
+        let vol = vol.clamp(0, 1000);
         player.volume = vol;
+        
+        // Propagate to active track handle for immediate effect
+        if let Some(handle) = &player.track_handle {
+            let h = handle.clone();
+            let v = vol as f32 / 100.0;
+            tokio::spawn(async move {
+                h.set_volume(v).await;
+            });
+        }
     }
 
     // Apply paused
@@ -146,9 +156,19 @@ pub async fn update_player(
         player.end_time = end_time;
     }
 
-    // Apply filters (replaces entire filter chain)
+    // Apply filters — Standard Lavalink Behavior (Full Replacement)
+    // "PATCH with filters → replaces the entire filter state, omitted filters are disabled"
+    // "Your bot library must track and resend all active filters every time any single one changes"
     if let Some(filters) = body.filters {
         player.filters = filters;
+        
+        // Rebuild the DSP filter chain
+        let new_chain = crate::audio::filters::FilterChain::from_config(&player.filters);
+        let fc = player.filter_chain.clone();
+        tokio::spawn(async move {
+            let mut lock = fc.lock().await;
+            *lock = new_chain;
+        });
     }
 
     // Apply voice
@@ -164,8 +184,9 @@ pub async fn update_player(
             let engine = player.engine.clone();
             let guild = player.guild_id.clone();
             let voice_state = player.voice.clone();
+            let filter_chain = player.filter_chain.clone();
             drop(player);
-            let _ = crate::server::connect_voice(engine, guild, uid, voice_state).await;
+            let _ = crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain).await;
             // Re-acquire player for track handling below
             player = session.players.get_mut(&guild_id).unwrap();
         }
