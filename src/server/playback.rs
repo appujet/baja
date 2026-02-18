@@ -1,15 +1,17 @@
-use std::sync::Arc;
-use tracing::{info, error};
-use crate::server::Session;
-use crate::playback::{PlayerContext, PlayerState};
-use crate::audio::playback::{PlaybackState, TrackHandle};
 use crate::api;
+use crate::audio::playback::{PlaybackState, TrackHandle};
+use crate::playback::{PlayerContext, PlayerState};
+use crate::server::Session;
 use base64::prelude::*;
+use std::sync::Arc;
+use tracing::{error, info};
 
 pub async fn start_playback(
     player: &mut PlayerContext,
     track: String,
     session: Arc<Session>,
+    source_manager: Arc<crate::sources::SourceManager>,
+    routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
 ) {
     if player.track.is_some() {
         let is_playing = if let Some(handle) = &player.track_handle {
@@ -33,7 +35,9 @@ pub async fn start_playback(
 
     if let Some(handle) = &player.track_handle {
         let handle: &TrackHandle = handle;
-        player.stop_signal.store(true, std::sync::atomic::Ordering::SeqCst);
+        player
+            .stop_signal
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         handle.stop().await;
     }
 
@@ -48,8 +52,10 @@ pub async fn start_playback(
         track.clone()
     };
 
-    let source_manager = crate::sources::SourceManager::new();
-    let playback_url = match source_manager.get_playback_url(&identifier).await {
+    let playback_url = match source_manager
+        .get_playback_url(&identifier, routeplanner.clone())
+        .await
+    {
         Some(url) => url,
         None => {
             error!("Failed to resolve URL: {}", identifier);
@@ -77,7 +83,11 @@ pub async fn start_playback(
         track: track_data.clone(),
     });
     session.send_message(&start_event).await;
-    tracing::debug!("Sent TrackStartEvent for guild {} track {}", player.guild_id, track_data.info.title);
+    tracing::debug!(
+        "Sent TrackStartEvent for guild {} track {}",
+        player.guild_id,
+        track_data.info.title
+    );
 
     let guild_id = player.guild_id.clone();
     let handle_clone = player.track_handle.as_ref().unwrap().clone();

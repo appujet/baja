@@ -26,6 +26,7 @@ pub mod tracks;
 pub use events::*;
 pub use info::*;
 pub use models::*;
+pub use routeplanner::*;
 pub use session::*;
 pub use stats::*;
 pub use tracks::*;

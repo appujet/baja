@@ -1,9 +1,9 @@
-use crate::server::AppState;
 use crate::api;
-use crate::playback::{Filters, Player, PlayerState, PlayerUpdate, VoiceState};
 use crate::api::tracks::{Track, TrackInfo};
-use crate::server::now_ms;
+use crate::playback::{Filters, Player, PlayerState, PlayerUpdate, VoiceState};
 use crate::playback::{PlayerContext, VoiceConnectionState};
+use crate::server::AppState;
+use crate::server::now_ms;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -16,6 +16,7 @@ pub async fn get_players(
     Path(session_id): Path<String>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
+    tracing::info!("GET /v4/sessions/{}/players", session_id);
     match state.sessions.get(&session_id) {
         Some(session) => {
             let players: Vec<Player> = session
@@ -27,11 +28,13 @@ pub async fn get_players(
         }
         None => (
             StatusCode::NOT_FOUND,
-            Json(serde_json::to_value(crate::common::LavalinkError::not_found(
-                format!("Session not found: {}", session_id),
-                format!("/v4/sessions/{}/players", session_id),
-            ))
-            .unwrap()),
+            Json(
+                serde_json::to_value(crate::common::LavalinkError::not_found(
+                    format!("Session not found: {}", session_id),
+                    format!("/v4/sessions/{}/players", session_id),
+                ))
+                .unwrap(),
+            ),
         )
             .into_response(),
     }
@@ -42,6 +45,7 @@ pub async fn get_player(
     Path((session_id, guild_id)): Path<(String, String)>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
+    tracing::info!("GET /v4/sessions/{}/players/{}", session_id, guild_id);
     match state.sessions.get(&session_id) {
         Some(session) => match session.players.get(&guild_id) {
             Some(player) => (
@@ -89,10 +93,7 @@ pub async fn update_player(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PlayerUpdate>,
 ) -> impl IntoResponse {
-    tracing::debug!(
-        "Update player: session={} guild={} body={:?}",
-        session_id, guild_id, body
-    );
+    tracing::info!("PATCH /v4/sessions/{}/players/{}", session_id, guild_id);
 
     let session = match state.sessions.get(&session_id) {
         Some(s) => s.clone(),
@@ -190,37 +191,36 @@ pub async fn update_player(
                     // Emit TrackEnd with reason Stopped
                     if let Some(encoded) = track_data {
                         tracing::debug!("Emitting TrackEnd(Stopped) for guild {}", guild_id);
-                        let end_event = api::OutgoingMessage::Event(
-                            api::LavalinkEvent::TrackEnd {
-                                guild_id: guild_id.clone(),
-                                track: Track {
-                                    encoded,
-                                    info: TrackInfo {
-                                        identifier: String::new(),
-                                        is_seekable: false,
-                                        author: String::new(),
-                                        length: 0,
-                                        is_stream: false,
-                                        position: 0,
-                                        title: String::new(),
-                                        uri: None,
-                                        artwork_url: None,
-                                        isrc: None,
-                                        source_name: String::new(),
-                                    },
-                                    plugin_info: serde_json::json!({}),
-                                    user_data: serde_json::json!({}),
+                        let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
+                            guild_id: guild_id.clone(),
+                            track: Track {
+                                encoded,
+                                info: TrackInfo {
+                                    identifier: String::new(),
+                                    is_seekable: false,
+                                    author: String::new(),
+                                    length: 0,
+                                    is_stream: false,
+                                    position: 0,
+                                    title: String::new(),
+                                    uri: None,
+                                    artwork_url: None,
+                                    isrc: None,
+                                    source_name: String::new(),
                                 },
-                                reason: api::TrackEndReason::Stopped,
+                                plugin_info: serde_json::json!({}),
+                                user_data: serde_json::json!({}),
                             },
-                        );
+                            reason: api::TrackEndReason::Stopped,
+                        });
                         session.send_message(&end_event).await;
                     }
                 }
                 Some(track_data) => {
                     // encoded: "..." → play the track
                     let is_playing = if let Some(handle) = &player.track_handle {
-                        handle.get_state().await == crate::audio::playback::handle::PlaybackState::Playing
+                        handle.get_state().await
+                            == crate::audio::playback::handle::PlaybackState::Playing
                     } else {
                         false
                     };
@@ -228,7 +228,14 @@ pub async fn update_player(
                     if no_replace && is_playing {
                         // noReplace=true and already playing, skip
                     } else {
-                        crate::server::start_playback(&mut player, track_data, session.clone()).await;
+                        crate::server::start_playback(
+                            &mut player,
+                            track_data,
+                            session.clone(),
+                            state.source_manager.clone(),
+                            state.routeplanner.clone(),
+                        )
+                        .await;
                     }
                 }
             }
@@ -243,13 +250,24 @@ pub async fn update_player(
             if no_replace && is_playing {
                 // noReplace=true and already playing, skip
             } else {
-                crate::server::start_playback(&mut player, identifier, session.clone()).await;
+                crate::server::start_playback(
+                    &mut player,
+                    identifier,
+                    session.clone(),
+                    state.source_manager.clone(),
+                    state.routeplanner.clone(),
+                )
+                .await;
             }
         }
     }
 
     let response = player.to_player_response();
-    (StatusCode::OK, Json(serde_json::to_value(response).unwrap())).into_response()
+    (
+        StatusCode::OK,
+        Json(serde_json::to_value(response).unwrap()),
+    )
+        .into_response()
 }
 
 /// DELETE /v4/sessions/{sessionId}/players/{guildId}
@@ -257,10 +275,7 @@ pub async fn destroy_player(
     Path((session_id, guild_id)): Path<(String, String)>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    tracing::debug!(
-        "Destroy player: session={} guild={}",
-        session_id, guild_id
-    );
+    tracing::debug!("Destroy player: session={} guild={}", session_id, guild_id);
 
     match state.sessions.get(&session_id) {
         Some(session) => {
@@ -323,9 +338,7 @@ pub async fn update_session(
             }
 
             let info = api::SessionInfo {
-                resuming: session
-                    .resumable
-                    .load(std::sync::atomic::Ordering::Relaxed),
+                resuming: session.resumable.load(std::sync::atomic::Ordering::Relaxed),
                 timeout: session
                     .resume_timeout
                     .load(std::sync::atomic::Ordering::Relaxed),

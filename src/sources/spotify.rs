@@ -1,6 +1,8 @@
+use crate::api::tracks::LoadResult;
 use crate::sources::SourcePlugin;
 use async_trait::async_trait;
 use regex::Regex;
+use std::sync::Arc;
 
 /// Spotify Source Plugin (Placeholder)
 ///
@@ -34,13 +36,21 @@ impl SourcePlugin for SpotifySource {
         identifier.starts_with(&self.search_prefix) || self.url_regex.is_match(identifier)
     }
 
-    async fn load(&self, _identifier: &str) -> crate::api::tracks::LoadResult {
+    async fn load(
+        &self,
+        _identifier: &str,
+        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+    ) -> LoadResult {
         // TODO: Implement actual Spotify API integration
         // For now, return empty
-        crate::api::tracks::LoadResult::Empty {}
+        LoadResult::Empty {}
     }
 
-    async fn get_playback_url(&self, identifier: &str) -> Option<String> {
+    async fn get_playback_url(
+        &self,
+        identifier: &str,
+        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+    ) -> Option<String> {
         // TODO: Implement Spotify URL resolution
         // This should:
         // 1. For "spsearch:query" - search Spotify and get the first result

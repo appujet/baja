@@ -1,4 +1,6 @@
+use crate::routeplanner::RoutePlanner;
 use crate::server::session_manager::Session;
+use crate::sources::SourceManager;
 use dashmap::DashMap;
 use std::sync::Arc;
 
@@ -7,6 +9,8 @@ pub struct AppState {
     pub sessions: DashMap<String, Arc<Session>>,
     /// Sessions disconnected but waiting for resume within timeout.
     pub resumable_sessions: DashMap<String, Arc<Session>>,
+    pub routeplanner: Option<Arc<dyn RoutePlanner>>,
+    pub source_manager: Arc<SourceManager>,
 }
 
 pub fn now_ms() -> u64 {

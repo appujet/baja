@@ -3,6 +3,7 @@ use crate::sources::SourcePlugin;
 use async_trait::async_trait;
 use regex::Regex;
 use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE, HeaderMap};
+use std::sync::Arc;
 use tracing::debug;
 
 /// HTTP/HTTPS Source Plugin
@@ -108,7 +109,11 @@ impl SourcePlugin for HttpSource {
         self.url_regex.is_match(identifier)
     }
 
-    async fn load(&self, identifier: &str) -> LoadResult {
+    async fn load(
+        &self,
+        identifier: &str,
+        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+    ) -> LoadResult {
         debug!("Probing HTTP source: {}", identifier);
 
         // 1. Try HEAD request
@@ -171,7 +176,11 @@ impl SourcePlugin for HttpSource {
         LoadResult::Track(Track::new(info))
     }
 
-    async fn get_playback_url(&self, identifier: &str) -> Option<String> {
+    async fn get_playback_url(
+        &self,
+        identifier: &str,
+        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+    ) -> Option<String> {
         let clean = identifier
             .trim()
             .trim_start_matches('<')

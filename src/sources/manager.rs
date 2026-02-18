@@ -2,6 +2,7 @@ use super::http::HttpSource;
 use super::plugin::SourcePlugin;
 use super::spotify::SpotifySource;
 use super::youtube::YouTubeSource;
+use std::sync::Arc;
 
 /// Source Manager - coordinates all registered source plugins
 pub struct SourceManager {
@@ -22,12 +23,16 @@ impl SourceManager {
     }
 
     /// Load tracks using the first matching source
-    pub async fn load(&self, identifier: &str) -> crate::api::tracks::LoadResult {
+    pub async fn load(
+        &self,
+        identifier: &str,
+        routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+    ) -> crate::api::tracks::LoadResult {
         // Try each source in order
         for source in &self.sources {
             if source.can_handle(identifier) {
                 tracing::debug!("Loading '{}' with source: {}", identifier, source.name());
-                return source.load(identifier).await;
+                return source.load(identifier, routeplanner.clone()).await;
             }
         }
 
@@ -35,7 +40,11 @@ impl SourceManager {
         crate::api::tracks::LoadResult::Empty {}
     }
 
-    pub async fn get_playback_url(&self, identifier: &str) -> Option<String> {
+    pub async fn get_playback_url(
+        &self,
+        identifier: &str,
+        routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+    ) -> Option<String> {
         for source in &self.sources {
             if source.can_handle(identifier) {
                 tracing::debug!(
@@ -43,7 +52,9 @@ impl SourceManager {
                     identifier,
                     source.name()
                 );
-                return source.get_playback_url(identifier).await;
+                return source
+                    .get_playback_url(identifier, routeplanner.clone())
+                    .await;
             }
         }
         // No source could handle it

@@ -3,7 +3,6 @@ use crate::api::models::*;
 use crate::api::tracks::{LoadResult, Track};
 use crate::playback::Filters;
 use crate::server::AppState;
-use crate::sources::SourceManager;
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -14,17 +13,22 @@ use std::sync::Arc;
 /// GET /v4/loadtracks?identifier=...
 pub async fn load_tracks(
     Query(params): Query<LoadTracksQuery>,
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
 ) -> Json<LoadResult> {
     let identifier = params.identifier;
-    tracing::debug!("Load tracks: '{}'", identifier);
+    tracing::info!("GET /v4/loadtracks: identifier='{}'", identifier);
 
-    let source_manager = SourceManager::new();
-    Json(source_manager.load(&identifier).await)
+    Json(
+        state
+            .source_manager
+            .load(&identifier, state.routeplanner.clone())
+            .await,
+    )
 }
 
 /// GET /v4/decodetrack?encodedTrack=...
 pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoResponse {
+    tracing::info!("GET /v4/decodetrack");
     match Track::decode(&params.encoded_track) {
         Some(track) => (StatusCode::OK, Json(track)).into_response(),
         None => (
@@ -40,6 +44,7 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
 
 /// POST /v4/decodetracks
 pub async fn decode_tracks(Json(encoded_tracks): Json<Vec<String>>) -> impl IntoResponse {
+    tracing::info!("POST /v4/decodetracks: count={}", encoded_tracks.len());
     let tracks: Vec<Track> = encoded_tracks
         .into_iter()
         .filter_map(|e| Track::decode(&e))
@@ -48,23 +53,41 @@ pub async fn decode_tracks(Json(encoded_tracks): Json<Vec<String>>) -> impl Into
 }
 
 /// GET /v4/routeplanner/status
-pub async fn routeplanner_status() -> impl IntoResponse {
-    // Return 204 No Content if no routeplanner is configured (Lavalink v4 behavior)
-    StatusCode::NO_CONTENT
+pub async fn routeplanner_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::info!("GET /v4/routeplanner/status");
+    match &state.routeplanner {
+        Some(rp) => (StatusCode::OK, Json(rp.get_status())).into_response(),
+        None => StatusCode::NO_CONTENT.into_response(),
+    }
 }
 
 /// POST /v4/routeplanner/free/address
-pub async fn routeplanner_free_address() -> impl IntoResponse {
+pub async fn routeplanner_free_address(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<api::FreeAddressRequest>,
+) -> impl IntoResponse {
+    tracing::info!(
+        "POST /v4/routeplanner/free/address: address='{}'",
+        body.address
+    );
+    if let Some(rp) = &state.routeplanner {
+        rp.free_address(&body.address);
+    }
     StatusCode::NO_CONTENT
 }
 
 /// POST /v4/routeplanner/free/all
-pub async fn routeplanner_free_all() -> impl IntoResponse {
+pub async fn routeplanner_free_all(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    tracing::info!("POST /v4/routeplanner/free/all");
+    if let Some(rp) = &state.routeplanner {
+        rp.free_all_addresses();
+    }
     StatusCode::NO_CONTENT
 }
 
 /// GET /v4/info
-pub async fn get_info() -> Json<api::Info> {
+pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<api::Info> {
+    tracing::info!("GET /v4/info");
     let version_str = env!("CARGO_PKG_VERSION");
     let mut parts = version_str.split('.');
     let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
@@ -100,7 +123,7 @@ pub async fn get_info() -> Json<api::Info> {
         },
         jvm: "Rust".to_string(),
         lavaplayer: "symphonia".to_string(),
-        source_managers: SourceManager::new().source_names(),
+        source_managers: state.source_manager.source_names(),
         filters: Filters::names(),
         plugins: vec![],
     })
@@ -108,6 +131,7 @@ pub async fn get_info() -> Json<api::Info> {
 
 /// GET /v4/stats
 pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<api::Stats> {
+    tracing::info!("GET /v4/stats");
     let uptime = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -117,5 +141,6 @@ pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<api::Stats> {
 
 /// GET /v4/version
 pub async fn get_version() -> String {
+    tracing::info!("GET /v4/version");
     env!("CARGO_PKG_VERSION").to_string()
 }

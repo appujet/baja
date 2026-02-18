@@ -1,8 +1,8 @@
+use crate::playback::PlayerContext;
+use crate::server::{AppState, Session};
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
-use crate::server::{AppState, Session};
-use crate::playback::PlayerContext;
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "op")]
@@ -26,7 +26,6 @@ pub enum IncomingMessage {
     },
 }
 
-
 pub async fn handle_op(
     op: IncomingMessage,
     state: &Arc<AppState>,
@@ -44,8 +43,16 @@ pub async fn handle_op(
             channel_id,
             event,
         } => {
-            let token = event.get("token").and_then(|v| v.as_str()).ok_or("Missing token in voice update event")?.to_string();
-            let endpoint = event.get("endpoint").and_then(|v| v.as_str()).ok_or("Missing endpoint in voice update event")?.to_string();
+            let token = event
+                .get("token")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing token in voice update event")?
+                .to_string();
+            let endpoint = event
+                .get("endpoint")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing endpoint in voice update event")?
+                .to_string();
 
             if !session.players.contains_key(&guild_id) {
                 session
@@ -72,7 +79,13 @@ pub async fn handle_op(
                     }
                 }
 
-                if changed || session.players.get(&guild_id).map(|p| p.gateway_task.is_none()).unwrap_or(true) {
+                if changed
+                    || session
+                        .players
+                        .get(&guild_id)
+                        .map(|p| p.gateway_task.is_none())
+                        .unwrap_or(true)
+                {
                     let mut player = session.players.get_mut(&guild_id).unwrap();
                     let engine = player.engine.clone();
                     let guild = player.guild_id.clone();
@@ -83,7 +96,8 @@ pub async fn handle_op(
                     }
 
                     drop(player);
-                    let new_task = crate::server::connect_voice(engine, guild, uid, voice_state).await;
+                    let new_task =
+                        crate::server::connect_voice(engine, guild, uid, voice_state).await;
 
                     if let Some(mut player) = session.players.get_mut(&guild_id) {
                         player.gateway_task = Some(new_task);
@@ -99,7 +113,14 @@ pub async fn handle_op(
             }
 
             let mut player = session.players.get_mut(&guild_id).unwrap();
-            crate::server::start_playback(&mut player, track, session.clone()).await;
+            crate::server::start_playback(
+                &mut player,
+                track,
+                session.clone(),
+                state.source_manager.clone(),
+                state.routeplanner.clone(),
+            )
+            .await;
         }
         IncomingMessage::Stop { guild_id } => {
             if let Some(mut player) = session.players.get_mut(&guild_id) {

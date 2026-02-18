@@ -4,6 +4,7 @@ pub mod common;
 pub mod gateway;
 pub mod monitoring;
 pub mod playback;
+pub mod routeplanner;
 pub mod server;
 pub mod sources;
 pub mod transport;
