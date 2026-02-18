@@ -4,18 +4,20 @@ use std::time::Duration;
 pub struct HttpClient;
 
 impl HttpClient {
-    pub const USER_AGENT: &'static str = "Mozilla/5.0 (compatible; rustalink/0.1.0)";
+    pub fn random_user_agent() -> String {
+        rand_agents::user_agent()
+    }
 
     pub fn new() -> Result<Client, Error> {
         Client::builder()
-            .user_agent(Self::USER_AGENT)
+            .user_agent(Self::random_user_agent())
             .timeout(Duration::from_secs(10))
             .build()
     }
 
     pub fn new_blocking() -> Result<blocking::Client, Error> {
         blocking::Client::builder()
-            .user_agent(Self::USER_AGENT)
+            .user_agent(Self::random_user_agent())
             .timeout(Duration::from_secs(10)) // 10s timeout
             .build()
     }

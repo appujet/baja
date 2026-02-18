@@ -120,7 +120,7 @@ impl SourcePlugin for HttpSource {
             if let Some(ip) = rp.get_address() {
                 debug!("Using rotated IP: {}", ip);
                 reqwest::Client::builder()
-                    .user_agent(crate::common::http::HttpClient::USER_AGENT)
+                    .user_agent(crate::common::http::HttpClient::random_user_agent())
                     .timeout(std::time::Duration::from_secs(10))
                     .local_address(ip)
                     .build()

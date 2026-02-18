@@ -11,7 +11,7 @@ pub struct RemoteReader {
 impl RemoteReader {
     pub fn new(url: &str, local_addr: Option<std::net::IpAddr>) -> Result<Self, reqwest::Error> {
         let mut builder = reqwest::blocking::Client::builder()
-            .user_agent(crate::common::http::HttpClient::USER_AGENT)
+            .user_agent(crate::common::http::HttpClient::random_user_agent())
             .timeout(std::time::Duration::from_secs(10));
             
         if let Some(ip) = local_addr {
