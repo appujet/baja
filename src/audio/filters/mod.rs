@@ -13,6 +13,47 @@ pub mod vibrato;
 pub mod volume;
 
 use crate::playback::Filters;
+use crate::config::FiltersConfig;
+
+/// Validate if the requested filters are allowed by the server configuration.
+/// Returns a list of disabled filter names that were requested.
+pub fn validate_filters(filters: &Filters, config: &FiltersConfig) -> Vec<String> {
+    let mut invalid = Vec::new();
+    let enabled = &config.enabled;
+
+    if filters.volume.is_some() && !enabled.volume {
+        invalid.push("volume".to_string());
+    }
+    if filters.equalizer.is_some() && !enabled.equalizer {
+        invalid.push("equalizer".to_string());
+    }
+    if filters.karaoke.is_some() && !enabled.karaoke {
+        invalid.push("karaoke".to_string());
+    }
+    if filters.timescale.is_some() && !enabled.timescale {
+        invalid.push("timescale".to_string());
+    }
+    if filters.tremolo.is_some() && !enabled.tremolo {
+        invalid.push("tremolo".to_string());
+    }
+    if filters.vibrato.is_some() && !enabled.vibrato {
+        invalid.push("vibrato".to_string());
+    }
+    if filters.distortion.is_some() && !enabled.distortion {
+        invalid.push("distortion".to_string());
+    }
+    if filters.rotation.is_some() && !enabled.rotation {
+        invalid.push("rotation".to_string());
+    }
+    if filters.channel_mix.is_some() && !enabled.channel_mix {
+        invalid.push("channelMix".to_string());
+    }
+    if filters.low_pass.is_some() && !enabled.low_pass {
+        invalid.push("lowPass".to_string());
+    }
+
+    invalid
+}
 
 /// Trait for audio filters that process interleaved stereo i16 PCM samples.
 /// Buffer layout: [L, R, L, R, ...] — 960 frames × 2 channels = 1920 samples per 20ms.

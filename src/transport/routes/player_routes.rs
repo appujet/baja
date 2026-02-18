@@ -160,6 +160,23 @@ pub async fn update_player(
     // "PATCH with filters → replaces the entire filter state, omitted filters are disabled"
     // "Your bot library must track and resend all active filters every time any single one changes"
     if let Some(filters) = body.filters {
+        // Strict Validation: Check if requested filters are enabled in config
+        let invalid_filters = crate::audio::filters::validate_filters(&filters, &state.config.filters);
+        if !invalid_filters.is_empty() {
+            let message = format!(
+                "Following filters are disabled in the config: {}",
+                invalid_filters.join(", ")
+            );
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::to_value(crate::common::LavalinkError::bad_request(
+                    message,
+                    format!("/v4/sessions/{}/players/{}", session_id, guild_id),
+                )).unwrap()),
+            )
+            .into_response();
+        }
+
         player.filters = filters;
         
         // Rebuild the DSP filter chain

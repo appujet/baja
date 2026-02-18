@@ -4,9 +4,66 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub server: ServerConfig,
     pub route_planner: RoutePlannerConfig,
-    #[serde(default)]
     pub sources: SourcesConfig,
     pub logging: Option<LoggingConfig>,
+    #[serde(default)]
+    pub filters: FiltersConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct FiltersConfig {
+    #[serde(default)]
+    pub enabled: EnabledFiltersConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct EnabledFiltersConfig {
+    pub volume: bool,
+    pub equalizer: bool,
+    pub karaoke: bool,
+    pub timescale: bool,
+    pub tremolo: bool,
+    pub vibrato: bool,
+    pub distortion: bool,
+    pub rotation: bool,
+    pub channel_mix: bool,
+    pub low_pass: bool,
+}
+
+impl Default for EnabledFiltersConfig {
+    fn default() -> Self {
+        Self {
+            volume: true,
+            equalizer: true,
+            karaoke: true,
+            timescale: true,
+            tremolo: true,
+            vibrato: true,
+            distortion: true,
+            rotation: true,
+            channel_mix: true,
+            low_pass: true,
+        }
+    }
+}
+
+impl EnabledFiltersConfig {
+    pub fn is_enabled(&self, name: &str) -> bool {
+        match name {
+            "volume" => self.volume,
+            "equalizer" => self.equalizer,
+            "karaoke" => self.karaoke,
+            "timescale" => self.timescale,
+            "tremolo" => self.tremolo,
+            "vibrato" => self.vibrato,
+            "distortion" => self.distortion,
+            "rotation" => self.rotation,
+            "channel_mix" => self.channel_mix,
+            "low_pass" => self.low_pass,
+            _ => true, // Unknown filters are allowed by default or should be handled by plugin logic?
+                       // For now, strict validation only for known core filters.
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

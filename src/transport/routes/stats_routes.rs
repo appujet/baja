@@ -124,7 +124,10 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<api::Info> {
         jvm: "Rust".to_string(),
         lavaplayer: "symphonia".to_string(),
         source_managers: state.source_manager.source_names(),
-        filters: Filters::names(),
+        filters: Filters::names()
+            .into_iter()
+            .filter(|name| state.config.filters.enabled.is_enabled(name))
+            .collect(),
         plugins: vec![],
     })
 }

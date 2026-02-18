@@ -14,6 +14,19 @@ spotify = true
 http = true
 local = false
 
+[filters]
+[filters.enabled]
+volume = true
+equalizer = true
+karaoke = true
+timescale = true
+tremolo = true
+vibrato = true
+distortion = true
+rotation = true
+channel_mix = true
+low_pass = true
+
 [logging]
 level = "info"
 # Optional: detailed module overrides. Example: "rustalink=debug,tokio=warn"
