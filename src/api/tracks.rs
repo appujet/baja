@@ -1,5 +1,8 @@
 use crate::common::Severity;
+use base64::prelude::*;
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
+use std::io::{Cursor, Read, Write};
 
 /// A single audio track with encoded data and metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +18,128 @@ pub struct Track {
     /// User-provided data attached to the track.
     #[serde(default)]
     pub user_data: serde_json::Value,
+}
+
+impl Track {
+    /// Create a new Track from info and encode it.
+    pub fn new(info: TrackInfo) -> Self {
+        let mut track = Self {
+            encoded: String::new(),
+            info,
+            plugin_info: serde_json::json!({}),
+            user_data: serde_json::json!({}),
+        };
+        track.encoded = track.encode();
+        track
+    }
+
+    /// Encode the track into a Lavalink-compatible base64 string.
+    pub fn encode(&self) -> String {
+        let mut buf = Vec::new();
+        // Version 3 (Lavalink v4 standard)
+        buf.write_u8(3).unwrap();
+
+        write_utf(&mut buf, &self.info.title);
+        write_utf(&mut buf, &self.info.author);
+        buf.write_u64::<BigEndian>(self.info.length).unwrap();
+        write_utf(&mut buf, &self.info.identifier);
+        buf.write_u8(if self.info.is_stream { 1 } else { 0 })
+            .unwrap();
+
+        write_opt_utf(&mut buf, self.info.uri.as_deref());
+        write_opt_utf(&mut buf, self.info.artwork_url.as_deref());
+        write_opt_utf(&mut buf, self.info.isrc.as_deref());
+        write_utf(&mut buf, &self.info.source_name);
+
+        buf.write_u64::<BigEndian>(self.info.position).unwrap();
+
+        BASE64_STANDARD.encode(&buf)
+    }
+
+    /// Decode a Lavalink track from a base64 string.
+    pub fn decode(encoded: &str) -> Option<Self> {
+        let data = BASE64_STANDARD.decode(encoded).ok()?;
+        let mut cursor = Cursor::new(data);
+
+        let version = cursor.read_u8().ok()?;
+        if version > 3 {
+            return None; // Unknown version
+        }
+
+        let title = read_utf(&mut cursor)?;
+        let author = read_utf(&mut cursor)?;
+        let length = cursor.read_u64::<BigEndian>().ok()?;
+        let identifier = read_utf(&mut cursor)?;
+        let is_stream = cursor.read_u8().ok()? != 0;
+
+        let uri = read_opt_utf(&mut cursor);
+        let artwork_url = if version >= 3 {
+            read_opt_utf(&mut cursor)
+        } else {
+            None
+        };
+        let isrc = if version >= 3 {
+            read_opt_utf(&mut cursor)
+        } else {
+            None
+        };
+        let source_name = read_utf(&mut cursor)?;
+
+        let position = if version >= 2 {
+            cursor.read_u64::<BigEndian>().ok().unwrap_or(0)
+        } else {
+            0
+        };
+
+        Some(Self {
+            encoded: encoded.to_string(),
+            info: TrackInfo {
+                identifier,
+                is_seekable: !is_stream,
+                author,
+                length,
+                is_stream,
+                position,
+                title,
+                uri,
+                artwork_url,
+                isrc,
+                source_name,
+            },
+            plugin_info: serde_json::json!({}),
+            user_data: serde_json::json!({}),
+        })
+    }
+}
+
+fn write_utf(w: &mut Vec<u8>, s: &str) {
+    let bytes = s.as_bytes();
+    w.write_u16::<BigEndian>(bytes.len() as u16).unwrap();
+    w.write_all(bytes).unwrap();
+}
+
+fn write_opt_utf(w: &mut Vec<u8>, s: Option<&str>) {
+    match s {
+        Some(s) => {
+            w.write_u8(1).unwrap();
+            write_utf(w, s);
+        }
+        None => {
+            w.write_u8(0).unwrap();
+        }
+    }
+}
+
+fn read_utf<R: Read>(r: &mut R) -> Option<String> {
+    let len = r.read_u16::<BigEndian>().ok()? as usize;
+    let mut buf = vec![0u8; len];
+    r.read_exact(&mut buf).ok()?;
+    String::from_utf8(buf).ok()
+}
+
+fn read_opt_utf<R: Read>(r: &mut R) -> Option<String> {
+    let present = r.read_u8().ok()? != 0;
+    if present { read_utf(r) } else { None }
 }
 
 /// Metadata for an audio track.

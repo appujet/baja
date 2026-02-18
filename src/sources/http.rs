@@ -1,7 +1,6 @@
 use crate::api::tracks::{LoadError, LoadResult, Track, TrackInfo};
 use crate::sources::SourcePlugin;
 use async_trait::async_trait;
-use base64::prelude::*;
 use regex::Regex;
 use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE, HeaderMap};
 use tracing::debug;
@@ -32,8 +31,9 @@ impl HttpSource {
     }
 
     fn extract_metadata(&self, url: &str, headers: &HeaderMap) -> TrackInfo {
-        let is_stream = headers.contains_key("icy-metaint") || !headers.contains_key(CONTENT_LENGTH);
-        
+        let is_stream =
+            headers.contains_key("icy-metaint") || !headers.contains_key(CONTENT_LENGTH);
+
         // Extract title from headers or URL
         let title = headers
             .get("icy-name")
@@ -46,7 +46,7 @@ impl HttpSource {
                     .and_then(|s| s.split('"').next())
             })
             .unwrap_or_else(|| {
-                 url.split('/')
+                url.split('/')
                     .last()
                     .and_then(|s| s.split('?').next())
                     .unwrap_or("Audio Stream")
@@ -69,18 +69,18 @@ impl HttpSource {
                 .unwrap_or(0)
         };
 
-        // Discord CDN specific artwork handling (NodeLink parity)
         let mut artwork_url = None;
-         if url.starts_with("https://cdn.discordapp.com") {
-             if let Some(ct) = headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()) {
-                 if ct.contains("video/") {
+        if url.starts_with("https://cdn.discordapp.com") {
+            if let Some(ct) = headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()) {
+                if ct.contains("video/") {
                     let clean_url = url.split('&').next().unwrap_or(url);
-                    let base = clean_url.replace("https://cdn.discordapp.com", "https://media.discordapp.net");
+                    let base = clean_url
+                        .replace("https://cdn.discordapp.com", "https://media.discordapp.net");
                     let separator = if base.contains('?') { "&" } else { "?" };
                     artwork_url = Some(format!("{}{}{}", base, separator, "format=webp"));
-                 }
-             }
-         }
+                }
+            }
+        }
 
         TrackInfo {
             identifier: url.to_string(),
@@ -110,7 +110,7 @@ impl SourcePlugin for HttpSource {
 
     async fn load(&self, identifier: &str) -> LoadResult {
         debug!("Probing HTTP source: {}", identifier);
-        
+
         // 1. Try HEAD request
         let mut resp = match self.client.head(identifier).send().await {
             Ok(r) => Some(r),
@@ -118,8 +118,18 @@ impl SourcePlugin for HttpSource {
         };
 
         // 2. If HEAD fails or returns bad status, try GET (stream only)
-        if resp.as_ref().map(|r| !r.status().is_success()).unwrap_or(true) {
-             match self.client.get(identifier).header("Range", "bytes=0-0").send().await {
+        if resp
+            .as_ref()
+            .map(|r| !r.status().is_success())
+            .unwrap_or(true)
+        {
+            match self
+                .client
+                .get(identifier)
+                .header("Range", "bytes=0-0")
+                .send()
+                .await
+            {
                 Ok(r) => {
                     if r.status().is_success() {
                         resp = Some(r);
@@ -130,7 +140,7 @@ impl SourcePlugin for HttpSource {
                             cause: "".to_string(),
                         });
                     }
-                },
+                }
                 Err(e) => {
                     return LoadResult::Error(LoadError {
                         message: format!("HTTP request failed: {}", e),
@@ -149,7 +159,7 @@ impl SourcePlugin for HttpSource {
             .unwrap_or("");
 
         if !self.is_valid_content_type(content_type) {
-             return LoadResult::Error(LoadError {
+            return LoadResult::Error(LoadError {
                 message: format!("Unsupported content type: {}", content_type),
                 severity: crate::common::Severity::Common,
                 cause: "".to_string(),
@@ -157,14 +167,8 @@ impl SourcePlugin for HttpSource {
         }
 
         let info = self.extract_metadata(identifier, headers);
-        let encoded = BASE64_STANDARD.encode(identifier.as_bytes()); // Simplified encoding for now
 
-        LoadResult::Track(Track {
-            encoded,
-            info,
-            plugin_info: serde_json::json!({}),
-            user_data: serde_json::json!({}),
-        })
+        LoadResult::Track(Track::new(info))
     }
 
     async fn get_playback_url(&self, identifier: &str) -> Option<String> {

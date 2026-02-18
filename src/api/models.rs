@@ -5,6 +5,12 @@ pub struct LoadTracksQuery {
     pub identifier: String,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecodeTrackQuery {
+    pub encoded_track: String,
+}
+
 #[derive(serde::Serialize)]
 pub struct Exception {
     pub message: String,

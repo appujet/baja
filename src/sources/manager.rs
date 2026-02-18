@@ -1,7 +1,7 @@
-use super::plugin::SourcePlugin;
 use super::http::HttpSource;
-use super::youtube::YouTubeSource;
+use super::plugin::SourcePlugin;
 use super::spotify::SpotifySource;
+use super::youtube::YouTubeSource;
 
 /// Source Manager - coordinates all registered source plugins
 pub struct SourceManager {
@@ -35,7 +35,6 @@ impl SourceManager {
         crate::api::tracks::LoadResult::Empty {}
     }
 
-  
     pub async fn get_playback_url(&self, identifier: &str) -> Option<String> {
         for source in &self.sources {
             if source.can_handle(identifier) {
@@ -50,5 +49,10 @@ impl SourceManager {
         // No source could handle it
         tracing::warn!("No source could resolve playback URL for: {}", identifier);
         None
+    }
+
+    /// Get names of all registered sources
+    pub fn source_names(&self) -> Vec<String> {
+        self.sources.iter().map(|s| s.name().to_string()).collect()
     }
 }

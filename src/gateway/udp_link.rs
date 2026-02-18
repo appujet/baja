@@ -17,7 +17,6 @@ pub struct UdpBackend {
     salsa_cipher: Option<XSalsa20Poly1305>,
     aes_cipher: Option<Aes256Gcm>,
 
-    // Internal state management to match NodeLink's Connection class
     sequence: AtomicU16,
     timestamp: AtomicU32,
     nonce: AtomicU32,
@@ -62,11 +61,9 @@ impl UdpBackend {
     }
 
     pub fn send_opus_packet(&self, payload: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-        // Increment sequence and timestamp like NodeLink
         let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
         let timestamp = self.timestamp.fetch_add(960, Ordering::SeqCst);
 
-        // Nonce is incremented before use in NodeLink
         let current_nonce = self.nonce.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
 
         let mut header = [0u8; 12];

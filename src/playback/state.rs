@@ -86,30 +86,40 @@ pub struct PlayerUpdateTrack {
     pub user_data: Option<serde_json::Value>,
 }
 
-/// All audio filters.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Filters {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub volume: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub equalizer: Option<Vec<EqBand>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub karaoke: Option<KaraokeFilter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timescale: Option<TimescaleFilter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tremolo: Option<TremoloFilter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vibrato: Option<VibratoFilter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub distortion: Option<DistortionFilter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rotation: Option<RotationFilter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub channel_mix: Option<ChannelMixFilter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub low_pass: Option<LowPassFilter>,
+macro_rules! define_filters {
+    ($($field:ident : $type:ty => $name:expr),* $(,)?) => {
+        /// All audio filters.
+        #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct Filters {
+            $(
+                #[serde(skip_serializing_if = "Option::is_none")]
+                pub $field: Option<$type>,
+            )*
+        }
+
+        impl Filters {
+            /// Get names of all supported filters in camelCase.
+            pub fn names() -> Vec<String> {
+                vec![
+                    $($name.into()),*
+                ]
+            }
+        }
+    };
+}
+
+define_filters! {
+    volume: f32 => "volume",
+    equalizer: Vec<EqBand> => "equalizer",
+    karaoke: KaraokeFilter => "karaoke",
+    timescale: TimescaleFilter => "timescale",
+    tremolo: TremoloFilter => "tremolo",
+    vibrato: VibratoFilter => "vibrato",
+    distortion: DistortionFilter => "distortion",
+    rotation: RotationFilter => "rotation",
+    channel_mix: ChannelMixFilter => "channelMix",
+    low_pass: LowPassFilter => "lowPass",
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

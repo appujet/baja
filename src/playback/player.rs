@@ -1,7 +1,6 @@
-use crate::api::tracks::{Track, TrackInfo};
+use crate::api::tracks::Track;
 use crate::audio::playback::TrackHandle;
 use crate::playback::{Filters, Player, PlayerState, VoiceConnectionState, VoiceState};
-use base64::prelude::*;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -48,23 +47,12 @@ impl PlayerContext {
 
         Player {
             guild_id: self.guild_id.clone(),
-            track: self.track.as_ref().map(|t| Track {
-                encoded: BASE64_STANDARD.encode(t.as_bytes()),
-                info: TrackInfo {
-                    identifier: t.clone(),
-                    is_seekable: true,
-                    author: String::new(),
-                    length: 0,
-                    is_stream: false,
-                    position: current_pos,
-                    title: t.clone(),
-                    uri: Some(t.clone()),
-                    artwork_url: None,
-                    isrc: None,
-                    source_name: "http".to_string(),
-                },
-                plugin_info: serde_json::json!({}),
-                user_data: serde_json::json!({}),
+            track: self.track.as_ref().and_then(|t| {
+                let mut track = Track::decode(t);
+                if let Some(ref mut trk) = track {
+                    trk.info.position = current_pos;
+                }
+                track
             }),
             volume: self.volume,
             paused: self.paused,

@@ -1,5 +1,5 @@
-use crate::server::AppState;
 use crate::api;
+use crate::server::AppState;
 
 pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
     let mut total_players = 0i32;
@@ -16,6 +16,8 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
 
     let (mem_used, mem_free, mem_total) = read_memory_stats();
 
+    let system_load = read_system_load();
+
     api::Stats {
         players: total_players,
         playing_players,
@@ -28,11 +30,22 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
         },
         cpu: api::Cpu {
             cores: num_cpus(),
-            system_load: 0.0,
-            lavalink_load: 0.0,
+            system_load,
+            lavalink_load: 0.0, // Harder to calculate per-process load without external crate
         },
         frame_stats: None,
     }
+}
+
+fn read_system_load() -> f64 {
+    std::fs::read_to_string("/proc/loadavg")
+        .ok()
+        .and_then(|s| {
+            s.split_whitespace()
+                .next()
+                .and_then(|v| v.parse::<f64>().ok())
+        })
+        .unwrap_or(0.0)
 }
 
 fn num_cpus() -> i32 {
