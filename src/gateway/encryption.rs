@@ -78,6 +78,19 @@ impl DaveHandler {
         true
     }
 
+    pub fn reset(&mut self) {
+        self.protocol_version = 0;
+        self.pending_transitions.clear();
+        self.external_sender_set = false;
+        self.pending_proposals.clear();
+        self.was_ready = false;
+        if let Some(session) = &mut self.session {
+            // Try to re-init with version 0 (passthrough)
+            let _ = session.reinit(NonZeroU16::new(1).unwrap(), self.user_id, self.channel_id, None);
+        }
+        info!("DAVE session reset to plaintext/passthrough due to error");
+    }
+
     pub fn execute_transition(&mut self, transition_id: u16) {
         if let Some(next_version) = self.pending_transitions.remove(&transition_id) {
             self.protocol_version = next_version;
