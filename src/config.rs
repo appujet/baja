@@ -10,6 +10,10 @@ pub struct Config {
     pub filters: FiltersConfig,
     #[serde(default)]
     pub jiosaavn: Option<JioSaavnConfig>,
+    #[serde(default)]
+    pub providers: Vec<String>,
+    #[serde(default)]
+    pub spotify: Option<SpotifyConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -108,6 +112,12 @@ pub struct LoggingConfig {
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct JioSaavnConfig {
     pub decryption: Option<JioSaavnDecryptionConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct SpotifyConfig {
+    #[serde(rename = "spDc")]
+    pub sp_dc: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

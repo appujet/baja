@@ -46,19 +46,32 @@ pub async fn start_playback(
     player.stop_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     // Decode the Lavalink track format to extract the actual playback URI
-    let identifier = if let Some(decoded_track) = api::tracks::Track::decode(&track) {
-        // Use the URI from the track metadata (the actual audio URL)
-        decoded_track
-            .info
-            .uri
-            .unwrap_or_else(|| decoded_track.info.identifier.clone())
+    let track_info = if let Some(decoded_track) = api::tracks::Track::decode(&track) {
+        decoded_track.info
     } else {
         // If decoding fails, treat the raw string as a direct identifier
-        track.clone()
+        api::tracks::TrackInfo {
+            title: "Unknown".to_string(),
+            author: "Unknown".to_string(),
+            length: 0,
+            identifier: track.clone(),
+            is_stream: false,
+            uri: Some(track.clone()),
+            artwork_url: None,
+            isrc: None,
+            source_name: "unknown".to_string(),
+            is_seekable: true,
+            position: 0,
+        }
     };
 
+    let identifier = track_info
+        .uri
+        .clone()
+        .unwrap_or_else(|| track_info.identifier.clone());
+
     let playback_url = match source_manager
-        .get_playback_url(&identifier, routeplanner.clone())
+        .get_playback_url(&track_info, routeplanner.clone())
         .await
     {
         Some(url) => url,

@@ -15,6 +15,13 @@ http = true
 local = false
 jiosaavn = true
 
+
+providers = [
+  #"ytsearch:\"%ISRC%\"",
+  #"ytsearch:%QUERY%",
+  "jssearch:%QUERY%"
+]
+
 # The decryption configuration for the JioSaavn tracks
 [jiosaavn.decryption]
 secretKey = "38346591" # The required secret key used for decryption
@@ -37,3 +44,6 @@ low_pass = true
 level = "info"
 # Optional: detailed module overrides. Example: "rustalink=debug,tokio=warn"
 filters = "rustalink=debug"
+
+[spotify]
+spDc = "" # Optional: Spotify sp_dc cookie for better authentication
