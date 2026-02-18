@@ -77,3 +77,12 @@ impl PlayerContext {
         }
     }
 }
+
+impl Drop for PlayerContext {
+    fn drop(&mut self) {
+        if let Some(task) = &self.gateway_task {
+            tracing::debug!("Aborting gateway task for guild {}", self.guild_id);
+            task.abort();
+        }
+    }
+}

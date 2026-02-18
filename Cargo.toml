@@ -39,3 +39,10 @@ axum = { version = "0.8.1", features = ["ws"] }
 tower-http = { version = "0.6.2", features = ["trace", "cors"] }
 rand_agents = "1.0.0"
 
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+opt-level = 3
+strip = true
+
