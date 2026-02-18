@@ -40,6 +40,7 @@ pub struct VoiceGateway {
     token: String,
     endpoint: String,
     mixer: Arc<Mutex<Mixer>>,
+    filter_chain: Arc<Mutex<crate::audio::filters::FilterChain>>,
     cancel_token: CancellationToken,
 }
 
@@ -67,6 +68,7 @@ impl VoiceGateway {
         token: String,
         endpoint: String,
         mixer: Arc<Mutex<Mixer>>,
+        filter_chain: Arc<Mutex<crate::audio::filters::FilterChain>>,
     ) -> Self {
         Self {
             guild_id,
@@ -76,6 +78,7 @@ impl VoiceGateway {
             token,
             endpoint,
             mixer,
+            filter_chain,
             cancel_token: CancellationToken::new(),
         }
     }
@@ -358,6 +361,7 @@ impl VoiceGateway {
                                         "Starting speak loop for SSRC {} with mode {}",
                                         ssrc, mode_clone
                                     );
+                                    let filter_chain_clone = self.filter_chain.clone();
                                     tokio::spawn(async move {
                                         if let Err(e) = speak_loop(
                                             mixer,
@@ -367,6 +371,7 @@ impl VoiceGateway {
                                             key,
                                             mode_clone,
                                             dave_clone,
+                                            filter_chain_clone,
                                             cancel_clone,
                                         )
                                         .await
@@ -637,6 +642,7 @@ async fn speak_loop(
     key: [u8; 32],
     mode: String,
     dave: Arc<Mutex<DaveHandler>>,
+    filter_chain: Arc<Mutex<crate::audio::filters::FilterChain>>,
     cancel_token: CancellationToken,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use crate::audio::pipeline::encoder::Encoder;
@@ -650,6 +656,8 @@ async fn speak_loop(
     let mut pcm_buf = vec![0i16; 1920];
     let mut opus_buf = vec![0u8; 4000];
     let mut silence_frames = 0;
+    // Timescale output buffer for feeding fixed-size frames to the encoder
+    let mut ts_frame_buf = vec![0i16; 1920];
 
     loop {
         tokio::select! {
@@ -672,6 +680,38 @@ async fn speak_loop(
                         continue;
                     }
                 }
+
+                // Apply audio filters
+                let mut fc = filter_chain.lock().await;
+                if fc.is_active() {
+                    fc.process(&mut pcm_buf);
+
+                    if fc.has_timescale() {
+                        // Timescale changes buffer length — drain fixed frames
+                        if fc.fill_frame(&mut ts_frame_buf) {
+                            let size = encoder.encode(&ts_frame_buf, &mut opus_buf).map_err(map_boxed_err)?;
+                            drop(fc);
+                            if size > 0 {
+                                let mut dave_lock = dave.lock().await;
+                                match dave_lock.encrypt_opus(&opus_buf[..size]) {
+                                    Ok(encrypted_opus) => {
+                                        if let Err(e) = udp.send_opus_packet(&encrypted_opus) {
+                                            tracing::warn!("Failed to send UDP packet: {}", e);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("DAVE encryption failed: {}", e);
+                                    }
+                                }
+                            }
+                        } else {
+                            // Not enough data yet from timescale — skip frame
+                            drop(fc);
+                        }
+                        continue;
+                    }
+                }
+                drop(fc);
 
                 let size = encoder.encode(&pcm_buf, &mut opus_buf).map_err(map_boxed_err)?;
                 if size > 0 {
