@@ -149,6 +149,16 @@ pub async fn update_player(
     // Apply paused
     if let Some(paused) = body.paused {
         player.paused = paused;
+        if let Some(handle) = &player.track_handle {
+            let h = handle.clone();
+            tokio::spawn(async move {
+                if paused {
+                    h.pause().await;
+                } else {
+                    h.play().await;
+                }
+            });
+        }
     }
 
     // Apply position (seek)
