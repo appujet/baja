@@ -72,7 +72,12 @@ fn decode_loop(
         let packet = match format.next_packet() {
             Ok(packet) => packet,
             Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-            Err(Error::IoError(e)) => return Err(Box::new(e)),
+            Err(Error::IoError(e)) => {
+                if tx.is_disconnected() {
+                    return Ok(());
+                }
+                return Err(Box::new(e));
+            }
             Err(Error::DecodeError(e)) => {
                 error!("decode error: {}", e);
                 continue;
@@ -110,7 +115,12 @@ fn decode_loop(
                 sample_buf = Some(buf);
             }
             Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-            Err(Error::IoError(e)) => return Err(Box::new(e)),
+            Err(Error::IoError(e)) => {
+                if tx.is_disconnected() {
+                    return Ok(());
+                }
+                return Err(Box::new(e));
+            }
             Err(Error::DecodeError(e)) => {
                 error!("decode error: {}", e);
                 continue;

@@ -213,7 +213,7 @@ impl JioSaavnSource {
             ("token", id),
             ("type", "song"),
         ];
-        debug!("Fetching metadata via webapi.get for id: {}", id);
+
 
         self.get_json(&params).await.and_then(|json| {
             // Usually returns { "songs": [ ... ] }
@@ -471,7 +471,7 @@ impl SourcePlugin for JioSaavnSource {
             let type_ = caps.name("type").unwrap().as_str();
             let id = caps.name("id").unwrap().as_str();
 
-            debug!("JioSaavn resolving {} with ID: {}", type_, id);
+
 
             if type_ == "song" {
                 // Use fetch_metadata for resolving (gets song info)
@@ -494,17 +494,16 @@ impl SourcePlugin for JioSaavnSource {
         identifier: &str,
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> Option<String> {
-        debug!("JioSaavn fetching stream for: {}", identifier);
+
 
         let id = if let Some(caps) = self.url_regex.captures(identifier) {
             caps.name("id").map(|m| m.as_str()).unwrap_or(identifier)
         } else {
             identifier
         };
-        debug!("Extracted ID for playback: {}", id);
+
 
         let track_data = self.fetch_metadata(id).await?;
-        println!("Track data: {:#?}", track_data);
         let encrypted_url = track_data
             .get("more_info")
             .and_then(|m| m.get("encrypted_media_url"))
@@ -522,7 +521,7 @@ impl SourcePlugin for JioSaavnSource {
             playback_url = playback_url.replace("_96.mp4", "_320.mp4");
         }
 
-        debug!("Resolved playback URL: {}", playback_url);
+
 
         Some(playback_url)
     }
