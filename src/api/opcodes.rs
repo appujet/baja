@@ -1,7 +1,31 @@
+use serde::Deserialize;
+use serde_json::Value;
 use std::sync::Arc;
 use crate::server::{AppState, Session};
-use crate::player::PlayerContext;
-use crate::ws::messages::IncomingMessage;
+use crate::playback::PlayerContext;
+
+#[derive(Deserialize, Debug)]
+#[serde(tag = "op")]
+#[serde(rename_all = "camelCase")]
+pub enum IncomingMessage {
+    VoiceUpdate {
+        guild_id: String,
+        session_id: String,
+        channel_id: Option<String>,
+        event: Value,
+    },
+    Play {
+        guild_id: String,
+        track: String,
+    },
+    Stop {
+        guild_id: String,
+    },
+    Destroy {
+        guild_id: String,
+    },
+}
+
 
 pub async fn handle_op(
     op: IncomingMessage,
@@ -38,7 +62,7 @@ pub async fn handle_op(
                         || player.voice.session_id != voice_session_id
                         || player.voice.channel_id != channel_id
                     {
-                        player.voice = crate::player::VoiceConnectionState {
+                        player.voice = crate::playback::VoiceConnectionState {
                             token,
                             endpoint,
                             session_id: voice_session_id,

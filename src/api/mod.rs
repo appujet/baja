@@ -14,15 +14,18 @@ where
     Ok(Some(Option::deserialize(deserializer)?))
 }
 
-pub mod error;
+pub mod events;
 pub mod info;
-pub mod messages;
+pub mod models;
+pub mod opcodes;
 pub mod routeplanner;
 pub mod session;
 pub mod stats;
+pub mod tracks;
 
-pub use error::*;
+pub use events::*;
 pub use info::*;
-pub use messages::*;
+pub use models::*;
 pub use session::*;
 pub use stats::*;
+pub use tracks::*;

@@ -1,108 +1,15 @@
-use crate::rest::models::*;
 use crate::server::AppState;
-use crate::sources::SourceManager;
-use crate::types;
-use crate::player::{Filters, Player, PlayerState, PlayerUpdate, VoiceState};
-use crate::track::{LoadResult, Track, TrackInfo};
+use crate::api;
+use crate::playback::{Filters, Player, PlayerState, PlayerUpdate, VoiceState};
+use crate::api::tracks::{Track, TrackInfo};
 use crate::server::now_ms;
-use crate::player::{PlayerContext, VoiceConnectionState};
+use crate::playback::{PlayerContext, VoiceConnectionState};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
 };
 use std::sync::Arc;
-
-/// GET /v4/loadtracks?identifier=...
-pub async fn load_tracks(
-    Query(params): Query<LoadTracksQuery>,
-    State(_state): State<Arc<AppState>>,
-) -> Json<LoadResult> {
-    let identifier = params.identifier;
-    tracing::debug!("Load tracks: '{}'", identifier);
-
-    let source_manager = SourceManager::new();
-    let response = source_manager.load(&identifier).await;
-
-    // Convert legacy LoadTracksResponse to types::LoadResult
-    Json(match response.load_type {
-        LoadType::Track => {
-            if let LoadData::Track(t) = response.data {
-                LoadResult::Track(Track {
-                    encoded: t.encoded,
-                    info: TrackInfo {
-                        identifier: t.info.identifier,
-                        is_seekable: t.info.is_seekable,
-                        author: t.info.author,
-                        length: t.info.length,
-                        is_stream: t.info.is_stream,
-                        position: t.info.position,
-                        title: t.info.title,
-                        uri: Some(t.info.uri),
-                        artwork_url: t.info.artwork_url,
-                        isrc: t.info.isrc,
-                        source_name: t.info.source_name,
-                    },
-                    plugin_info: serde_json::json!({}),
-                    user_data: serde_json::json!({}),
-                })
-            } else {
-                LoadResult::Empty {}
-            }
-        }
-        _ => LoadResult::Empty {},
-    })
-}
-
-/// GET /v4/info
-pub async fn get_info() -> Json<types::Info> {
-    Json(types::Info {
-        version: types::Version {
-            semver: "4.0.0".to_string(),
-            major: 4,
-            minor: 0,
-            patch: 0,
-            pre_release: None,
-            build: None,
-        },
-        build_time: 0,
-        git: types::GitInfo {
-            branch: "main".to_string(),
-            commit: "unknown".to_string(),
-            commit_time: 0,
-        },
-        jvm: "Rust".to_string(),
-        lavaplayer: "symphonia".to_string(),
-        source_managers: vec!["http".to_string(), "youtube".to_string()],
-        filters: vec![
-            "volume".into(),
-            "equalizer".into(),
-            "karaoke".into(),
-            "timescale".into(),
-            "tremolo".into(),
-            "vibrato".into(),
-            "distortion".into(),
-            "rotation".into(),
-            "channelMix".into(),
-            "lowPass".into(),
-        ],
-        plugins: vec![],
-    })
-}
-
-/// GET /v4/stats
-pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<types::Stats> {
-    let uptime = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-    Json(crate::server::collect_stats(&state, uptime))
-}
-
-/// GET /v4/version
-pub async fn get_version() -> String {
-    "4.0.0".to_string()
-}
 
 /// GET /v4/sessions/{sessionId}/players
 pub async fn get_players(
@@ -120,7 +27,7 @@ pub async fn get_players(
         }
         None => (
             StatusCode::NOT_FOUND,
-            Json(serde_json::to_value(types::LavalinkError::not_found(
+            Json(serde_json::to_value(crate::common::LavalinkError::not_found(
                 format!("Session not found: {}", session_id),
                 format!("/v4/sessions/{}/players", session_id),
             ))
@@ -164,7 +71,7 @@ pub async fn get_player(
         None => (
             StatusCode::NOT_FOUND,
             Json(
-                serde_json::to_value(types::LavalinkError::not_found(
+                serde_json::to_value(crate::common::LavalinkError::not_found(
                     format!("Session not found: {}", session_id),
                     format!("/v4/sessions/{}/players/{}", session_id, guild_id),
                 ))
@@ -193,7 +100,7 @@ pub async fn update_player(
             return (
                 StatusCode::NOT_FOUND,
                 Json(
-                    serde_json::to_value(types::LavalinkError::not_found(
+                    serde_json::to_value(crate::common::LavalinkError::not_found(
                         "Session not found",
                         format!("/v4/sessions/{}/players/{}", session_id, guild_id),
                     ))
@@ -283,8 +190,8 @@ pub async fn update_player(
                     // Emit TrackEnd with reason Stopped
                     if let Some(encoded) = track_data {
                         tracing::debug!("Emitting TrackEnd(Stopped) for guild {}", guild_id);
-                        let end_event = types::OutgoingMessage::Event(
-                            types::LavalinkEvent::TrackEnd {
+                        let end_event = api::OutgoingMessage::Event(
+                            api::LavalinkEvent::TrackEnd {
                                 guild_id: guild_id.clone(),
                                 track: Track {
                                     encoded,
@@ -304,7 +211,7 @@ pub async fn update_player(
                                     plugin_info: serde_json::json!({}),
                                     user_data: serde_json::json!({}),
                                 },
-                                reason: types::TrackEndReason::Stopped,
+                                reason: api::TrackEndReason::Stopped,
                             },
                         );
                         session.send_message(&end_event).await;
@@ -362,10 +269,10 @@ pub async fn destroy_player(
                 if player.track.is_some() {
                     if let Some(track_data) = player.to_player_response().track {
                         tracing::debug!("Emitting TrackEnd(Cleanup) for guild {}", guild_id);
-                        let end_event = types::OutgoingMessage::Event(types::LavalinkEvent::TrackEnd {
+                        let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
                             guild_id: guild_id.clone(),
                             track: track_data,
-                            reason: types::TrackEndReason::Cleanup,
+                            reason: api::TrackEndReason::Cleanup,
                         });
                         session.send_message(&end_event).await;
                     }
@@ -383,7 +290,7 @@ pub async fn destroy_player(
         None => (
             StatusCode::NOT_FOUND,
             Json(
-                serde_json::to_value(types::LavalinkError::not_found(
+                serde_json::to_value(crate::common::LavalinkError::not_found(
                     "Session not found",
                     format!("/v4/sessions/{}/players/{}", session_id, guild_id),
                 ))
@@ -398,7 +305,7 @@ pub async fn destroy_player(
 pub async fn update_session(
     Path(session_id): Path<String>,
     State(state): State<Arc<AppState>>,
-    Json(body): Json<types::SessionUpdate>,
+    Json(body): Json<api::SessionUpdate>,
 ) -> impl IntoResponse {
     tracing::debug!("Update session: session={} body={:?}", session_id, body);
 
@@ -415,7 +322,7 @@ pub async fn update_session(
                     .store(timeout, std::sync::atomic::Ordering::Relaxed);
             }
 
-            let info = types::SessionInfo {
+            let info = api::SessionInfo {
                 resuming: session
                     .resumable
                     .load(std::sync::atomic::Ordering::Relaxed),
@@ -429,7 +336,7 @@ pub async fn update_session(
         None => (
             StatusCode::NOT_FOUND,
             Json(
-                serde_json::to_value(types::LavalinkError::not_found(
+                serde_json::to_value(crate::common::LavalinkError::not_found(
                     "Session not found",
                     format!("/v4/sessions/{}", session_id),
                 ))

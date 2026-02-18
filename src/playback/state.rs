@@ -1,4 +1,4 @@
-use crate::track::Track;
+use crate::api::tracks::Track;
 use serde::{Deserialize, Serialize};
 
 /// Full player state as returned by REST endpoints.
@@ -39,6 +39,14 @@ pub struct VoiceState {
     pub channel_id: Option<String>,
 }
 
+#[derive(Clone, Default)]
+pub struct VoiceConnectionState {
+    pub token: String,
+    pub endpoint: String,
+    pub session_id: String,
+    pub channel_id: Option<String>,
+}
+
 /// Request body for PATCH /v4/sessions/{sessionId}/players/{guildId}.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,7 +74,7 @@ pub struct PlayerUpdateTrack {
     /// Base64-encoded track. Null to stop. Omit to keep current.
     #[serde(
         default,
-        deserialize_with = "crate::types::deserialize_optional_optional"
+        deserialize_with = "crate::api::deserialize_optional_optional"
     )]
     pub encoded: Option<Option<String>>,
     /// Track identifier to resolve. Mutually exclusive with `encoded`.

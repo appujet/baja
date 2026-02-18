@@ -1,5 +1,5 @@
-use crate::player::PlayerState;
-use crate::track::Track;
+use crate::api::tracks::Track;
+use crate::playback::PlayerState;
 use serde::Serialize;
 
 /// Messages sent from server to client over WebSocket.
@@ -76,6 +76,6 @@ pub enum TrackEndReason {
 #[allow(dead_code)]
 pub struct TrackException {
     pub message: Option<String>,
-    pub severity: super::error::Severity,
+    pub severity: crate::common::Severity,
     pub cause: String,
 }

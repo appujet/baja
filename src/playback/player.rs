@@ -1,17 +1,9 @@
+use crate::api::tracks::{Track, TrackInfo};
 use crate::audio::playback::TrackHandle;
-use crate::player::{Filters, Player, PlayerState, VoiceState};
-use crate::track::{Track, TrackInfo};
+use crate::playback::{Filters, Player, PlayerState, VoiceConnectionState, VoiceState};
 use base64::prelude::*;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
-#[derive(Clone, Default)]
-pub struct VoiceConnectionState {
-    pub token: String,
-    pub endpoint: String,
-    pub session_id: String,
-    pub channel_id: Option<String>,
-}
 
 /// Internal player state.
 pub struct PlayerContext {
@@ -22,7 +14,7 @@ pub struct PlayerContext {
     pub track_handle: Option<TrackHandle>,
     pub position: u64,
     pub voice: VoiceConnectionState,
-    pub engine: Arc<Mutex<crate::voice::VoiceEngine>>,
+    pub engine: Arc<Mutex<crate::gateway::VoiceEngine>>,
     pub filters: Filters,
     pub end_time: Option<u64>,
     pub stop_signal: Arc<std::sync::atomic::AtomicBool>,
@@ -39,7 +31,7 @@ impl PlayerContext {
             track_handle: None,
             position: 0,
             voice: VoiceConnectionState::default(),
-            engine: Arc::new(Mutex::new(crate::voice::VoiceEngine::new())),
+            engine: Arc::new(Mutex::new(crate::gateway::VoiceEngine::new())),
             filters: Filters::default(),
             end_time: None,
             stop_signal: Arc::new(std::sync::atomic::AtomicBool::new(false)),

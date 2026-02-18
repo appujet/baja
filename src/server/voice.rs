@@ -2,11 +2,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::error;
 use crate::server::UserId;
-use crate::player::VoiceConnectionState;
-use crate::voice::VoiceGateway;
+use crate::playback::VoiceConnectionState;
+use crate::gateway::VoiceGateway;
 
 pub async fn connect_voice(
-    engine: Arc<Mutex<crate::voice::VoiceEngine>>,
+    engine: Arc<Mutex<crate::gateway::VoiceEngine>>,
     guild_id: String,
     user_id: UserId,
     voice: VoiceConnectionState,
