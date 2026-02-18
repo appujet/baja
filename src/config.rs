@@ -8,6 +8,8 @@ pub struct Config {
     pub logging: Option<LoggingConfig>,
     #[serde(default)]
     pub filters: FiltersConfig,
+    #[serde(default)]
+    pub jiosaavn: Option<JioSaavnConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -93,12 +95,25 @@ pub struct SourcesConfig {
     pub spotify: bool,
     pub http: bool,
     pub local: bool,
+    #[serde(default)]
+    pub jiosaavn: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct LoggingConfig {
     pub level: Option<String>,
     pub filters: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct JioSaavnConfig {
+    pub decryption: Option<JioSaavnDecryptionConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct JioSaavnDecryptionConfig {
+    #[serde(rename = "secretKey")]
+    pub secret_key: Option<String>,
 }
 
 impl Config {

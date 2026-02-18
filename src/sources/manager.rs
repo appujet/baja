@@ -1,4 +1,5 @@
 use super::http::HttpSource;
+use super::jiosaavn::JioSaavnSource;
 use super::plugin::SourcePlugin;
 use super::spotify::SpotifySource;
 use super::youtube::YouTubeSource;
@@ -11,13 +12,24 @@ pub struct SourceManager {
 
 impl SourceManager {
     /// Create a new SourceManager with all available sources
-    pub fn new() -> Self {
+    pub fn new(config: &crate::config::Config) -> Self {
         let mut sources: Vec<Box<dyn SourcePlugin>> = Vec::new();
 
         // Register all sources in priority order
-        sources.push(Box::new(HttpSource::new()));
-        sources.push(Box::new(YouTubeSource::new()));
-        sources.push(Box::new(SpotifySource::new()));
+        // Specialized sources first
+        if config.sources.jiosaavn {
+            sources.push(Box::new(JioSaavnSource::new(config.jiosaavn.clone())));
+        }
+        if config.sources.youtube {
+            sources.push(Box::new(YouTubeSource::new()));
+        }
+        if config.sources.spotify {
+            sources.push(Box::new(SpotifySource::new()));
+        }
+        // Generic HTTP source last
+        if config.sources.http {
+            sources.push(Box::new(HttpSource::new()));
+        }
 
         Self { sources }
     }

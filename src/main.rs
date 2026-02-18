@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sessions: DashMap::new(),
         resumable_sessions: DashMap::new(),
         routeplanner,
-        source_manager: Arc::new(rustalink::sources::SourceManager::new()),
+        source_manager: Arc::new(rustalink::sources::SourceManager::new(&config)),
         config: config.clone(),
     });
 

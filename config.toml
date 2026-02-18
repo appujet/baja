@@ -13,6 +13,13 @@ youtube = true
 spotify = true
 http = true
 local = false
+jiosaavn = true
+
+# The decryption configuration for the JioSaavn tracks
+[jiosaavn.decryption]
+secretKey = "38346591" # The required secret key used for decryption
+# algorithm = "DES" # The algorithm used for decryption (Default "DES")
+# transformation = "DES/ECB/PKCS5Padding" # The transformation used for decryption (Default "DES/ECB/PKCS5Padding")
 
 [filters]
 volume = true
@@ -29,4 +36,4 @@ low_pass = true
 [logging]
 level = "info"
 # Optional: detailed module overrides. Example: "rustalink=debug,tokio=warn"
-# filters = "rustalink=debug"
+filters = "rustalink=debug"
