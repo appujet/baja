@@ -2,7 +2,6 @@ use crate::api;
 use crate::audio::playback::{PlaybackState, TrackHandle};
 use crate::playback::{PlayerContext, PlayerState};
 use crate::server::Session;
-use base64::prelude::*;
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -46,9 +45,15 @@ pub async fn start_playback(
     player.paused = false;
     player.stop_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    let identifier = if let Ok(decoded) = BASE64_STANDARD.decode(&track) {
-        String::from_utf8(decoded).unwrap_or(track.clone())
+    // Decode the Lavalink track format to extract the actual playback URI
+    let identifier = if let Some(decoded_track) = api::tracks::Track::decode(&track) {
+        // Use the URI from the track metadata (the actual audio URL)
+        decoded_track
+            .info
+            .uri
+            .unwrap_or_else(|| decoded_track.info.identifier.clone())
     } else {
+        // If decoding fails, treat the raw string as a direct identifier
         track.clone()
     };
 
