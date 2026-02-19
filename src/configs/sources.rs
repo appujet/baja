@@ -36,6 +36,8 @@ pub struct YouTubeClientsConfig {
     pub playback: Vec<String>,
     #[serde(default)]
     pub refresh_tokens: Vec<String>,
+    #[serde(default)]
+    pub get_oauth_token: bool,
 }
 
 impl Default for YouTubeClientsConfig {
@@ -44,6 +46,7 @@ impl Default for YouTubeClientsConfig {
             search: default_yt_search_clients_list(),
             playback: default_yt_playback_clients_list(),
             refresh_tokens: Vec::new(),
+            get_oauth_token: false,
         }
     }
 }

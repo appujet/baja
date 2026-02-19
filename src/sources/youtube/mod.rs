@@ -39,6 +39,14 @@ impl YouTubeSource {
         let oauth = Arc::new(YouTubeOAuth::new(config.clients.refresh_tokens.clone()));
         let cipher_manager = Arc::new(YouTubeCipherManager::new(config.cipher.clone()));
 
+        // Call initialization in background if no tokens provided and enabled in config
+        if config.clients.get_oauth_token && config.clients.refresh_tokens.is_empty() {
+            let oauth_clone = oauth.clone();
+            tokio::spawn(async move {
+                oauth_clone.initialize_access_token().await;
+            });
+        }
+
         let create_client = |name: &str| -> Option<Box<dyn YouTubeClient>> {
             match name.to_uppercase().as_str() {
                 "WEB" => Some(Box::new(WebClient::new())),

@@ -31,6 +31,7 @@ providers = [
 search = ["MUSIC_ANDROID", "MUSIC_WEB", "WEB", "ANDROID"]
 playback = ["ANDROID", "MUSIC_ANDROID", "MUSIC_WEB", "IOS", "TV", "ANDROID_VR", "WEB"]
 # refresh_tokens = [] # Optional: list of refresh tokens for clients
+get_oauth_token = false # Set to true to enable OAuth device flow initialization
 
 # YouTube Cipher configuration
 [youtube.cipher]
