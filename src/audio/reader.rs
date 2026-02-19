@@ -31,6 +31,13 @@ impl RemoteReader {
             len: len.map(|l| l as u64),
         })
     }
+    pub fn content_type(&self) -> Option<String> {
+        self.response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
+    }
 }
 
 impl Read for RemoteReader {

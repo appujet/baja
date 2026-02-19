@@ -2,95 +2,106 @@ use crate::api::tracks::{LoadError, LoadResult, Track, TrackInfo};
 use crate::sources::SourcePlugin;
 use async_trait::async_trait;
 use regex::Regex;
-use reqwest::header::{CONTENT_LENGTH, CONTENT_TYPE, HeaderMap};
 use std::sync::Arc;
-use tracing::debug;
+use symphonia::core::codecs::CODEC_TYPE_NULL;
+use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::{MetadataOptions, StandardTagKey};
+use symphonia::core::probe::Hint;
+use tracing::{debug, error, warn};
 
 pub struct HttpSource {
     url_regex: Regex,
-    client: reqwest::Client,
 }
 
 impl HttpSource {
     pub fn new() -> Self {
         Self {
-            url_regex: Regex::new(r"^https?://").unwrap(),
-            client: crate::common::http::HttpClient::new().unwrap(),
+            url_regex: Regex::new(r"^(?:https?|icy)://").unwrap(),
         }
     }
 
-    fn is_valid_content_type(&self, content_type: &str) -> bool {
-        content_type.starts_with("audio/")
-            || content_type.starts_with("video/")
-            || content_type == "application/octet-stream"
-            || content_type.is_empty()
-    }
+    fn probe_metadata(
+        url: String,
+        local_addr: Option<std::net::IpAddr>,
+    ) -> Result<TrackInfo, Box<dyn std::error::Error + Send + Sync>> {
+        let source = crate::audio::reader::RemoteReader::new(&url, local_addr)?;
+        let mut hint = Hint::new();
+        
+        if let Some(content_type) = source.content_type() {
+            hint.mime_type(&content_type);
+        }
 
-    fn extract_metadata(&self, url: &str, headers: &HeaderMap) -> TrackInfo {
-        let is_stream =
-            headers.contains_key("icy-metaint") || !headers.contains_key(CONTENT_LENGTH);
+        let mss = MediaSourceStream::new(Box::new(source), Default::default());
 
-        // Extract title from headers or URL
-        let title = headers
-            .get("icy-name")
-            .and_then(|h| h.to_str().ok())
-            .or_else(|| {
-                headers
-                    .get("content-disposition")
-                    .and_then(|h| h.to_str().ok())
-                    .and_then(|s| s.split("filename=\"").nth(1))
-                    .and_then(|s| s.split('"').next())
-            })
-            .unwrap_or_else(|| {
-                url.split('/')
-                    .last()
-                    .and_then(|s| s.split('?').next())
-                    .unwrap_or("Audio Stream")
-            })
-            .to_string();
+        if let Some(ext) = std::path::Path::new(&url).extension().and_then(|s| s.to_str()) {
+            hint.with_extension(ext);
+        }
 
-        let author = headers
-            .get("icy-description")
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or("unknown")
-            .to_string();
+        let probed = symphonia::default::get_probe().format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )?;
 
-        let length = if is_stream {
-            u64::MAX // Infinite for streams
+        let mut format = probed.format;
+        let track = format
+            .tracks()
+            .iter()
+            .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
+            .ok_or("no audio track found")?;
+
+        // Calculate duration safely
+        let duration = if let Some(n_frames) = track.codec_params.n_frames {
+            if let Some(rate) = track.codec_params.sample_rate {
+                (n_frames as f64 / rate as f64 * 1000.0) as u64
+            } else {
+                0
+            }
         } else {
-            headers
-                .get(CONTENT_LENGTH)
-                .and_then(|h| h.to_str().ok())
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(0)
+            0
         };
 
-        let mut artwork_url = None;
-        if url.starts_with("https://cdn.discordapp.com") {
-            if let Some(ct) = headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()) {
-                if ct.contains("video/") {
-                    let clean_url = url.split('&').next().unwrap_or(url);
-                    let base = clean_url
-                        .replace("https://cdn.discordapp.com", "https://media.discordapp.net");
-                    let separator = if base.contains('?') { "&" } else { "?" };
-                    artwork_url = Some(format!("{}{}{}", base, separator, "format=webp"));
-                }
+        // Extract metadata
+        let mut title = String::new();
+        let mut author = String::new();
+
+        if let Some(metadata) = format.metadata().current() {
+            if let Some(tag) = metadata.tags().iter().find(|t| t.std_key == Some(StandardTagKey::TrackTitle)) {
+                title = tag.value.to_string();
+            }
+            if let Some(tag) = metadata.tags().iter().find(|t| t.std_key == Some(StandardTagKey::Artist)) {
+                author = tag.value.to_string();
             }
         }
 
-        TrackInfo {
-            identifier: url.to_string(),
-            is_seekable: !is_stream,
+        // Fallback metadata from URL if tags are missing
+        if title.is_empty() {
+            title = url
+                .split('/')
+                .last()
+                .and_then(|s| s.split('?').next())
+                .unwrap_or("Unknown Title")
+                .to_string();
+        }
+        if author.is_empty() {
+            author = "Unknown Artist".to_string();
+        }
+
+        Ok(TrackInfo {
+            identifier: url.clone(),
+            is_seekable: true, // Symphonia sources are generally seekable if the container supports it
             author,
-            length,
-            is_stream,
+            length: duration,
+            is_stream: false, // If we probed it successfully, it's likely a file/VOD
             position: 0,
             title,
-            uri: Some(url.to_string()),
+            uri: Some(url),
             source_name: "http".to_string(),
-            artwork_url,
+            artwork_url: None,
             isrc: None,
-        }
+        })
     }
 }
 
@@ -111,90 +122,37 @@ impl SourcePlugin for HttpSource {
     ) -> LoadResult {
         debug!("Probing HTTP source: {}", identifier);
 
-        // Note: We deliberately do NOT cache clients here when a RoutePlanner is used.
-        // RoutePlanners with large IPv6 blocks generate billions of unique IPs.
-        // Caching clients keyed by IP would lead to an unbounded memory leak.
-        // For /64 blocks, creating a new client per request is the safe, albeit slightly slower, approach.
-        let client = if let Some(rp) = routeplanner {
-            if let Some(ip) = rp.get_address() {
-                debug!("Using rotated IP: {}", ip);
-                reqwest::Client::builder()
-                    .user_agent(crate::common::http::HttpClient::random_user_agent())
-                    .timeout(std::time::Duration::from_secs(10))
-                    .local_address(ip)
-                    .build()
-                    .unwrap_or(self.client.clone())
-            } else {
-                self.client.clone()
-            }
-        } else {
-            self.client.clone()
-        };
+        let identifier = identifier.to_string();
+        let local_addr = routeplanner.as_ref().and_then(|rp| rp.get_address());
 
-        let mut resp = match client.head(identifier).send().await {
-            Ok(r) => Some(r),
-            Err(_) => None, // Fallback to GET
-        };
+        let identifier_clone = identifier.clone();
+        // Probe in a blocking task to avoid blocking the async runtime
+        let probe_result = tokio::task::spawn_blocking(move || {
+            HttpSource::probe_metadata(identifier_clone, local_addr)
+        })
+        .await;
 
-        if resp
-            .as_ref()
-            .map(|r| !r.status().is_success())
-            .unwrap_or(true)
-        {
-            match client
-                .get(identifier)
-                .header("Range", "bytes=0-0")
-                .send()
-                .await
-            {
-                Ok(r) => {
-                    if r.status().is_success() {
-                        resp = Some(r);
-                    } else {
-                        return LoadResult::Error(LoadError {
-                            message: format!("HTTP request failed with status: {}", r.status()),
-                            severity: crate::common::Severity::Common,
-                            cause: "".to_string(),
-                        });
-                    }
-                }
-                Err(e) => {
-                    return LoadResult::Error(LoadError {
-                        message: format!("HTTP request failed: {}", e),
-                        severity: crate::common::Severity::Common,
-                        cause: "".to_string(),
-                    });
-                }
-            }
-        }
-
-        let response = match resp {
-            Some(r) => r,
-            None => {
-                return LoadResult::Error(LoadError {
-                    message: "HTTP probe failed: no response received".to_string(),
+        match probe_result {
+            Ok(Ok(info)) => LoadResult::Track(Track::new(info)),
+            Ok(Err(e)) => {
+                warn!("Probing failed for {}: {}", identifier, e);
+                // Lavaplayer throws FriendlyException("Unknown file format") on failure.
+                // We return LoadResult::Error which mimics this.
+                LoadResult::Error(LoadError {
+                    message: format!("Probe failed: {}", e),
                     severity: crate::common::Severity::Common,
-                    cause: "".to_string(),
-                });
+                    cause: e.to_string(),
+                })
             }
-        };
-        let headers = response.headers();
-        let content_type = headers
-            .get(CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-
-        if !self.is_valid_content_type(content_type) {
-            return LoadResult::Error(LoadError {
-                message: format!("Unsupported content type: {}", content_type),
-                severity: crate::common::Severity::Common,
-                cause: "".to_string(),
-            });
+            Err(e) => {
+                error!("Task join error: {}", e);
+                LoadResult::Error(LoadError {
+                    message: "Internal error during probing".to_string(),
+                    severity: crate::common::Severity::Suspicious,
+                    cause: e.to_string(),
+                })
+            }
         }
-
-        let info = self.extract_metadata(identifier, headers);
-
-        LoadResult::Track(Track::new(info))
     }
 
     async fn get_playback_url(
