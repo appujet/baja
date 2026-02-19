@@ -21,7 +21,7 @@ impl Resampler {
         &mut self,
         input: &[i16],
         tx: &Sender<i16>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let num_frames = input.len() / self.channels;
 
         while self.index < num_frames as f64 {

@@ -4,41 +4,52 @@ use super::jiosaavn::JioSaavnSource;
 use super::plugin::SourcePlugin;
 use super::spotify::SpotifySource;
 use super::youtube::YouTubeSource;
+use super::youtube::cipher::YouTubeCipherManager;
 use std::sync::Arc;
+use tracing::info;
 
 /// Source Manager - coordinates all registered source plugins
 pub struct SourceManager {
     sources: Vec<Box<dyn SourcePlugin>>,
     mirrors: Option<crate::configs::MirrorsConfig>,
+    pub youtube_cipher_manager: Option<Arc<YouTubeCipherManager>>,
 }
 
 impl SourceManager {
     /// Create a new SourceManager with all available sources
     pub fn new(config: &crate::configs::Config) -> Self {
         let mut sources: Vec<Box<dyn SourcePlugin>> = Vec::new();
+        let mut youtube_cipher_manager = None;
 
         // Register all sources in priority order
         // Specialized sources first
         if config.sources.jiosaavn {
+            info!("Registering JioSaavn source");
             sources.push(Box::new(JioSaavnSource::new(config.jiosaavn.clone())));
         }
         if config.sources.deezer {
             sources.push(Box::new(DeezerSource::new(config.deezer.clone().unwrap_or_default()).expect("Failed to create Deezer source")));
         }
         if config.sources.youtube {
-            sources.push(Box::new(YouTubeSource::new()));
+            info!("Registering YouTube source");
+            let yt = YouTubeSource::new(config.youtube.clone());
+            youtube_cipher_manager = Some(yt.cipher_manager());
+            sources.push(Box::new(yt));
         }
         if config.sources.spotify {
+            info!("Registering Spotify source");
             sources.push(Box::new(SpotifySource::new(config.spotify.clone())));
         }
         // Generic HTTP source last
         if config.sources.http {
+            info!("Registering HTTP source");
             sources.push(Box::new(HttpSource::new()));
         }
 
         Self {
             sources,
             mirrors: config.mirrors.clone(),
+            youtube_cipher_manager,
         }
     }
 

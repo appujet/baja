@@ -28,6 +28,7 @@ hex = "0.4.3"
 blowfish = "0.9"
 md-5 = "0.10"
 cbc = "0.1"
+urlencoding = "2.1.3"
 
 
 tracing-subscriber = { version = "^0.3.20", features = ["env-filter"] }

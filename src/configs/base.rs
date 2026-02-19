@@ -17,6 +17,8 @@ pub struct Config {
     pub spotify: Option<SpotifyConfig>,
     #[serde(default)]
     pub deezer: Option<DeezerConfig>,
+    #[serde(default)]
+    pub youtube: Option<YouTubeConfig>,
 }
 
 impl Default for Config {
@@ -31,6 +33,7 @@ impl Default for Config {
             mirrors: None,
             spotify: None,
             deezer: None,
+            youtube: None,
         }
     }
 }
