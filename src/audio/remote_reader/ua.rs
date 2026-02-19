@@ -1,5 +1,3 @@
-/// UA strings must exactly match what the respective InnerTube clients use when
-/// fetching the player response, otherwise YouTube's CDN returns 403.
 pub mod yt_ua {
     pub const IOS: &str =
         "com.google.ios.youtube/21.02.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)";
@@ -15,8 +13,6 @@ pub mod yt_ua {
          (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 }
 
-/// Detect the YouTube InnerTube client name embedded in a `googlevideo.com`
-/// playback URL and return the matching `User-Agent` string.
 pub fn get_youtube_ua(url: &str) -> Option<&'static str> {
     if !(url.contains("googlevideo.com") || url.contains("youtube.com")) {
         return None;
