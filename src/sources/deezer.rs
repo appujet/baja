@@ -1,4 +1,4 @@
-use crate::api::tracks::{LoadError, LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
+use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
 use crate::sources::SourcePlugin;
 use async_trait::async_trait;
 use regex::Regex;
@@ -205,8 +205,7 @@ impl DeezerSource {
         if let Some(proxy_config) = &config.proxy {
             if let Some(url) = &proxy_config.url {
                 debug!("Configuring proxy for DeezerSource: {}", url);
-                if let Ok(proxy_obj) = reqwest::Proxy::all(url) {
-                    let mut proxy_obj = reqwest::Proxy::all(url).unwrap(); // Re-create to be safe or use above
+                if let Ok(mut proxy_obj) = reqwest::Proxy::all(url) {
                     // Basic auth if needed
                     if let (Some(username), Some(password)) =
                         (&proxy_config.username, &proxy_config.password)
