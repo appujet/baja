@@ -190,11 +190,6 @@ impl SpotifySource {
         format!("{:032x}", bn)
     }
 
-    // -------------------------------------------------------------------------
-    // Metadata / ISRC (only called when absolutely needed — not during bulk
-    // playlist loads)
-    // -------------------------------------------------------------------------
-
     async fn fetch_metadata_isrc(&self, id: &str) -> Option<String> {
         let token = self.get_token().await?;
         let hex_id = self.base62_to_hex(id);
@@ -252,10 +247,6 @@ impl SpotifySource {
         None
     }
 
-    // -------------------------------------------------------------------------
-    // Partner API
-    // -------------------------------------------------------------------------
-
     async fn partner_api_request(
         &self,
         operation: &str,
@@ -294,19 +285,12 @@ impl SpotifySource {
         resp.json().await.ok()
     }
 
-    // -------------------------------------------------------------------------
-    // Concurrent pagination helper (mirrors JS _fetchInternalPaginatedData)
-    //
-    // Fetches pages [offset=limit, 2*limit, 3*limit, …] concurrently in
-    // batches of PAGE_CONCURRENCY, then flattens results into a single Vec.
-    // -------------------------------------------------------------------------
-
     async fn fetch_paginated_items(
         &self,
         operation: &str,
         sha256_hash: &str,
-        base_vars: Value,    // variables for page 0 (already fetched)
-        items_pointer: &str, // JSON pointer to the items array, e.g. "/data/playlistV2/content/items"
+        base_vars: Value,
+        items_pointer: &str,
         total_count: u64,
         page_limit: u64,
     ) -> Vec<Value> {
@@ -345,12 +329,6 @@ impl SpotifySource {
         extra_items
     }
 
-    // -------------------------------------------------------------------------
-    // Track parsing
-    // -------------------------------------------------------------------------
-
-    /// Full track parser — includes ISRC metadata fallback.
-    /// Use for single-track and search results where the extra HTTP call is acceptable.
     async fn parse_generic_track(
         &self,
         track_val: &Value,
@@ -367,17 +345,6 @@ impl SpotifySource {
         Some(track_info)
     }
 
-    /// Lightweight track parser — no ISRC metadata fallback.
-    /// Use for bulk playlist / album loads where we must avoid N extra HTTP calls.
-    fn parse_track_fast(
-        &self,
-        track_val: &Value,
-        artwork_url: Option<String>,
-    ) -> Option<TrackInfo> {
-        self.parse_track_inner(track_val, artwork_url)
-    }
-
-    /// Shared inner parser (no async, no network calls).
     fn parse_track_inner(
         &self,
         track_val: &Value,
@@ -554,10 +521,6 @@ impl SpotifySource {
             })
     }
 
-    // -------------------------------------------------------------------------
-    // Search
-    // -------------------------------------------------------------------------
-
     async fn search_internal(&self, query: &str) -> LoadResult {
         let variables = json!({
             "searchTerm": query,
@@ -602,10 +565,6 @@ impl SpotifySource {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Single track
-    // -------------------------------------------------------------------------
-
     async fn fetch_track(&self, id: &str) -> Option<TrackInfo> {
         let variables = json!({
             "uri": format!("spotify:track:{}", id)
@@ -620,10 +579,6 @@ impl SpotifySource {
         // Single track — ISRC metadata fallback is fine
         self.parse_generic_track(track, None).await
     }
-
-    // -------------------------------------------------------------------------
-    // Album (concurrent pagination)
-    // -------------------------------------------------------------------------
 
     async fn fetch_album(&self, id: &str) -> LoadResult {
         const HASH: &str = "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10";
@@ -691,15 +646,21 @@ impl SpotifySource {
             all_items.extend(extra);
         }
 
-        // Parse tracks — no per-track network calls
-        let tracks: Vec<Track> = all_items
-            .iter()
-            .filter_map(|item| {
-                let track_data = item.get("track")?;
-                self.parse_track_fast(track_data, artwork_url.clone())
-                    .map(Track::new)
-            })
-            .collect();
+        let mut tracks = Vec::with_capacity(all_items.len());
+        for chunk in all_items.chunks(PAGE_CONCURRENCY) {
+            let futs: Vec<_> = chunk
+                .iter()
+                .filter_map(|item| {
+                    let track_data = item.get("track")?;
+                    Some(self.parse_generic_track(track_data, artwork_url.clone()))
+                })
+                .collect();
+
+            let results = join_all(futs).await;
+            for track_info in results.into_iter().flatten() {
+                tracks.push(Track::new(track_info));
+            }
+        }
 
         if tracks.is_empty() {
             LoadResult::Empty {}
@@ -714,10 +675,6 @@ impl SpotifySource {
             })
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Playlist (concurrent pagination — main performance improvement)
-    // -------------------------------------------------------------------------
 
     async fn fetch_playlist(&self, id: &str) -> LoadResult {
         const HASH: &str = "bb67e0af06e8d6f52b531f97468ee4acd44cd0f82b988e15c2ea47b1148efc77";
@@ -800,34 +757,35 @@ impl SpotifySource {
             );
         }
 
-        // Parse tracks synchronously — NO per-track metadata HTTP calls
-        // (mirrors JS behaviour: inline ISRC only for bulk loads)
+        // Parse tracks concurrently in batches
         let mut tracks = Vec::with_capacity(all_items.len());
-        for (i, item) in all_items.iter().enumerate() {
-            let item_data = match item
-                .get("itemV2")
-                .or_else(|| item.get("item"))
-                .and_then(|v| v.get("data"))
-            {
-                Some(d) => d,
-                None => {
-                    debug!("Item at index {} has no data/itemV2", i);
-                    continue;
-                }
-            };
+        for (batch_idx, chunk) in all_items.chunks(PAGE_CONCURRENCY).enumerate() {
+            let futs: Vec<_> = chunk
+                .iter()
+                .enumerate()
+                .filter_map(|(chunk_idx, item)| {
+                    let i = batch_idx * PAGE_CONCURRENCY + chunk_idx;
+                    let item_data = item
+                        .get("itemV2")
+                        .or_else(|| item.get("item"))
+                        .and_then(|v| v.get("data"))?;
 
-            let typename = item_data.get("__typename").and_then(|v| v.as_str());
-            if typename == Some("Track") || typename.is_none() {
-                if let Some(track_info) = self.parse_track_fast(item_data, artwork_url.clone()) {
-                    tracks.push(Track::new(track_info));
-                } else {
-                    debug!("Failed to parse track at index {}", i);
-                }
-            } else {
-                debug!(
-                    "Item at index {} is not a Track (typename: {:?})",
-                    i, typename
-                );
+                    let typename = item_data.get("__typename").and_then(|v| v.as_str());
+                    if typename == Some("Track") || typename.is_none() {
+                        Some(self.parse_generic_track(item_data, artwork_url.clone()))
+                    } else {
+                        debug!(
+                            "Item at index {} is not a Track (typename: {:?})",
+                            i, typename
+                        );
+                        None
+                    }
+                })
+                .collect();
+
+            let results = join_all(futs).await;
+            for track_info in results.into_iter().flatten() {
+                tracks.push(Track::new(track_info));
             }
         }
 
@@ -844,10 +802,6 @@ impl SpotifySource {
             })
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Artist top tracks
-    // -------------------------------------------------------------------------
 
     async fn fetch_artist_top_tracks(&self, id: &str) -> LoadResult {
         let variables = json!({
@@ -884,12 +838,19 @@ impl SpotifySource {
             .pointer("/discography/topTracks/items")
             .and_then(|i| i.as_array())
         {
-            for item in top_tracks {
-                if let Some(track_data) = item.get("track") {
-                    // Small result set — ISRC fallback is acceptable here
-                    if let Some(track_info) = self.parse_generic_track(track_data, None).await {
-                        tracks.push(Track::new(track_info));
-                    }
+            // Parse tracks concurrently in batches
+            for chunk in top_tracks.chunks(PAGE_CONCURRENCY) {
+                let futs: Vec<_> = chunk
+                    .iter()
+                    .filter_map(|item| {
+                        let track_data = item.get("track")?;
+                        Some(self.parse_generic_track(track_data, None))
+                    })
+                    .collect();
+
+                let results = join_all(futs).await;
+                for track_info in results.into_iter().flatten() {
+                    tracks.push(Track::new(track_info));
                 }
             }
         }
@@ -908,10 +869,6 @@ impl SpotifySource {
         }
     }
 }
-
-// =============================================================================
-// SourcePlugin impl
-// =============================================================================
 
 #[async_trait]
 impl SourcePlugin for SpotifySource {
