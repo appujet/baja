@@ -170,4 +170,10 @@ impl SourceManager {
     pub fn source_names(&self) -> Vec<String> {
         self.sources.iter().map(|s| s.name().to_string()).collect()
     }
+    pub fn get_proxy_config(&self, source_name: &str) -> Option<crate::configs::HttpProxyConfig> {
+        self.sources
+            .iter()
+            .find(|s| s.name() == source_name)
+            .and_then(|s| s.get_proxy_config())
+    }
 }
