@@ -63,6 +63,7 @@ impl RemoteReader {
     pub fn new(
         url: &str,
         local_addr: Option<std::net::IpAddr>,
+        proxy: Option<crate::configs::HttpProxyConfig>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Prefer the UA that matches the YouTube InnerTube client; fall back to
         // a generic browser UA for non-YouTube sources.
@@ -74,11 +75,6 @@ impl RemoteReader {
             .user_agent(user_agent)
             .timeout(std::time::Duration::from_secs(15))
             .connection_verbose(false);
-        proxy: Option<crate::configs::HttpProxyConfig>,
-    ) -> Result<Self, reqwest::Error> {
-        let mut builder = reqwest::blocking::Client::builder()
-            .user_agent(crate::common::http::HttpClient::random_user_agent())
-            .timeout(std::time::Duration::from_secs(10));
 
         if let Some(ip) = local_addr {
             builder = builder.local_address(ip);

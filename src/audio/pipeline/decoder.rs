@@ -53,7 +53,7 @@ pub fn start_decoding(
     let handle = tokio::runtime::Handle::current();
     thread::spawn(move || {
         let _guard = handle.enter();
-        if let Err(e) = decode_loop(url, local_addr, cipher_manager, tx, cmd_rx) {
+        if let Err(e) = decode_loop(url, local_addr, cipher_manager, proxy, tx, cmd_rx) {
             error!("Decoding error: {}", e);
         }
     });
@@ -122,10 +122,8 @@ fn decode_loop(
             player_url,
         )?)
     } else {
-        Box::new(RemoteReader::new(&url, local_addr)?)
+        Box::new(RemoteReader::new(&url, local_addr, proxy)?)
     };
-
-    let source = RemoteReader::new(&url, local_addr, proxy)?;
     debug!("Connected. Probing stream...");
     let mss = MediaSourceStream::new(source, Default::default());
 
