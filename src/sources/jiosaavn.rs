@@ -19,6 +19,12 @@ pub struct JioSaavnSource {
     search_prefix: String,
     rec_prefix: String,
     secret_key: Vec<u8>,
+    // Limits
+    search_limit: usize,
+    recommendations_limit: usize,
+    playlist_load_limit: usize,
+    album_load_limit: usize,
+    artist_load_limit: usize,
 }
 
 impl JioSaavnSource {
@@ -41,10 +47,27 @@ impl JioSaavnSource {
             .build()
             .unwrap();
 
-        let secret_key = config
-            .and_then(|c| c.decryption)
-            .and_then(|d| d.secret_key)
-            .unwrap_or_else(|| "38346591".to_string());
+        let (
+            secret_key,
+            search_limit,
+            recommendations_limit,
+            playlist_load_limit,
+            album_load_limit,
+            artist_load_limit,
+        ) = if let Some(c) = config {
+            (
+                c.decryption
+                    .and_then(|d| d.secret_key)
+                    .unwrap_or_else(|| "38346591".to_string()),
+                c.search_limit,
+                c.recommendations_limit,
+                c.playlist_load_limit,
+                c.album_load_limit,
+                c.artist_load_limit,
+            )
+        } else {
+            ("38346591".to_string(), 10, 10, 50, 50, 20)
+        };
 
         Self {
             client,
@@ -52,6 +75,11 @@ impl JioSaavnSource {
             search_prefix: "jssearch:".to_string(),
             rec_prefix: "jsrec:".to_string(),
             secret_key: secret_key.into_bytes(),
+            search_limit,
+            recommendations_limit,
+            playlist_load_limit,
+            album_load_limit,
+            artist_load_limit,
         }
     }
 
@@ -251,6 +279,7 @@ impl JioSaavnSource {
                 }
                 let tracks: Vec<Track> = results
                     .iter()
+                    .take(self.search_limit)
                     .filter_map(|item| self.parse_track(item))
                     .collect();
                 return LoadResult::Search(tracks);
@@ -299,6 +328,7 @@ impl JioSaavnSource {
         });
 
         if let Some(sid) = station_id {
+            let k_limit = self.recommendations_limit.to_string();
             let params = vec![
                 ("__call", "webradio.getSong"),
                 ("api_version", "4"),
@@ -306,7 +336,8 @@ impl JioSaavnSource {
                 ("_marker", "0"),
                 ("ctx", "android"),
                 ("stationid", &sid),
-                ("k", "20"),
+                ("stationid", &sid),
+                ("k", &k_limit),
             ];
 
             if let Some(json) = self.get_json(&params).await {
@@ -348,6 +379,7 @@ impl JioSaavnSource {
                     if let Some(arr) = json.as_array() {
                         let tracks: Vec<Track> = arr
                             .iter()
+                            .take(self.recommendations_limit)
                             .filter_map(|item| self.parse_track(item))
                             .collect();
 
@@ -376,7 +408,14 @@ impl JioSaavnSource {
             type_
         };
 
-        let n_songs = if type_ == "artist" { "20" } else { "50" };
+        let n_songs = if type_ == "artist" {
+            self.artist_load_limit
+        } else if type_ == "album" {
+            self.album_load_limit
+        } else {
+            self.playlist_load_limit
+        };
+        let n_songs_str = n_songs.to_string();
 
         let mut params = vec![
             ("__call", "webapi.get"),
@@ -389,9 +428,9 @@ impl JioSaavnSource {
         ];
 
         if type_ == "artist" {
-            params.push(("n_song", n_songs));
+            params.push(("n_song", &n_songs_str));
         } else {
-            params.push(("n", n_songs));
+            params.push(("n", &n_songs_str));
         }
 
         if let Some(data) = self.get_json(&params).await {

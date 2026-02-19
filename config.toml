@@ -23,6 +23,13 @@ providers = [
 ]
 
 # The decryption configuration for the JioSaavn tracks
+[jiosaavn]
+search_limit = 10 # Limit number of search results
+recommendations_limit = 10 # Limit number of recommendation results
+playlist_load_limit = 50 # Limit tracks for playlists
+album_load_limit = 50 # Limit tracks for albums
+artist_load_limit = 20 # Limit tracks for artist top songs
+
 [jiosaavn.decryption]
 secretKey = "38346591" # The required secret key used for decryption
 # algorithm = "DES" # The algorithm used for decryption (Default "DES")

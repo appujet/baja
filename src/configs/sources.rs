@@ -70,9 +70,38 @@ impl Default for SpotifyConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct JioSaavnConfig {
     pub decryption: Option<JioSaavnDecryptionConfig>,
+    #[serde(default = "default_js_search_limit")]
+    pub search_limit: usize,
+    #[serde(default = "default_js_recommendations_limit")]
+    pub recommendations_limit: usize,
+    #[serde(default = "default_js_playlist_load_limit")]
+    pub playlist_load_limit: usize,
+    #[serde(default = "default_js_album_load_limit")]
+    pub album_load_limit: usize,
+    #[serde(default = "default_js_artist_load_limit")]
+    pub artist_load_limit: usize,
+}
+
+fn default_js_search_limit() -> usize { 10 }
+fn default_js_recommendations_limit() -> usize { 10 }
+fn default_js_playlist_load_limit() -> usize { 50 }
+fn default_js_album_load_limit() -> usize { 50 }
+fn default_js_artist_load_limit() -> usize { 20 }
+
+impl Default for JioSaavnConfig {
+    fn default() -> Self {
+        Self {
+            decryption: None,
+            search_limit: default_js_search_limit(),
+            recommendations_limit: default_js_recommendations_limit(),
+            playlist_load_limit: default_js_playlist_load_limit(),
+            album_load_limit: default_js_album_load_limit(),
+            artist_load_limit: default_js_artist_load_limit(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -80,6 +109,8 @@ pub struct JioSaavnDecryptionConfig {
     #[serde(rename = "secretKey")]
     pub secret_key: Option<String>,
 }
+
+
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct MirrorsConfig {
