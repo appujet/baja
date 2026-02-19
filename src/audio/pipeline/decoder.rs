@@ -1,6 +1,5 @@
 use super::resampler::Resampler;
 use crate::audio::hls_reader::HlsReader;
-use crate::audio::reader::RemoteReader;
 use crate::configs::HttpProxyConfig;
 use crate::sources::youtube::sabr::reader::SabrReader;
 use crate::sources::youtube::sabr::structs::FormatId;
@@ -8,14 +7,12 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use flume::{Receiver, Sender};
 use serde::Deserialize;
-use std::thread;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSource;
 use symphonia::core::io::MediaSourceStream;
-use symphonia::core::io::{MediaSource, MediaSourceStream};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use tracing::{debug, error};
@@ -45,21 +42,63 @@ use std::sync::Arc;
 pub fn start_decoding(
     playback_url: String,
     local_addr: Option<std::net::IpAddr>,
-    proxy: Option<HttpProxyConfig>,
-) -> (
-    Receiver<i16>,
-    Sender<crate::audio::pipeline::decoder::DecoderCommand>,
-) {
     cipher_manager: Option<Arc<YouTubeCipherManager>>,
-    proxy: Option<crate::configs::HttpProxyConfig>,
+    proxy: Option<HttpProxyConfig>,
 ) -> (Receiver<i16>, Sender<DecoderCommand>) {
     // Reduced buffer size for lower latency (was 512 * 1024)
     // 4096 * 4 samples @ 48kHz stereo ≈ 170ms
     let (tx, rx) = flume::bounded::<i16>(4096 * 4);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
 
+    // We need to clone these for the thread
+    let playback_url_clone = playback_url.clone();
+
+    // NOTE: We need to handle SABR/HLS here because create_media_source inside reader.rs
+    // doesn't know about them (yet).
+    // Ideally these should be moved to a central factory, but for now we handle them here to fix the build.
+
     std::thread::spawn(move || {
-        let reader = match crate::audio::reader::create_media_source(&playback_url, local_addr, proxy) {
+        let reader_result: Result<Box<dyn MediaSource>, Box<dyn std::error::Error + Send + Sync>> =
+            (|| {
+                if playback_url_clone.starts_with("sabr://") {
+                    let encoded = &playback_url_clone[7..];
+                    let decoded = BASE64_STANDARD.decode(encoded)?;
+                    let sabr_data: SabrData = serde_json::from_slice(&decoded)?;
+
+                    let config_bytes = if sabr_data.config.is_empty() {
+                        Vec::new()
+                    } else {
+                        BASE64_STANDARD.decode(sabr_data.config)?
+                    };
+
+                    let (reader, _handle) = SabrReader::new(
+                        sabr_data.url,
+                        config_bytes,
+                        sabr_data.client_name,
+                        sabr_data.client_version,
+                        sabr_data.visitor_data,
+                        sabr_data.formats,
+                    );
+                    Ok(Box::new(reader) as Box<dyn MediaSource>)
+                } else if is_hls_url(&playback_url_clone) {
+                    debug!("HLS manifest detected, using HlsReader");
+                    let player_url = if playback_url_clone.contains("youtube.com") {
+                        Some(playback_url_clone.clone())
+                    } else {
+                        None
+                    };
+                    HlsReader::new(&playback_url_clone, local_addr, cipher_manager, player_url)
+                        .map(|r| Box::new(r) as Box<dyn MediaSource>)
+                } else {
+                    crate::audio::reader::create_media_source(
+                        &playback_url_clone,
+                        local_addr,
+                        proxy,
+                    )
+                }
+            })();
+
+        let reader = match reader_result {
             Ok(r) => r,
             Err(e) => {
                 error!("Failed to create media source: {}", e);
@@ -67,11 +106,7 @@ pub fn start_decoding(
             }
         };
 
-        if let Err(e) = decode_loop(playback_url, reader, tx, cmd_rx) {
-    let handle = tokio::runtime::Handle::current();
-    thread::spawn(move || {
-        let _guard = handle.enter();
-        if let Err(e) = decode_loop(url, local_addr, cipher_manager, proxy, tx, cmd_rx) {
+        if let Err(e) = decode_loop(playback_url_clone, reader, tx, cmd_rx) {
             error!("Decoding error: {}", e);
         }
     });
@@ -104,59 +139,7 @@ fn decode_loop(
     let mss = MediaSourceStream::new(reader, Default::default());
 
     let mut hint = Hint::new();
-    if let Some(ext) = std::path::Path::new(&playback_url).extension().and_then(|s| s.to_str()) {
-    url: String,
-    local_addr: Option<std::net::IpAddr>,
-    cipher_manager: Option<Arc<YouTubeCipherManager>>,
-    proxy: Option<crate::configs::HttpProxyConfig>,
-    tx: Sender<i16>,
-    rx_cmd: Receiver<DecoderCommand>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    debug!("Connecting to {}... (via {:?})", url, local_addr);
-
-    let source: Box<dyn MediaSource> = if url.starts_with("sabr://") {
-        let encoded = &url[7..];
-        let decoded = BASE64_STANDARD.decode(encoded)?;
-        let sabr_data: SabrData = serde_json::from_slice(&decoded)?;
-
-        let config_bytes = if sabr_data.config.is_empty() {
-            Vec::new()
-        } else {
-            BASE64_STANDARD.decode(sabr_data.config)?
-        };
-
-        let (reader, _handle) = SabrReader::new(
-            sabr_data.url,
-            config_bytes,
-            sabr_data.client_name,
-            sabr_data.client_version,
-            sabr_data.visitor_data,
-            sabr_data.formats,
-        );
-        Box::new(reader)
-    } else if is_hls_url(&url) {
-        debug!("HLS manifest detected, using HlsReader");
-        // For YouTube HLS, we might need to resolve n-tokens.
-        // We use the URL as a hint for the player URL if it's a YouTube manifest.
-        let player_url = if url.contains("youtube.com") {
-            Some(url.clone())
-        } else {
-            None
-        };
-        Box::new(HlsReader::new(
-            &url,
-            local_addr,
-            cipher_manager,
-            player_url,
-        )?)
-    } else {
-        Box::new(RemoteReader::new(&url, local_addr, proxy)?)
-    };
-    debug!("Connected. Probing stream...");
-    let mss = MediaSourceStream::new(source, Default::default());
-
-    let mut hint = Hint::new();
-    if let Some(ext) = std::path::Path::new(&url)
+    if let Some(ext) = std::path::Path::new(&playback_url)
         .extension()
         .and_then(|s| s.to_str())
     {
@@ -198,7 +181,10 @@ fn decode_loop(
         .tracks()
         .iter()
         .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-        .ok_or(Error::IoError(std::io::Error::new(std::io::ErrorKind::NotFound, "no audio track found")))?;
+        .ok_or(Error::IoError(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no audio track found",
+        )))?;
 
     let track_id = track.id;
     let mut decoder =
@@ -295,7 +281,12 @@ fn decode_loop(
                 let samples = buf.samples();
 
                 if source_rate != target_rate {
-                    resampler.process(samples, &tx).map_err(|e| Error::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+                    resampler.process(samples, &tx).map_err(|e| {
+                        Error::IoError(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            e.to_string(),
+                        ))
+                    })?;
                 } else {
                     for &s in samples {
                         if tx.send(s).is_err() {
