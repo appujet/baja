@@ -51,7 +51,7 @@ fn decode_loop(
     if let Some(ext) = std::path::Path::new(&url).extension().and_then(|s| s.to_str()) {
         match ext.to_lowercase().as_str() {
             "mp3" => { hint.with_extension("mp3"); },
-            "m4a" | "mp4" | "3gp" => { hint.with_extension("m4a"); },
+            "m4a" | "mp4" | "3gp" | "mov" => { hint.with_extension("m4a"); },
             "ogg" | "opus" => { hint.with_extension("ogg"); },
             "flac" => { hint.with_extension("flac"); },
             "wav" => { hint.with_extension("wav"); },
