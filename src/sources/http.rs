@@ -110,7 +110,7 @@ impl SourcePlugin for HttpSource {
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
         debug!("Probing HTTP source: {}", identifier);
-        
+
         // Note: We deliberately do NOT cache clients here when a RoutePlanner is used.
         // RoutePlanners with large IPv6 blocks generate billions of unique IPs.
         // Caching clients keyed by IP would lead to an unbounded memory leak.
@@ -135,7 +135,7 @@ impl SourcePlugin for HttpSource {
             Ok(r) => Some(r),
             Err(_) => None, // Fallback to GET
         };
-        
+
         if resp
             .as_ref()
             .map(|r| !r.status().is_success())
@@ -168,7 +168,16 @@ impl SourcePlugin for HttpSource {
             }
         }
 
-        let response = resp.unwrap();
+        let response = match resp {
+            Some(r) => r,
+            None => {
+                return LoadResult::Error(LoadError {
+                    message: "HTTP probe failed: no response received".to_string(),
+                    severity: crate::common::Severity::Common,
+                    cause: "".to_string(),
+                });
+            }
+        };
         let headers = response.headers();
         let content_type = headers
             .get(CONTENT_TYPE)

@@ -6,6 +6,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::info;
 
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = rustalink::configs::Config::load()?;

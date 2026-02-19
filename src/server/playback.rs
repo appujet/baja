@@ -32,6 +32,10 @@ pub async fn start_playback(
         }
     }
 
+    if let Some(task) = player.track_task.take() {
+        task.abort();
+    }
+
     if let Some(handle) = &player.track_handle {
         let handle: &TrackHandle = handle;
         player
@@ -122,23 +126,26 @@ pub async fn start_playback(
     let stop_signal = player.stop_signal.clone();
     let track_data_clone = track_data.clone();
 
-    tokio::spawn(async move {
+    let track_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
         let mut last_update = std::time::Instant::now();
 
         loop {
             interval.tick().await;
 
+            // Check if we should stop
+            if stop_signal.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+
             let current_state = handle_clone.get_state().await;
             if current_state == PlaybackState::Stopped {
-                if !stop_signal.load(std::sync::atomic::Ordering::SeqCst) {
-                    let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
-                        guild_id: guild_id.clone(),
-                        track: track_data_clone.clone(),
-                        reason: api::TrackEndReason::Finished,
-                    });
-                    session_clone.send_message(&end_event).await;
-                }
+                let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
+                    guild_id: guild_id.clone(),
+                    track: track_data_clone.clone(),
+                    reason: api::TrackEndReason::Finished,
+                });
+                session_clone.send_message(&end_event).await;
                 break;
             }
 
@@ -157,4 +164,6 @@ pub async fn start_playback(
             }
         }
     });
+
+    player.track_task = Some(track_task);
 }
