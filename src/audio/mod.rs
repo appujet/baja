@@ -1,7 +1,9 @@
 pub mod buffer;
+pub mod deezer;
 pub mod filters;
-pub mod hls_reader;
+pub use deezer::DeezerReader;
+pub mod hls;
+pub use hls::HlsReader;
 pub mod pipeline;
 pub mod playback;
 pub mod reader;
-pub mod deezer_reader;
