@@ -102,7 +102,11 @@ pub async fn start_playback(
         identifier, playback_url, local_addr
     );
 
-    let (rx, cmd_tx) = crate::audio::pipeline::decoder::start_decoding(playback_url, local_addr);
+    let (rx, cmd_tx) = crate::audio::pipeline::decoder::start_decoding(
+        playback_url,
+        local_addr,
+        source_manager.youtube_cipher_manager.clone(),
+    );
     let (handle, audio_state, vol, pos) = TrackHandle::new(cmd_tx);
 
     {

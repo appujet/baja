@@ -61,3 +61,16 @@ recommendations_limit = 10 # Limit number of recommendation results
 playlist_page_load_concurrency = 10 # Number of playlist pages to fetch concurrently
 album_page_load_concurrency = 5 # Number of album pages to fetch concurrently
 track_resolve_concurrency = 50 # Number of tracks to resolve concurrently
+
+[youtube]
+# YouTube Clients configuration
+[youtube.clients]
+search = ["WEB", "ANDROID", "MUSIC"]
+playback = ["IOS", "TV", "ANDROID_VR", "WEB", "ANDROID"]
+# refresh_tokens = [] # Optional: list of refresh tokens for clients
+
+# YouTube Cipher configuration
+[youtube.cipher]
+# url = "" # The URL for the cipher resolution server
+# token = "" # Optional: Token for the cipher resolution server
+
