@@ -79,10 +79,11 @@ impl UdpBackend {
                 // For xsalsa20_poly1305, Discord expects the header as the first 12 bytes
                 nonce[0..12].copy_from_slice(&header);
 
-                let encrypted = self
+                let cipher = self
                     .salsa_cipher
                     .as_ref()
-                    .unwrap()
+                    .ok_or("Salsa cipher not initialized")?;
+                let encrypted = cipher
                     .encrypt(&nonce.into(), payload)
                     .map_err(|e| format!("Salsa encryption error: {:?}", e))?;
 
@@ -100,10 +101,11 @@ impl UdpBackend {
                 nonce_bytes[0..4].copy_from_slice(&counter_bytes);
 
                 let mut buffer = payload.to_vec();
-                let tag = self
+                let cipher = self
                     .aes_cipher
                     .as_ref()
-                    .unwrap()
+                    .ok_or("AES cipher not initialized")?;
+                let tag = cipher
                     .encrypt_in_place_detached(&nonce_bytes.into(), &header, &mut buffer)
                     .map_err(|e| format!("AES-GCM encryption error: {:?}", e))?;
 

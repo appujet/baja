@@ -467,8 +467,12 @@ impl SourcePlugin for JioSaavnSource {
 
         // Regex Match URL
         if let Some(caps) = self.url_regex.captures(identifier) {
-            let type_ = caps.name("type").unwrap().as_str();
-            let id = caps.name("id").unwrap().as_str();
+            let type_ = caps.name("type").map(|m| m.as_str()).unwrap_or("");
+            let id = caps.name("id").map(|m| m.as_str()).unwrap_or("");
+
+            if id.is_empty() || type_.is_empty() {
+                return LoadResult::Empty {};
+            }
 
             if type_ == "song" {
                 // Use fetch_metadata for resolving (gets song info)

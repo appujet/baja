@@ -26,6 +26,9 @@ impl Session {
     pub async fn send_json(&self, json: &str) {
         if self.paused.load(std::sync::atomic::Ordering::Relaxed) {
             let mut queue = self.event_queue.lock().await;
+            if queue.len() >= 1000 {
+                queue.remove(0); // Drop oldest event if queue is too large
+            }
             queue.push(json.to_string());
         } else {
             let sender = self.sender.lock().await;

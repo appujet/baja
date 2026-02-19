@@ -153,14 +153,20 @@ impl SpotifySource {
             return None;
         }
 
-        let token = token_caps.unwrap().get(1).unwrap().as_str().to_string();
-        let expiry_ms = expiry_caps
-            .unwrap()
-            .get(1)
-            .unwrap()
-            .as_str()
-            .parse::<u64>()
-            .ok()?;
+        let token = match token_caps.and_then(|c| c.get(1)) {
+            Some(m) => m.as_str().to_string(),
+            None => {
+                error!("Successfully found token caps but group 1 was missing or caps were None");
+                return None;
+            }
+        };
+        let expiry_ms = match expiry_caps.and_then(|c| c.get(1)) {
+            Some(m) => m.as_str().parse::<u64>().ok()?,
+            None => {
+                error!("Successfully found expiry caps but group 1 was missing or caps were None");
+                return None;
+            }
+        };
 
         let mut token_lock = self.token.write().await;
         *token_lock = Some(SpotifyToken {
@@ -891,24 +897,36 @@ impl SourcePlugin for SpotifySource {
         }
 
         if let Some(caps) = self.track_regex.captures(identifier) {
-            let id = caps.get(1).unwrap().as_str();
+            let id = match caps.get(1) {
+                Some(m) => m.as_str(),
+                None => return LoadResult::Empty {},
+            };
             if let Some(track_info) = self.fetch_track(id).await {
                 return LoadResult::Track(Track::new(track_info));
             }
         }
 
         if let Some(caps) = self.album_regex.captures(identifier) {
-            let id = caps.get(1).unwrap().as_str();
+            let id = match caps.get(1) {
+                Some(m) => m.as_str(),
+                None => return LoadResult::Empty {},
+            };
             return self.fetch_album(id).await;
         }
 
         if let Some(caps) = self.playlist_regex.captures(identifier) {
-            let id = caps.get(1).unwrap().as_str();
+            let id = match caps.get(1) {
+                Some(m) => m.as_str(),
+                None => return LoadResult::Empty {},
+            };
             return self.fetch_playlist(id).await;
         }
 
         if let Some(caps) = self.artist_regex.captures(identifier) {
-            let id = caps.get(1).unwrap().as_str();
+            let id = match caps.get(1) {
+                Some(m) => m.as_str(),
+                None => return LoadResult::Empty {},
+            };
             return self.fetch_artist_top_tracks(id).await;
         }
 

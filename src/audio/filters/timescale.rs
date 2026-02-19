@@ -27,9 +27,27 @@ pub struct TimescaleFilter {
 
 impl TimescaleFilter {
     pub fn new(speed: f64, pitch: f64, rate: f64) -> Self {
-        let speed = if speed <= 0.0 { 1.0 } else { speed };
-        let pitch = if pitch <= 0.0 { 1.0 } else { pitch };
-        let rate = if rate <= 0.0 { 1.0 } else { rate };
+        let speed = if speed < 0.1 {
+            0.1
+        } else if speed > 5.0 {
+            5.0
+        } else {
+            speed
+        };
+        let pitch = if pitch < 0.1 {
+            0.1
+        } else if pitch > 5.0 {
+            5.0
+        } else {
+            pitch
+        };
+        let rate = if rate < 0.1 {
+            0.1
+        } else if rate > 5.0 {
+            5.0
+        } else {
+            rate
+        };
         let final_rate = speed * pitch * rate;
 
         Self {

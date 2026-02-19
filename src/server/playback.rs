@@ -106,9 +106,18 @@ pub async fn start_playback(
         mixer.add_track(rx, audio_state, vol, pos);
     }
 
-    player.track_handle = Some(handle);
+    player.track_handle = Some(handle.clone());
 
-    let track_data = player.to_player_response().track.unwrap();
+    let track_data = match player.to_player_response().track {
+        Some(t) => t,
+        None => {
+            error!(
+                "Failed to generate track response for guild {}",
+                player.guild_id
+            );
+            return;
+        }
+    };
     let start_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackStart {
         guild_id: player.guild_id.clone(),
         track: track_data.clone(),
@@ -121,7 +130,7 @@ pub async fn start_playback(
     );
 
     let guild_id = player.guild_id.clone();
-    let handle_clone = player.track_handle.as_ref().unwrap().clone();
+    let handle_clone = handle;
     let session_clone = session.clone();
     let stop_signal = player.stop_signal.clone();
     let track_data_clone = track_data.clone();
