@@ -20,6 +20,7 @@ pub struct PlayerContext {
     pub end_time: Option<u64>,
     pub stop_signal: Arc<std::sync::atomic::AtomicBool>,
     pub gateway_task: Option<tokio::task::JoinHandle<()>>,
+    pub track_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl PlayerContext {
@@ -40,6 +41,7 @@ impl PlayerContext {
             end_time: None,
             stop_signal: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             gateway_task: None,
+            track_task: None,
         }
     }
 
@@ -82,6 +84,10 @@ impl Drop for PlayerContext {
     fn drop(&mut self) {
         if let Some(task) = &self.gateway_task {
             tracing::debug!("Aborting gateway task for guild {}", self.guild_id);
+            task.abort();
+        }
+        if let Some(task) = &self.track_task {
+            tracing::debug!("Aborting track task for guild {}", self.guild_id);
             task.abort();
         }
     }

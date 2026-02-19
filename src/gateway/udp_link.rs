@@ -2,7 +2,6 @@ use davey::{AeadInPlace as AesAeadInPlace, Aes256Gcm, KeyInit as AesKeyInit};
 use std::net::UdpSocket;
 use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 use xsalsa20poly1305::XSalsa20Poly1305;
-use xsalsa20poly1305::aead::Aead as SalsaAead;
 
 pub enum EncryptionMode {
     XSalsa20Poly1305,
@@ -20,6 +19,7 @@ pub struct UdpBackend {
     sequence: AtomicU16,
     timestamp: AtomicU32,
     nonce: AtomicU32,
+    packet_buf: Vec<u8>,
 }
 
 impl UdpBackend {
@@ -57,10 +57,11 @@ impl UdpBackend {
             sequence: AtomicU16::new(0),
             timestamp: AtomicU32::new(0),
             nonce: AtomicU32::new(0),
+            packet_buf: Vec::with_capacity(1500),
         })
     }
 
-    pub fn send_opus_packet(&self, payload: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn send_opus_packet(&mut self, payload: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
         let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
         let timestamp = self.timestamp.fetch_add(960, Ordering::SeqCst);
 
@@ -79,18 +80,23 @@ impl UdpBackend {
                 // For xsalsa20_poly1305, Discord expects the header as the first 12 bytes
                 nonce[0..12].copy_from_slice(&header);
 
-                let encrypted = self
+                let cipher = self
                     .salsa_cipher
                     .as_ref()
-                    .unwrap()
-                    .encrypt(&nonce.into(), payload)
+                    .ok_or("Salsa cipher not initialized")?;
+
+                // Prepare packet buffer: [Header][Payload]
+                self.packet_buf.clear();
+                self.packet_buf.extend_from_slice(&header);
+                self.packet_buf.extend_from_slice(payload);
+
+                // Encrypt in-place. The header (12 bytes) is AAD, payload starts at index 12.
+                let tag = cipher
+                    .encrypt_in_place_detached(&nonce.into(), &header, &mut self.packet_buf[12..])
                     .map_err(|e| format!("Salsa encryption error: {:?}", e))?;
 
-                let mut packet = Vec::with_capacity(12 + encrypted.len());
-                packet.extend_from_slice(&header);
-                packet.extend_from_slice(&encrypted);
-
-                self.socket.send_to(&packet, self.address)?;
+                self.packet_buf.extend_from_slice(&tag);
+                self.socket.send_to(&self.packet_buf, self.address)?;
             }
             EncryptionMode::Aes256Gcm => {
                 let counter_bytes = current_nonce.to_be_bytes();
@@ -99,21 +105,27 @@ impl UdpBackend {
                 // Rustalink writes the 4-byte counter to the first 4 bytes of the 12-byte nonce
                 nonce_bytes[0..4].copy_from_slice(&counter_bytes);
 
-                let mut buffer = payload.to_vec();
-                let tag = self
+                let cipher = self
                     .aes_cipher
                     .as_ref()
-                    .unwrap()
-                    .encrypt_in_place_detached(&nonce_bytes.into(), &header, &mut buffer)
+                    .ok_or("AES cipher not initialized")?;
+
+                self.packet_buf.clear();
+                self.packet_buf.extend_from_slice(&header);
+                self.packet_buf.extend_from_slice(payload);
+
+                let tag = cipher
+                    .encrypt_in_place_detached(
+                        &nonce_bytes.into(),
+                        &header,
+                        &mut self.packet_buf[12..],
+                    )
                     .map_err(|e| format!("AES-GCM encryption error: {:?}", e))?;
 
-                let mut packet = Vec::with_capacity(12 + buffer.len() + 16 + 4);
-                packet.extend_from_slice(&header);
-                packet.extend_from_slice(&buffer);
-                packet.extend_from_slice(&tag);
-                packet.extend_from_slice(&counter_bytes);
+                self.packet_buf.extend_from_slice(&tag);
+                self.packet_buf.extend_from_slice(&counter_bytes);
 
-                self.socket.send_to(&packet, self.address)?;
+                self.socket.send_to(&self.packet_buf, self.address)?;
             }
         }
         Ok(())
