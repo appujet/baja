@@ -22,21 +22,13 @@ struct AppleMusicToken {
 struct AppleMusicTokenTracker {
     token: RwLock<Option<AppleMusicToken>>,
     client: reqwest::Client,
-    #[allow(dead_code)] // Keep for future use or remove if strict
-    token_cache_path: std::path::PathBuf,
 }
 
 impl AppleMusicTokenTracker {
     fn new(client: reqwest::Client) -> Self {
-        let token_cache_path = std::env::current_dir()
-            .unwrap_or_else(|_| std::path::PathBuf::from("."))
-            .join(".cache")
-            .join("applemusic_token.json");
-
         Self {
             token: RwLock::new(None),
             client,
-            token_cache_path,
         }
     }
 
