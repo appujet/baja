@@ -25,16 +25,19 @@ impl HttpSource {
         url: String,
         local_addr: Option<std::net::IpAddr>,
     ) -> Result<TrackInfo, Box<dyn std::error::Error + Send + Sync>> {
-        let source = crate::audio::reader::RemoteReader::new(&url, local_addr, None)?;
+        let source = crate::audio::RemoteReader::new(&url, local_addr, None)?;
         let mut hint = Hint::new();
-        
+
         if let Some(content_type) = source.content_type() {
             hint.mime_type(&content_type);
         }
 
         let mss = MediaSourceStream::new(Box::new(source), Default::default());
 
-        if let Some(ext) = std::path::Path::new(&url).extension().and_then(|s| s.to_str()) {
+        if let Some(ext) = std::path::Path::new(&url)
+            .extension()
+            .and_then(|s| s.to_str())
+        {
             hint.with_extension(ext);
         }
 
@@ -68,10 +71,18 @@ impl HttpSource {
         let mut author = String::new();
 
         if let Some(metadata) = format.metadata().current() {
-            if let Some(tag) = metadata.tags().iter().find(|t| t.std_key == Some(StandardTagKey::TrackTitle)) {
+            if let Some(tag) = metadata
+                .tags()
+                .iter()
+                .find(|t| t.std_key == Some(StandardTagKey::TrackTitle))
+            {
                 title = tag.value.to_string();
             }
-            if let Some(tag) = metadata.tags().iter().find(|t| t.std_key == Some(StandardTagKey::Artist)) {
+            if let Some(tag) = metadata
+                .tags()
+                .iter()
+                .find(|t| t.std_key == Some(StandardTagKey::Artist))
+            {
                 author = tag.value.to_string();
             }
         }

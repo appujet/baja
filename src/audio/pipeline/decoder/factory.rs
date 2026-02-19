@@ -93,7 +93,7 @@ pub fn create_reader(
     }
 
     // 4. Default Remote Reader
-    Ok(Box::new(crate::audio::reader::RemoteReader::new(
+    Ok(Box::new(crate::audio::RemoteReader::new(
         url,
         ctx.local_addr,
         ctx.proxy.clone(),

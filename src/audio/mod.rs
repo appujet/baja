@@ -6,4 +6,5 @@ pub mod hls;
 pub use hls::HlsReader;
 pub mod pipeline;
 pub mod playback;
-pub mod reader;
+pub mod remote_reader;
+pub use remote_reader::RemoteReader;

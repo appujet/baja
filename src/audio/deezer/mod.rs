@@ -1,7 +1,7 @@
 pub mod crypt;
 
 use self::crypt::{CHUNK_SIZE, DeezerCrypt};
-use crate::audio::reader::RemoteReader;
+use crate::audio::RemoteReader;
 use std::io::{Read, Seek, SeekFrom};
 use symphonia::core::io::MediaSource;
 use tracing::debug;
