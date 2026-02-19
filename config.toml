@@ -46,4 +46,11 @@ level = "info"
 filters = "rustalink=debug"
 
 [spotify]
-spDc = "" # Optional: Spotify sp_dc cookie for better authentication
+playlist_load_limit = 6 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
+album_load_limit = 6 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
+search_limit = 10 # Limit number of search results
+recommendations_limit = 10 # Limit number of recommendation results
+
+playlist_page_load_concurrency = 10 # Number of playlist pages to fetch concurrently
+album_page_load_concurrency = 5 # Number of album pages to fetch concurrently
+track_resolve_concurrency = 50 # Number of tracks to resolve concurrently

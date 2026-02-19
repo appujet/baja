@@ -6,18 +6,11 @@ use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tracing::{debug, error, warn};
 
 const EMBED_URL: &str = "https://open.spotify.com/embed/track/4cOdK2wGLETKBW3PvgPWqT";
 const PARTNER_API_URL: &str = "https://api-partner.spotify.com/pathfinder/v2/query";
-
-/// Batch size for concurrent page fetching
-const PAGE_FETCH_CONCURRENCY: usize = 5;
-
-/// Batch size for concurrent track resolution (ISRC fetching)
-/// Increased to 50 for "light speed" loading of large playlists/mixes
-const TRACK_RESOLVE_CONCURRENCY: usize = 50;
 
 #[derive(Clone, Debug)]
 struct SpotifyToken {
@@ -38,10 +31,19 @@ pub struct SpotifySource {
     expiry_regex: Regex,
     isrc_binary_regex: Regex,
     token: Arc<RwLock<Option<SpotifyToken>>>,
+    // Limits
+    playlist_load_limit: usize,
+    album_load_limit: usize,
+    search_limit: usize,
+    recommendations_limit: usize,
+
+    playlist_page_load_concurrency: usize,
+    album_page_load_concurrency: usize,
+    track_resolve_concurrency: usize,
 }
 
 impl SpotifySource {
-    pub fn new(_config: Option<crate::config::SpotifyConfig>) -> Self {
+    pub fn new(config: Option<crate::configs::SpotifyConfig>) -> Self {
         let mut headers = HeaderMap::new();
         headers.insert(
             USER_AGENT,
@@ -56,6 +58,29 @@ impl SpotifySource {
             .default_headers(headers)
             .build()
             .unwrap();
+
+
+        let (
+            playlist_load_limit,
+            album_load_limit,
+            search_limit,
+            recommendations_limit,
+            playlist_page_load_concurrency,
+            album_page_load_concurrency,
+            track_resolve_concurrency,
+        ) = if let Some(c) = config {
+            (
+                c.playlist_load_limit,
+                c.album_load_limit,
+                c.search_limit,
+                c.recommendations_limit,
+                c.playlist_page_load_concurrency,
+                c.album_page_load_concurrency,
+                c.track_resolve_concurrency,
+            )
+        } else {
+            (6, 6, 10, 10, 10, 5, 50)
+        };
 
         Self {
             client,
@@ -86,6 +111,13 @@ impl SpotifySource {
             expiry_regex: Regex::new(r#""accessTokenExpirationTimestampMs":(\d+)"#).unwrap(),
             isrc_binary_regex: Regex::new(r"[A-Z0-9]{12}").unwrap(),
             token: Arc::new(RwLock::new(None)),
+            playlist_load_limit,
+            album_load_limit,
+            search_limit,
+            recommendations_limit,
+            playlist_page_load_concurrency,
+            album_page_load_concurrency,
+            track_resolve_concurrency,
         }
     }
 
@@ -298,6 +330,7 @@ impl SpotifySource {
         items_pointer: &str,
         total_count: u64,
         page_limit: u64,
+        concurrency: usize,
     ) -> Vec<Value> {
         let pages_needed = total_count.saturating_sub(page_limit);
         if pages_needed == 0 {
@@ -306,32 +339,39 @@ impl SpotifySource {
 
         // Build one variables blob per remaining page
         let offsets: Vec<u64> = (1..=((total_count - 1) / page_limit)).collect();
-        let mut extra_items: Vec<Value> = Vec::new();
-
-        for chunk in offsets.chunks(PAGE_FETCH_CONCURRENCY) {
-            let futs: Vec<_> = chunk
-                .iter()
-                .map(|page_idx| {
-                    let mut vars = base_vars.clone();
-                    // Patch offset in the variables object
-                    if let Some(obj) = vars.as_object_mut() {
-                        obj.insert("offset".to_string(), json!(page_idx * page_limit));
-                        obj.insert("limit".to_string(), json!(page_limit));
-                    }
-                    self.partner_api_request(operation, vars, sha256_hash)
-                })
-                .collect();
-
-            let results = join_all(futs).await;
-
-            for result in results.into_iter().flatten() {
-                if let Some(items) = result.pointer(items_pointer).and_then(|v| v.as_array()) {
-                    extra_items.extend(items.iter().cloned());
+        let semaphore = Arc::new(Semaphore::new(concurrency));
+        
+        let futs: Vec<_> = offsets
+            .into_iter()
+            .map(|page_idx| {
+                let semaphore = semaphore.clone();
+                let mut vars = base_vars.clone();
+                // Patch offset in the variables object
+                if let Some(obj) = vars.as_object_mut() {
+                    obj.insert("offset".to_string(), json!(page_idx * page_limit));
+                    obj.insert("limit".to_string(), json!(page_limit));
                 }
-            }
-        }
+                
+                let op = operation.to_string();
+                let h = sha256_hash.to_string();
+                
+                async move {
+                    let _permit = semaphore.acquire().await.unwrap();
+                    self.partner_api_request(&op, vars, &h).await
+                }
+            })
+            .collect();
 
-        extra_items
+        let results = join_all(futs).await;
+        
+        results
+            .into_iter()
+            .flatten()
+            .filter_map(|result| {
+                result.pointer(items_pointer).and_then(|v| v.as_array()).cloned()
+            })
+            .flatten()
+            .collect()
     }
 
     async fn parse_generic_track(
@@ -530,7 +570,7 @@ impl SpotifySource {
         let variables = json!({
             "searchTerm": query,
             "offset": 0,
-            "limit": 10,
+            "limit": self.search_limit,
             "numberOfTopResults": 5,
             "includeAudiobooks": false,
             "includeArtistHasConcertsField": false,
@@ -587,7 +627,7 @@ impl SpotifySource {
 
     async fn fetch_album(&self, id: &str) -> LoadResult {
         const HASH: &str = "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10";
-        const PAGE_LIMIT: u64 = 300;
+        const PAGE_LIMIT: u64 = 50;
 
         let base_vars = json!({
             "uri": format!("spotify:album:{}", id),
@@ -637,35 +677,58 @@ impl SpotifySource {
             .unwrap_or_default();
 
         // Fetch remaining pages concurrently if needed
+
         if total_count > PAGE_LIMIT {
-            let extra = self
-                .fetch_paginated_items(
-                    "getAlbum",
-                    HASH,
-                    base_vars,
-                    "/data/albumUnion/tracksV2/items",
-                    total_count,
-                    PAGE_LIMIT,
-                )
-                .await;
-            all_items.extend(extra);
-        }
+            let max_tracks = if self.album_load_limit == 0 {
+                u64::MAX
+            } else {
+                self.album_load_limit as u64 * PAGE_LIMIT
+            };
+            let effective_total = total_count.min(max_tracks);
 
-        let mut tracks = Vec::with_capacity(all_items.len());
-        for chunk in all_items.chunks(TRACK_RESOLVE_CONCURRENCY) {
-            let futs: Vec<_> = chunk
-                .iter()
-                .filter_map(|item| {
-                    let track_data = item.get("track")?;
-                    Some(self.parse_generic_track(track_data, artwork_url.clone()))
-                })
-                .collect();
-
-            let results = join_all(futs).await;
-            for track_info in results.into_iter().flatten() {
-                tracks.push(Track::new(track_info));
+            if effective_total > PAGE_LIMIT {
+                let extra = self
+                    .fetch_paginated_items(
+                        "getAlbum",
+                        HASH,
+                        base_vars,
+                        "/data/albumUnion/tracksV2/items",
+                        effective_total,
+                        PAGE_LIMIT,
+                        self.album_page_load_concurrency,
+                    )
+                    .await;
+                all_items.extend(extra);
             }
         }
+
+        let semaphore = Arc::new(Semaphore::new(self.track_resolve_concurrency));
+        let futs: Vec<_> = all_items
+            .into_iter()
+            .take(if self.album_load_limit > 0 {
+                // If limit is set, only take what we need
+                 (PAGE_LIMIT * self.album_load_limit as u64) as usize
+            } else {
+                usize::MAX
+            })
+            .filter_map(|item| {
+                let track_data = item.get("track")?.clone();
+                let artwork_url = artwork_url.clone();
+                let semaphore = semaphore.clone();
+
+                Some(async move {
+                    let _permit = semaphore.acquire().await.unwrap();
+                    self.parse_generic_track(&track_data, artwork_url).await
+                })
+            })
+            .collect();
+
+        let results = join_all(futs).await;
+        let tracks: Vec<Track> = results
+            .into_iter()
+            .flatten()
+            .map(Track::new)
+            .collect();
 
         if tracks.is_empty() {
             LoadResult::Empty {}
@@ -744,17 +807,27 @@ impl SpotifySource {
 
         // Fetch all remaining pages concurrently in batches of PAGE_CONCURRENCY
         if total_count > PAGE_LIMIT {
-            let extra = self
-                .fetch_paginated_items(
-                    "fetchPlaylist",
-                    HASH,
-                    base_vars,
-                    "/data/playlistV2/content/items",
-                    total_count,
-                    PAGE_LIMIT,
-                )
-                .await;
-            all_items.extend(extra);
+            let max_tracks = if self.playlist_load_limit == 0 {
+                u64::MAX
+            } else {
+                self.playlist_load_limit as u64 * PAGE_LIMIT
+            };
+            let effective_total = total_count.min(max_tracks);
+            
+            if effective_total > PAGE_LIMIT {
+                let extra = self
+                    .fetch_paginated_items(
+                        "fetchPlaylist",
+                        HASH,
+                        base_vars,
+                        "/data/playlistV2/content/items",
+                        effective_total,
+                        PAGE_LIMIT,
+                        self.playlist_page_load_concurrency,
+                    )
+                    .await;
+                all_items.extend(extra);
+            }
             debug!(
                 "Fetched {} additional items (total in memory: {})",
                 all_items.len().saturating_sub(PAGE_LIMIT as usize),
@@ -762,37 +835,51 @@ impl SpotifySource {
             );
         }
 
-        // Parse tracks concurrently in batches
-        let mut tracks = Vec::with_capacity(all_items.len());
-        for (batch_idx, chunk) in all_items.chunks(TRACK_RESOLVE_CONCURRENCY).enumerate() {
-            let futs: Vec<_> = chunk
-                .iter()
-                .enumerate()
-                .filter_map(|(chunk_idx, item)| {
-                    let i = batch_idx * TRACK_RESOLVE_CONCURRENCY + chunk_idx;
-                    let item_data = item
-                        .get("itemV2")
-                        .or_else(|| item.get("item"))
-                        .and_then(|v| v.get("data"))?;
+        // Parse tracks concurrently
+        let semaphore = Arc::new(Semaphore::new(self.track_resolve_concurrency));
+        
+        let futs: Vec<_> = all_items
+            .into_iter()
+            .take(if self.playlist_load_limit > 0 {
+                // If limit is set, only take what we need. Note: page limit is 100
+                 (PAGE_LIMIT * self.playlist_load_limit as u64) as usize
+            } else {
+                usize::MAX
+            })
+            .enumerate()
+            .filter_map(|(i, item)| {
+                let semaphore = semaphore.clone();
+                let artwork_url = artwork_url.clone();
+                
+                let item_data = item
+                    .get("itemV2")
+                    .or_else(|| item.get("item"))
+                    .and_then(|v| v.get("data"))?
+                    .clone();
 
-                    let typename = item_data.get("__typename").and_then(|v| v.as_str());
-                    if typename == Some("Track") || typename.is_none() {
-                        Some(self.parse_generic_track(item_data, artwork_url.clone()))
-                    } else {
-                        debug!(
-                            "Item at index {} is not a Track (typename: {:?})",
-                            i, typename
-                        );
-                        None
-                    }
-                })
-                .collect();
+                let typename = item_data.get("__typename").and_then(|v| v.as_str()).map(|s| s.to_string());
+                
+                if typename.as_deref() == Some("Track") || typename.is_none() {
+                    Some(async move {
+                         let _permit = semaphore.acquire().await.unwrap();
+                         self.parse_generic_track(&item_data, artwork_url).await
+                    })
+                } else {
+                    debug!(
+                        "Item at index {} is not a Track (typename: {:?})",
+                        i, typename
+                    );
+                    None
+                }
+            })
+            .collect();
 
-            let results = join_all(futs).await;
-            for track_info in results.into_iter().flatten() {
-                tracks.push(Track::new(track_info));
-            }
-        }
+        let results = join_all(futs).await;
+        let tracks: Vec<Track> = results
+            .into_iter()
+            .flatten()
+            .map(Track::new)
+            .collect();
 
         if tracks.is_empty() {
             LoadResult::Empty {}
@@ -843,20 +930,23 @@ impl SpotifySource {
             .pointer("/discography/topTracks/items")
             .and_then(|i| i.as_array())
         {
-            // Parse tracks concurrently in batches
-            for chunk in top_tracks.chunks(TRACK_RESOLVE_CONCURRENCY) {
-                let futs: Vec<_> = chunk
-                    .iter()
-                    .filter_map(|item| {
-                        let track_data = item.get("track")?;
-                        Some(self.parse_generic_track(track_data, None))
+            // Parse tracks concurrently
+            let semaphore = Arc::new(Semaphore::new(self.track_resolve_concurrency));
+            let futs: Vec<_> = top_tracks
+                .iter()
+                .filter_map(|item| {
+                    let track_data = item.get("track")?.clone();
+                    let semaphore = semaphore.clone();
+                    Some(async move {
+                         let _permit = semaphore.acquire().await.unwrap();
+                         self.parse_generic_track(&track_data, None).await
                     })
-                    .collect();
+                })
+                .collect();
 
-                let results = join_all(futs).await;
-                for track_info in results.into_iter().flatten() {
-                    tracks.push(Track::new(track_info));
-                }
+            let results = join_all(futs).await;
+            for track_info in results.into_iter().flatten() {
+                tracks.push(Track::new(track_info));
             }
         }
 
@@ -948,8 +1038,8 @@ impl SpotifySource {
 
     fn parse_limit<'a>(&self, query: &'a str) -> (&'a str, u32) {
         // Default and limits
-        const DEFAULT_LIMIT: u32 = 10;
-        const MAX_LIMIT: u32 = 25;
+        let default_limit: u32 = self.recommendations_limit as u32;
+        const MAX_LIMIT: u32 = 100; // Increased max limit slightly to allow config override if needed, though clamped by u32
 
         if let Some((base, params)) = query.split_once('?') {
             for pair in params.split('&') {
@@ -963,9 +1053,9 @@ impl SpotifySource {
                 }
             }
             // Return base if limit parsing failed but split succeeded
-            (base, DEFAULT_LIMIT)
+            (base, default_limit)
         } else {
-            (query, DEFAULT_LIMIT)
+            (query, default_limit)
         }
     }
 
