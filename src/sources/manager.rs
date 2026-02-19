@@ -29,6 +29,7 @@ impl SourceManager {
             sources.push(Box::new(JioSaavnSource::new(config.jiosaavn.clone())));
         }
         if config.sources.deezer {
+            info!("Registering Deezer source");
             sources.push(Box::new(
                 DeezerSource::new(config.deezer.clone().unwrap_or_default())
                     .expect("Failed to create Deezer source"),
