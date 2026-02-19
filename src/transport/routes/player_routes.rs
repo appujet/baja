@@ -164,6 +164,13 @@ pub async fn update_player(
     // Apply position (seek)
     if let Some(pos) = body.position {
         player.position = pos;
+        if let Some(handle) = &player.track_handle {
+             let h = handle.clone();
+             tokio::spawn(async move {
+                 // Convert ms to samples if needed by handle, but handle.seek takes ms
+                 h.seek(pos).await;
+             });
+        }
     }
 
     // Apply end time
