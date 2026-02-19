@@ -1,3 +1,4 @@
+use super::applemusic::AppleMusicSource;
 use super::deezer::DeezerSource;
 use super::http::HttpSource;
 use super::jiosaavn::JioSaavnSource;
@@ -28,7 +29,10 @@ impl SourceManager {
             sources.push(Box::new(JioSaavnSource::new(config.jiosaavn.clone())));
         }
         if config.sources.deezer {
-            sources.push(Box::new(DeezerSource::new(config.deezer.clone().unwrap_or_default()).expect("Failed to create Deezer source")));
+            sources.push(Box::new(
+                DeezerSource::new(config.deezer.clone().unwrap_or_default())
+                    .expect("Failed to create Deezer source"),
+            ));
         }
         if config.sources.youtube {
             info!("Registering YouTube source");
@@ -39,6 +43,10 @@ impl SourceManager {
         if config.sources.spotify {
             info!("Registering Spotify source");
             sources.push(Box::new(SpotifySource::new(config.spotify.clone())));
+        }
+        if config.sources.applemusic {
+            info!("Registering Apple Music source");
+            sources.push(Box::new(AppleMusicSource::new(config.applemusic.clone())));
         }
         // Generic HTTP source last
         if config.sources.http {
