@@ -102,8 +102,8 @@ pub async fn start_playback(
         identifier, playback_url, local_addr
     );
 
-    let rx = crate::audio::pipeline::decoder::start_decoding(playback_url, local_addr);
-    let (handle, audio_state, vol, pos) = TrackHandle::new();
+    let (rx, cmd_tx) = crate::audio::pipeline::decoder::start_decoding(playback_url, local_addr);
+    let (handle, audio_state, vol, pos) = TrackHandle::new(cmd_tx);
 
     {
         let engine = player.engine.lock().await;

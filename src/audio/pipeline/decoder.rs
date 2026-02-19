@@ -11,22 +11,36 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use tracing::{debug, error};
 
-pub fn start_decoding(url: String, local_addr: Option<std::net::IpAddr>) -> Receiver<i16> {
-    let (tx, rx) = flume::bounded::<i16>(512 * 1024);
+#[derive(Debug)]
+pub enum DecoderCommand {
+    Seek(u64), // Position in milliseconds
+    Stop,
+}
+
+pub fn start_decoding(
+    url: String,
+    local_addr: Option<std::net::IpAddr>,
+) -> (Receiver<i16>, Sender<DecoderCommand>) {
+    // Reduced buffer size for lower latency (was 512 * 1024)
+    // 4096 * 4 samples @ 48kHz stereo ≈ 170ms
+    let (tx, rx) = flume::bounded::<i16>(4096 * 4);
+    let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
 
     thread::spawn(move || {
-        if let Err(e) = decode_loop(url, local_addr, tx) {
+        if let Err(e) = decode_loop(url, local_addr, tx, cmd_rx) {
             error!("Decoding error: {}", e);
         }
     });
 
-    rx
+    (rx, cmd_tx)
 }
+
 
 fn decode_loop(
     url: String,
     local_addr: Option<std::net::IpAddr>,
     tx: Sender<i16>,
+    rx_cmd: Receiver<DecoderCommand>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Connecting to {}... (via {:?})", url, local_addr);
     let source = RemoteReader::new(&url, local_addr)?;
@@ -34,8 +48,20 @@ fn decode_loop(
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
 
     let mut hint = Hint::new();
-    if url.ends_with(".mp4") {
-        hint.with_extension("mp4");
+    if let Some(ext) = std::path::Path::new(&url).extension().and_then(|s| s.to_str()) {
+        match ext.to_lowercase().as_str() {
+            "mp3" => { hint.with_extension("mp3"); },
+            "m4a" | "mp4" | "3gp" => { hint.with_extension("m4a"); },
+            "ogg" | "opus" => { hint.with_extension("ogg"); },
+            "flac" => { hint.with_extension("flac"); },
+            "wav" => { hint.with_extension("wav"); },
+            "aac" => { hint.with_extension("aac"); },
+            "mkv" | "webm" => { hint.with_extension("mkv"); },
+            _ => {
+                // Try to infer from URL structure if extension is missing (e.g. some CDNs)
+                // but for now default provides good coverage
+            }
+        }
     }
 
     let probed = symphonia::default::get_probe().format(
@@ -66,9 +92,53 @@ fn decode_loop(
     );
 
     let mut sample_buf = None;
+
+
     let mut resampler = Resampler::new(source_rate, target_rate, channels);
 
     loop {
+        // Check for commands
+        match rx_cmd.try_recv() {
+            Ok(DecoderCommand::Seek(pos_ms)) => {
+                debug!("Seeking to {}ms", pos_ms);
+                let time = symphonia::core::units::Time::from(pos_ms as f64 / 1000.0);
+                let mut seek_res = format.seek(
+                    symphonia::core::formats::SeekMode::Accurate,
+                    symphonia::core::formats::SeekTo::Time {
+                        time: time.clone(),
+                        track_id: Some(track_id),
+                    },
+                );
+
+                if seek_res.is_err() {
+                     debug!("Accurate seek failed, trying coarse seek");
+                     seek_res = format.seek(
+                        symphonia::core::formats::SeekMode::Coarse,
+                        symphonia::core::formats::SeekTo::Time {
+                            time,
+                            track_id: Some(track_id),
+                        },
+                    );
+                }
+
+                match seek_res {
+                    Ok(_) => {
+                        debug!("Seek successful, resetting resampler/buffers");
+                        // Resetting resampler ensures no old audio data is mixed in
+                        resampler = Resampler::new(source_rate, target_rate, channels);
+                        sample_buf = None; // Drop any pending samples
+                        decoder.reset(); // Reset decoder state
+                    }
+                    Err(e) => {
+                        error!("Seek failed: {}", e);
+                    }
+                }
+            }
+            Ok(DecoderCommand::Stop) => break,
+            Err(flume::TryRecvError::Empty) => {}
+            Err(flume::TryRecvError::Disconnected) => break,
+        }
+
         let packet = match format.next_packet() {
             Ok(packet) => packet,
             Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
