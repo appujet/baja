@@ -8,12 +8,12 @@ use std::sync::Arc;
 /// Source Manager - coordinates all registered source plugins
 pub struct SourceManager {
     sources: Vec<Box<dyn SourcePlugin>>,
-    mirrors: Option<crate::config::MirrorsConfig>,
+    mirrors: Option<crate::configs::MirrorsConfig>,
 }
 
 impl SourceManager {
     /// Create a new SourceManager with all available sources
-    pub fn new(config: &crate::config::Config) -> Self {
+    pub fn new(config: &crate::configs::Config) -> Self {
         let mut sources: Vec<Box<dyn SourcePlugin>> = Vec::new();
 
         // Register all sources in priority order

@@ -12,7 +12,7 @@ pub mod tremolo;
 pub mod vibrato;
 pub mod volume;
 
-use crate::config::FiltersConfig;
+use crate::configs::FiltersConfig;
 use crate::playback::Filters;
 
 /// Validate if the requested filters are allowed by the server configuration.

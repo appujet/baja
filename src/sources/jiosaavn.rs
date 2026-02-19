@@ -22,7 +22,7 @@ pub struct JioSaavnSource {
 }
 
 impl JioSaavnSource {
-    pub fn new(config: Option<crate::config::JioSaavnConfig>) -> Self {
+    pub fn new(config: Option<crate::configs::JioSaavnConfig>) -> Self {
         let mut headers = HeaderMap::new();
 
         headers.insert(
@@ -213,7 +213,6 @@ impl JioSaavnSource {
             ("token", id),
             ("type", "song"),
         ];
-
 
         self.get_json(&params).await.and_then(|json| {
             // Usually returns { "songs": [ ... ] }
@@ -471,8 +470,6 @@ impl SourcePlugin for JioSaavnSource {
             let type_ = caps.name("type").unwrap().as_str();
             let id = caps.name("id").unwrap().as_str();
 
-
-
             if type_ == "song" {
                 // Use fetch_metadata for resolving (gets song info)
                 if let Some(track_data) = self.fetch_metadata(id).await {
@@ -494,14 +491,11 @@ impl SourcePlugin for JioSaavnSource {
         identifier: &str,
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> Option<String> {
-
-
         let id = if let Some(caps) = self.url_regex.captures(identifier) {
             caps.name("id").map(|m| m.as_str()).unwrap_or(identifier)
         } else {
             identifier
         };
-
 
         let track_data = self.fetch_metadata(id).await?;
         let encrypted_url = track_data
@@ -520,8 +514,6 @@ impl SourcePlugin for JioSaavnSource {
         if is_320 {
             playback_url = playback_url.replace("_96.mp4", "_320.mp4");
         }
-
-
 
         Some(playback_url)
     }
