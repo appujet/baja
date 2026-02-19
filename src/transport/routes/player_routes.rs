@@ -245,6 +245,11 @@ pub async fn update_player(
                             .store(true, std::sync::atomic::Ordering::SeqCst);
                         handle.stop().await;
                     }
+                    {
+                        let engine = player.engine.lock().await;
+                        let mut mixer = engine.mixer.lock().await;
+                        mixer.stop_all().await;
+                    }
                     player.track_handle = None;
                     player.track = None;
 
@@ -358,6 +363,11 @@ pub async fn destroy_player(
                         .stop_signal
                         .store(true, std::sync::atomic::Ordering::Relaxed);
                     handle.stop().await;
+                }
+                {
+                    let engine = player.engine.lock().await;
+                    let mut mixer = engine.mixer.lock().await;
+                    mixer.stop_all().await;
                 }
             }
             StatusCode::NO_CONTENT.into_response()

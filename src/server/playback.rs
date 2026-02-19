@@ -44,6 +44,12 @@ pub async fn start_playback(
         handle.stop().await;
     }
 
+    {
+        let engine = player.engine.lock().await;
+        let mut mixer = engine.mixer.lock().await;
+        mixer.stop_all().await;
+    }
+
     player.track = Some(track.clone());
     player.position = 0;
     player.paused = false;

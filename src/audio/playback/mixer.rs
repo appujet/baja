@@ -38,6 +38,18 @@ impl Mixer {
         });
     }
 
+    pub async fn stop_all(&mut self) {
+        for track in self.tracks.iter_mut() {
+            if let Ok(mut state) = track.state.try_lock() {
+                *state = PlaybackState::Stopped;
+            } else {
+                let mut state = track.state.lock().await;
+                *state = PlaybackState::Stopped;
+            }
+        }
+        self.tracks.clear();
+    }
+
     pub async fn mix(&mut self, buf: &mut [i16]) -> bool {
         if self.mix_buf.len() != buf.len() {
             self.mix_buf.resize(buf.len(), 0);
