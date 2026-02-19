@@ -136,13 +136,10 @@ impl SourcePlugin for HttpSource {
             Ok(Ok(info)) => LoadResult::Track(Track::new(info)),
             Ok(Err(e)) => {
                 warn!("Probing failed for {}: {}", identifier, e);
-                // Lavaplayer throws FriendlyException("Unknown file format") on failure.
-                // We return LoadResult::Error which mimics this.
-                LoadResult::Error(LoadError {
-                    message: format!("Probe failed: {}", e),
-                    severity: crate::common::Severity::Common,
-                    cause: e.to_string(),
-                })
+                // If probing fails (e.g. not an audio file), we should return Empty
+                // so the manager knows no track was found, rather than erroring.
+                // This mimics Lavaplayer's behavior where unknown formats return null.
+                LoadResult::Empty {}
             }
             Err(e) => {
                 error!("Task join error: {}", e);

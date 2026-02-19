@@ -15,14 +15,43 @@ pub struct Config {
     pub mirrors: Option<MirrorsConfig>,
     #[serde(default)]
     pub spotify: Option<SpotifyConfig>,
+    #[serde(default)]
+    pub deezer: Option<DeezerConfig>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            server: ServerConfig::default(),
+            route_planner: RoutePlannerConfig::default(),
+            sources: SourcesConfig::default(),
+            logging: None,
+            filters: FiltersConfig::default(),
+            jiosaavn: None,
+            mirrors: None,
+            spotify: None,
+            deezer: None,
+        }
+    }
 }
 
 impl Config {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
-        let config_str = std::fs::read_to_string("config.toml").unwrap_or_else(|_| "".to_string());
+        let config_path = if std::path::Path::new("config.toml").exists() {
+            "config.toml"
+        } else if std::path::Path::new("config.default.toml").exists() {
+            "config.default.toml"
+        } else {
+             return Err("config.toml or config.default.toml not found".into());
+        };
+        
+        println!("Loading configuration from: {}", config_path);
+
+        let config_str = std::fs::read_to_string(config_path)?;
         if config_str.is_empty() {
-            return Err("config.toml not found or empty".into());
+             return Err(format!("{} is empty", config_path).into());
         }
+        
         let config: Config = toml::from_str(&config_str)?;
         Ok(config)
     }

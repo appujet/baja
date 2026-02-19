@@ -1,3 +1,4 @@
+use super::deezer::DeezerSource;
 use super::http::HttpSource;
 use super::jiosaavn::JioSaavnSource;
 use super::plugin::SourcePlugin;
@@ -20,6 +21,9 @@ impl SourceManager {
         // Specialized sources first
         if config.sources.jiosaavn {
             sources.push(Box::new(JioSaavnSource::new(config.jiosaavn.clone())));
+        }
+        if config.sources.deezer {
+            sources.push(Box::new(DeezerSource::new(config.deezer.clone().unwrap_or_default()).expect("Failed to create Deezer source")));
         }
         if config.sources.youtube {
             sources.push(Box::new(YouTubeSource::new()));

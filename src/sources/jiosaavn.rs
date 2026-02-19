@@ -72,13 +72,15 @@ impl JioSaavnSource {
             .default_headers(headers);
 
         if let Some(proxy_config) = &proxy {
-            tracing::debug!("Configuring proxy for JioSaavnSource: {}", proxy_config.url);
-            if let Ok(proxy_obj) = reqwest::Proxy::all(&proxy_config.url) {
-                let mut proxy_obj = proxy_obj;
-                if let (Some(username), Some(password)) = (&proxy_config.username, &proxy_config.password) {
-                    proxy_obj = proxy_obj.basic_auth(username, password);
+            if let Some(url) = &proxy_config.url {
+                tracing::debug!("Configuring proxy for JioSaavnSource: {}", url);
+                if let Ok(proxy_obj) = reqwest::Proxy::all(url) {
+                    let mut proxy_obj = proxy_obj;
+                    if let (Some(username), Some(password)) = (&proxy_config.username, &proxy_config.password) {
+                        proxy_obj = proxy_obj.basic_auth(username, password);
+                    }
+                    client_builder = client_builder.proxy(proxy_obj);
                 }
-                client_builder = client_builder.proxy(proxy_obj);
             }
         }
 

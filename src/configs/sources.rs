@@ -8,6 +8,8 @@ pub struct SourcesConfig {
     pub local: bool,
     #[serde(default)]
     pub jiosaavn: bool,
+    #[serde(default)]
+    pub deezer: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -114,9 +116,28 @@ pub struct JioSaavnDecryptionConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct HttpProxyConfig {
-    pub url: String,
+    pub url: Option<String>,
     pub username: Option<String>,
     pub password: Option<String>,
+}
+
+
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct DeezerConfig {
+    pub arls: Option<Vec<String>>,
+    pub master_decryption_key: Option<String>,
+    pub proxy: Option<HttpProxyConfig>,
+}
+
+impl Default for DeezerConfig {
+    fn default() -> Self {
+        Self {
+            arls: None,
+            master_decryption_key: None,
+            proxy: None,
+        }
+    }
 }
 
 

@@ -23,14 +23,16 @@ impl RemoteReader {
         }
 
         if let Some(proxy_config) = proxy {
-            tracing::debug!("Configuring proxy for RemoteReader: {}", proxy_config.url);
-            if let Ok(proxy_obj) = reqwest::Proxy::all(&proxy_config.url) {
-                let mut proxy_obj = proxy_obj;
-                if let (Some(username), Some(password)) = (proxy_config.username, proxy_config.password)
-                {
-                    proxy_obj = proxy_obj.basic_auth(&username, &password);
+            if let Some(url) = &proxy_config.url {
+                tracing::debug!("Configuring proxy for RemoteReader: {}", url);
+                if let Ok(proxy_obj) = reqwest::Proxy::all(url) {
+                    let mut proxy_obj = proxy_obj;
+                    if let (Some(username), Some(password)) = (proxy_config.username, proxy_config.password)
+                    {
+                        proxy_obj = proxy_obj.basic_auth(&username, &password);
+                    }
+                    builder = builder.proxy(proxy_obj);
                 }
-                builder = builder.proxy(proxy_obj);
             }
         }
 
@@ -109,5 +111,44 @@ impl MediaSource for RemoteReader {
 
     fn byte_len(&self) -> Option<u64> {
         self.len
+    }
+}
+
+pub fn create_media_source(
+    playback_url: &str,
+    local_addr: Option<std::net::IpAddr>,
+    proxy: Option<crate::configs::HttpProxyConfig>,
+) -> Result<Box<dyn MediaSource>, Box<dyn std::error::Error + Send + Sync>> {
+    if playback_url.starts_with("deezer_encrypted:") {
+        let prefix_len = "deezer_encrypted:".len();
+        if let Some(rest) = playback_url.get(prefix_len..) {
+            if let Some(colon_pos) = rest.find(':') {
+                let track_id = &rest[..colon_pos];
+                let real_url = &rest[colon_pos + 1..];
+                
+                let config = crate::configs::base::Config::load().unwrap_or_default();
+                let master_key = config.deezer.as_ref()
+                    .and_then(|c| c.master_decryption_key.clone())
+                    .unwrap_or_default();
+                
+                return Ok(Box::new(crate::audio::deezer_reader::DeezerReader::new(
+                    real_url,
+                    track_id,
+                    &master_key,
+                    local_addr,
+                    proxy,
+                )?));
+            } else {
+                 return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Malformed Deezer URL: {}", playback_url))));
+            }
+        } else {
+             return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Malformed Deezer URL: {}", playback_url))));
+        }
+    } else {
+        Ok(Box::new(RemoteReader::new(
+            playback_url,
+            local_addr,
+            proxy,
+        )?))
     }
 }

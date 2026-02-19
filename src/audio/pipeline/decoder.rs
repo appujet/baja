@@ -1,11 +1,13 @@
 use super::resampler::Resampler;
 use crate::audio::reader::RemoteReader;
+use crate::configs::HttpProxyConfig;
 use flume::{Receiver, Sender};
 use std::thread;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSource;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
@@ -18,17 +20,28 @@ pub enum DecoderCommand {
 }
 
 pub fn start_decoding(
-    url: String,
+    playback_url: String,
     local_addr: Option<std::net::IpAddr>,
-    proxy: Option<crate::configs::HttpProxyConfig>,
-) -> (Receiver<i16>, Sender<DecoderCommand>) {
+    proxy: Option<HttpProxyConfig>,
+) -> (
+    Receiver<i16>,
+    Sender<crate::audio::pipeline::decoder::DecoderCommand>,
+) {
     // Reduced buffer size for lower latency (was 512 * 1024)
     // 4096 * 4 samples @ 48kHz stereo ≈ 170ms
     let (tx, rx) = flume::bounded::<i16>(4096 * 4);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
 
-    thread::spawn(move || {
-        if let Err(e) = decode_loop(url, local_addr, proxy, tx, cmd_rx) {
+    std::thread::spawn(move || {
+        let reader = match crate::audio::reader::create_media_source(&playback_url, local_addr, proxy) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Failed to create media source: {}", e);
+                return;
+            }
+        };
+
+        if let Err(e) = decode_loop(playback_url, reader, tx, cmd_rx) {
             error!("Decoding error: {}", e);
         }
     });
@@ -38,19 +51,16 @@ pub fn start_decoding(
 
 
 fn decode_loop(
-    url: String,
-    local_addr: Option<std::net::IpAddr>,
-    proxy: Option<crate::configs::HttpProxyConfig>,
+    playback_url: String,
+    reader: Box<dyn MediaSource>,
     tx: Sender<i16>,
-    rx_cmd: Receiver<DecoderCommand>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    debug!("Connecting to {}... (via {:?})", url, local_addr);
-    let source = RemoteReader::new(&url, local_addr, proxy)?;
-    debug!("Connected. Probing stream...");
-    let mss = MediaSourceStream::new(Box::new(source), Default::default());
+    cmd_rx: Receiver<DecoderCommand>,
+) -> Result<(), Error> {
+    // Create the media source stream using the reader
+    let mss = MediaSourceStream::new(reader, Default::default());
 
     let mut hint = Hint::new();
-    if let Some(ext) = std::path::Path::new(&url).extension().and_then(|s| s.to_str()) {
+    if let Some(ext) = std::path::Path::new(&playback_url).extension().and_then(|s| s.to_str()) {
         match ext.to_lowercase().as_str() {
             "mp3" => { hint.with_extension("mp3"); },
             "m4a" | "mp4" | "3gp" | "mov" => { hint.with_extension("m4a"); },
@@ -78,7 +88,7 @@ fn decode_loop(
         .tracks()
         .iter()
         .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-        .ok_or("no audio track found")?;
+        .ok_or(Error::IoError(std::io::Error::new(std::io::ErrorKind::NotFound, "no audio track found")))?;
 
     let track_id = track.id;
     let mut decoder =
@@ -100,7 +110,7 @@ fn decode_loop(
 
     loop {
         // Check for commands
-        match rx_cmd.try_recv() {
+        match cmd_rx.try_recv() {
             Ok(DecoderCommand::Seek(pos_ms)) => {
                 debug!("Seeking to {}ms", pos_ms);
                 let time = symphonia::core::units::Time::from(pos_ms as f64 / 1000.0);
@@ -148,7 +158,7 @@ fn decode_loop(
                 if tx.is_disconnected() {
                     return Ok(());
                 }
-                return Err(Box::new(e));
+                return Err(Error::IoError(e));
             }
             Err(Error::DecodeError(e)) => {
                 error!("decode error: {}", e);
@@ -176,7 +186,7 @@ fn decode_loop(
                 let samples = buf.samples();
 
                 if source_rate != target_rate {
-                    resampler.process(samples, &tx)?;
+                    resampler.process(samples, &tx).map_err(|e| Error::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
                 } else {
                     for &s in samples {
                         if tx.send(s).is_err() {
@@ -191,7 +201,7 @@ fn decode_loop(
                 if tx.is_disconnected() {
                     return Ok(());
                 }
-                return Err(Box::new(e));
+                return Err(Error::IoError(e));
             }
             Err(Error::DecodeError(e)) => {
                 error!("decode error: {}", e);
