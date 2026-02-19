@@ -43,6 +43,7 @@ pub fn start_decoding(
     url: String,
     local_addr: Option<std::net::IpAddr>,
     cipher_manager: Option<Arc<YouTubeCipherManager>>,
+    proxy: Option<crate::configs::HttpProxyConfig>,
 ) -> (Receiver<i16>, Sender<DecoderCommand>) {
     // Reduced buffer size for lower latency (was 512 * 1024)
     // 4096 * 4 samples @ 48kHz stereo ≈ 170ms
@@ -79,6 +80,7 @@ fn decode_loop(
     url: String,
     local_addr: Option<std::net::IpAddr>,
     cipher_manager: Option<Arc<YouTubeCipherManager>>,
+    proxy: Option<crate::configs::HttpProxyConfig>,
     tx: Sender<i16>,
     rx_cmd: Receiver<DecoderCommand>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -123,6 +125,7 @@ fn decode_loop(
         Box::new(RemoteReader::new(&url, local_addr)?)
     };
 
+    let source = RemoteReader::new(&url, local_addr, proxy)?;
     debug!("Connected. Probing stream...");
     let mss = MediaSourceStream::new(source, Default::default());
 

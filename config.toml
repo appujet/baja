@@ -35,6 +35,12 @@ secretKey = "38346591" # The required secret key used for decryption
 # algorithm = "DES" # The algorithm used for decryption (Default "DES")
 # transformation = "DES/ECB/PKCS5Padding" # The transformation used for decryption (Default "DES/ECB/PKCS5Padding")
 
+[jiosaavn.proxy]
+url = "http://proxy.example.com:8080"
+# Optional authentication
+username = "myuser"
+password = "mypassword"
+
 [filters]
 volume = true
 equalizer = true

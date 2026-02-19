@@ -74,9 +74,26 @@ impl RemoteReader {
             .user_agent(user_agent)
             .timeout(std::time::Duration::from_secs(15))
             .connection_verbose(false);
+        proxy: Option<crate::configs::HttpProxyConfig>,
+    ) -> Result<Self, reqwest::Error> {
+        let mut builder = reqwest::blocking::Client::builder()
+            .user_agent(crate::common::http::HttpClient::random_user_agent())
+            .timeout(std::time::Duration::from_secs(10));
 
         if let Some(ip) = local_addr {
             builder = builder.local_address(ip);
+        }
+
+        if let Some(proxy_config) = proxy {
+            tracing::debug!("Configuring proxy for RemoteReader: {}", proxy_config.url);
+            if let Ok(proxy_obj) = reqwest::Proxy::all(&proxy_config.url) {
+                let mut proxy_obj = proxy_obj;
+                if let (Some(username), Some(password)) = (proxy_config.username, proxy_config.password)
+                {
+                    proxy_obj = proxy_obj.basic_auth(&username, &password);
+                }
+                builder = builder.proxy(proxy_obj);
+            }
         }
 
         let client = builder.build()?;

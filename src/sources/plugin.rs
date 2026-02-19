@@ -37,4 +37,9 @@ pub trait SourcePlugin: Send + Sync {
         identifier: &str,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> Option<String>;
+
+    /// Get the proxy configuration for this source, if any.
+    fn get_proxy_config(&self) -> Option<crate::configs::HttpProxyConfig> {
+        None
+    }
 }

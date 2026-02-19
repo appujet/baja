@@ -125,6 +125,7 @@ impl Default for SpotifyConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct JioSaavnConfig {
     pub decryption: Option<JioSaavnDecryptionConfig>,
+    pub proxy: Option<HttpProxyConfig>,
     #[serde(default = "default_js_search_limit")]
     pub search_limit: usize,
     #[serde(default = "default_js_recommendations_limit")]
@@ -157,6 +158,7 @@ impl Default for JioSaavnConfig {
     fn default() -> Self {
         Self {
             decryption: None,
+            proxy: None,
             search_limit: default_js_search_limit(),
             recommendations_limit: default_js_recommendations_limit(),
             playlist_load_limit: default_js_playlist_load_limit(),
@@ -171,6 +173,15 @@ pub struct JioSaavnDecryptionConfig {
     #[serde(rename = "secretKey")]
     pub secret_key: Option<String>,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct HttpProxyConfig {
+    pub url: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct MirrorsConfig {

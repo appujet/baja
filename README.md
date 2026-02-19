@@ -33,9 +33,30 @@ The following table outlines the current implementation status of various featur
 | :--- | :---: | :--- |
 | **HTTP / HTTPS** | ✅ | Direct streaming from web URLs |
 | **YouTube** | 🚧 | Integration with `rustypipe` / `yt-dlp` |
-| **Spotify** | 🚧 | Metadata resolution and playback |
-| **SoundCloud** | ❌ | Planned implementation |
+| **Spotify** | ✅ | Metadata resolution and full mirror playback support |
+| **JioSaavn** | ✅ | Metadata resolution and full playback support |
+| **Amazon Music** | ❌ | Planned implementation |
+| **Apple Music** | ❌ | Planned implementation |
+| **Anghami** | ❌ | Planned implementation |
+| **Audiomack** | ❌ | Planned implementation |
+| **Audius** | ❌ | Planned implementation |
+| **Bandcamp** | ❌ | Planned implementation |
+| **Bilibili** | ❌ | Planned implementation |
 | **Deezer** | ❌ | Planned implementation |
+| **Gaana** | ❌ | Planned implementation |
+| **Kwai** | ❌ | Planned implementation |
+| **Last.fm** | ❌ | Planned implementation |
+| **MixCloud** | ❌ | Planned implementation |
+| **Pandora** | ❌ | Planned implementation |
+| **Qobuz** | ❌ | Planned implementation |
+| **Reddit** | ❌ | Planned implementation |
+| **Shazam** | ❌ | Planned implementation |
+| **SoundCloud** | ❌ | Planned implementation |
+| **Tidal** | ❌ | Planned implementation |
+| **Twitch** | ❌ | Planned implementation |
+| **Vimeo** | ❌ | Planned implementation |
+| **VK Music** | ❌ | Planned implementation |
+| **Yandex Music** | ❌ | Planned implementation |
 
 ---
 

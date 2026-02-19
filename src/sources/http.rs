@@ -25,7 +25,7 @@ impl HttpSource {
         url: String,
         local_addr: Option<std::net::IpAddr>,
     ) -> Result<TrackInfo, Box<dyn std::error::Error + Send + Sync>> {
-        let source = crate::audio::reader::RemoteReader::new(&url, local_addr)?;
+        let source = crate::audio::reader::RemoteReader::new(&url, local_addr, None)?;
         let mut hint = Hint::new();
         
         if let Some(content_type) = source.content_type() {
