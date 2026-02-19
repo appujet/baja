@@ -15,6 +15,8 @@ pub struct Config {
     pub mirrors: Option<MirrorsConfig>,
     #[serde(default)]
     pub spotify: Option<SpotifyConfig>,
+    #[serde(default)]
+    pub youtube: Option<YouTubeConfig>,
 }
 
 impl Config {

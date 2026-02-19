@@ -10,6 +10,58 @@ pub struct SourcesConfig {
     pub jiosaavn: bool,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct YouTubeConfig {
+    #[serde(default)]
+    pub clients: YouTubeClientsConfig,
+    #[serde(default)]
+    pub cipher: YouTubeCipherConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct YouTubeCipherConfig {
+    pub url: Option<String>,
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct YouTubeClientsConfig {
+    #[serde(default = "default_yt_search_clients_list")]
+    pub search: Vec<String>,
+    #[serde(default = "default_yt_playback_clients_list")]
+    pub playback: Vec<String>,
+    #[serde(default)]
+    pub refresh_tokens: Vec<String>,
+}
+
+impl Default for YouTubeClientsConfig {
+    fn default() -> Self {
+        Self {
+            search: default_yt_search_clients_list(),
+            playback: default_yt_playback_clients_list(),
+            refresh_tokens: Vec::new(),
+        }
+    }
+}
+
+fn default_yt_search_clients_list() -> Vec<String> {
+    vec![
+        "WEB".to_string(),
+        "ANDROID".to_string(),
+        "MUSIC".to_string(),
+    ]
+}
+
+fn default_yt_playback_clients_list() -> Vec<String> {
+    vec![
+        "IOS".to_string(),
+        "TV".to_string(),
+        "ANDROID_VR".to_string(),
+        "WEB".to_string(),
+        "ANDROID".to_string(),
+    ]
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct SpotifyConfig {
     #[serde(default = "default_playlist_load_limit")]
@@ -86,11 +138,21 @@ pub struct JioSaavnConfig {
     pub artist_load_limit: usize,
 }
 
-fn default_js_search_limit() -> usize { 10 }
-fn default_js_recommendations_limit() -> usize { 10 }
-fn default_js_playlist_load_limit() -> usize { 50 }
-fn default_js_album_load_limit() -> usize { 50 }
-fn default_js_artist_load_limit() -> usize { 20 }
+fn default_js_search_limit() -> usize {
+    10
+}
+fn default_js_recommendations_limit() -> usize {
+    10
+}
+fn default_js_playlist_load_limit() -> usize {
+    50
+}
+fn default_js_album_load_limit() -> usize {
+    50
+}
+fn default_js_artist_load_limit() -> usize {
+    20
+}
 
 impl Default for JioSaavnConfig {
     fn default() -> Self {
