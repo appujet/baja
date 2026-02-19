@@ -20,6 +20,7 @@ pub enum DecoderCommand {
 pub fn start_decoding(
     url: String,
     local_addr: Option<std::net::IpAddr>,
+    proxy: Option<crate::configs::HttpProxyConfig>,
 ) -> (Receiver<i16>, Sender<DecoderCommand>) {
     // Reduced buffer size for lower latency (was 512 * 1024)
     // 4096 * 4 samples @ 48kHz stereo ≈ 170ms
@@ -27,7 +28,7 @@ pub fn start_decoding(
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
 
     thread::spawn(move || {
-        if let Err(e) = decode_loop(url, local_addr, tx, cmd_rx) {
+        if let Err(e) = decode_loop(url, local_addr, proxy, tx, cmd_rx) {
             error!("Decoding error: {}", e);
         }
     });
@@ -39,11 +40,12 @@ pub fn start_decoding(
 fn decode_loop(
     url: String,
     local_addr: Option<std::net::IpAddr>,
+    proxy: Option<crate::configs::HttpProxyConfig>,
     tx: Sender<i16>,
     rx_cmd: Receiver<DecoderCommand>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     debug!("Connecting to {}... (via {:?})", url, local_addr);
-    let source = RemoteReader::new(&url, local_addr)?;
+    let source = RemoteReader::new(&url, local_addr, proxy)?;
     debug!("Connected. Probing stream...");
     let mss = MediaSourceStream::new(Box::new(source), Default::default());
 

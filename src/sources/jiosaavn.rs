@@ -19,6 +19,7 @@ pub struct JioSaavnSource {
     search_prefix: String,
     rec_prefix: String,
     secret_key: Vec<u8>,
+    proxy: Option<crate::configs::HttpProxyConfig>,
     // Limits
     search_limit: usize,
     recommendations_limit: usize,
@@ -42,11 +43,7 @@ impl JioSaavnSource {
         headers.insert("Accept-Language", "en-US,en;q=0.9".parse().unwrap());
         headers.insert("Referer", "https://www.jiosaavn.com/".parse().unwrap());
         headers.insert("Origin", "https://www.jiosaavn.com".parse().unwrap());
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .unwrap();
-
+        
         let (
             secret_key,
             search_limit,
@@ -54,6 +51,7 @@ impl JioSaavnSource {
             playlist_load_limit,
             album_load_limit,
             artist_load_limit,
+            proxy,
         ) = if let Some(c) = config {
             (
                 c.decryption
@@ -64,10 +62,29 @@ impl JioSaavnSource {
                 c.playlist_load_limit,
                 c.album_load_limit,
                 c.artist_load_limit,
+                c.proxy,
             )
         } else {
-            ("38346591".to_string(), 10, 10, 50, 50, 20)
+            ("38346591".to_string(), 10, 10, 50, 50, 20, None)
         };
+
+        let mut client_builder = reqwest::Client::builder()
+            .default_headers(headers);
+
+        if let Some(proxy_config) = &proxy {
+            tracing::debug!("Configuring proxy for JioSaavnSource: {}", proxy_config.url);
+            if let Ok(proxy_obj) = reqwest::Proxy::all(&proxy_config.url) {
+                let mut proxy_obj = proxy_obj;
+                if let (Some(username), Some(password)) = (&proxy_config.username, &proxy_config.password) {
+                    proxy_obj = proxy_obj.basic_auth(username, password);
+                }
+                client_builder = client_builder.proxy(proxy_obj);
+            }
+        }
+
+        let client = client_builder
+            .build()
+            .unwrap();
 
         Self {
             client,
@@ -75,6 +92,7 @@ impl JioSaavnSource {
             search_prefix: "jssearch:".to_string(),
             rec_prefix: "jsrec:".to_string(),
             secret_key: secret_key.into_bytes(),
+            proxy,
             search_limit,
             recommendations_limit,
             playlist_load_limit,
@@ -559,5 +577,9 @@ impl SourcePlugin for JioSaavnSource {
         }
 
         Some(playback_url)
+    }
+
+    fn get_proxy_config(&self) -> Option<crate::configs::HttpProxyConfig> {
+        self.proxy.clone()
     }
 }
