@@ -8,18 +8,21 @@ use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = rustalink::config::Config::load()?;
+    let config = rustalink::configs::Config::load()?;
 
     rustalink::common::logger::init(&config);
 
-    println!(r#"
+    println!(
+        r#"
     [32m____            __        ___       __  [0m
    [32m/ __ \__  _______/ /_____ _/ (_)___  / /__[0m
   [32m/ /_/ / / / / ___/ __/ __ `/ / / __ \/ //_/[0m   v{}
  [32m/ _, _/ /_/ (__  ) /_/ /_/ / / / / / / ,<   [0m   Running on Rust
 [32m/_/ |_|\__,_/____/\__/\__,_/_/_/_/ /_/_/|_|  [0m   
                                              
-    "#, env!("CARGO_PKG_VERSION"));
+    "#,
+        env!("CARGO_PKG_VERSION")
+    );
 
     info!("Lavalink Server starting...");
 

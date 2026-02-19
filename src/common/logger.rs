@@ -1,6 +1,5 @@
-use crate::config::Config;
+use crate::configs::Config;
 use tracing_subscriber::EnvFilter;
-
 
 pub fn init(config: &Config) {
     // Determine the base log level
@@ -36,5 +35,4 @@ pub fn init(config: &Config) {
         .with_line_number(true) // Show source line number
         .with_file(false) // Hide full file path to reduce clutter
         .init();
-
 }

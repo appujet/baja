@@ -38,7 +38,7 @@ pub struct SpotifySource {
 }
 
 impl SpotifySource {
-    pub fn new(config: Option<crate::config::SpotifyConfig>) -> Self {
+    pub fn new(config: Option<crate::configs::SpotifyConfig>) -> Self {
         let mut headers = HeaderMap::new();
         headers.insert(
             USER_AGENT,
