@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::net::{SocketAddr, UdpSocket};
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use tokio::net::UdpSocket as TokioUdpSocket;
 use tokio::sync::Mutex;
 use tokio_tungstenite::tungstenite::protocol::Message;
@@ -46,11 +46,11 @@ pub struct VoiceGateway {
 
 const MAX_RECONNECT_ATTEMPTS: u32 = 5;
 
-
-fn map_boxed_err<E: std::fmt::Display>(
-    e: E,
-) -> Box<dyn std::error::Error + Send + Sync> {
-    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+fn map_boxed_err<E: std::fmt::Display>(e: E) -> Box<dyn std::error::Error + Send + Sync> {
+    Box::new(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        e.to_string(),
+    ))
 }
 
 impl Drop for VoiceGateway {
@@ -91,13 +91,14 @@ impl VoiceGateway {
         let seq_ack = Arc::new(AtomicI64::new(-1));
 
         loop {
-            let outcome = self
-                .run_session(is_resume, seq_ack.clone())
-                .await;
+            let outcome = self.run_session(is_resume, seq_ack.clone()).await;
 
             match outcome {
                 Ok(SessionOutcome::Shutdown) => {
-                    tracing::debug!("Voice gateway shutting down cleanly for guild {}", self.guild_id);
+                    tracing::debug!(
+                        "Voice gateway shutting down cleanly for guild {}",
+                        self.guild_id
+                    );
                     return Ok(());
                 }
                 Ok(SessionOutcome::Reconnect) => {
@@ -109,9 +110,8 @@ impl VoiceGateway {
                         );
                         return Ok(());
                     }
-                    let backoff = std::time::Duration::from_millis(
-                        1000 * 2u64.pow((attempt - 1).min(3)),
-                    );
+                    let backoff =
+                        std::time::Duration::from_millis(1000 * 2u64.pow((attempt - 1).min(3)));
                     info!(
                         "Voice gateway reconnecting (attempt {}/{}) in {:?} for guild {}",
                         attempt, MAX_RECONNECT_ATTEMPTS, backoff, self.guild_id
@@ -129,9 +129,8 @@ impl VoiceGateway {
                         );
                         return Err(e);
                     }
-                    let backoff = std::time::Duration::from_millis(
-                        1000 * 2u64.pow((attempt - 1).min(3)),
-                    );
+                    let backoff =
+                        std::time::Duration::from_millis(1000 * 2u64.pow((attempt - 1).min(3)));
                     warn!(
                         "Voice gateway connection error (attempt {}/{}): {}. Retrying in {:?}",
                         attempt, MAX_RECONNECT_ATTEMPTS, e, backoff
@@ -153,7 +152,9 @@ impl VoiceGateway {
         let url = format!("wss://{}/?v=8", self.endpoint);
         tracing::debug!("Connecting to voice gateway: {}", url);
 
-        let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.map_err(map_boxed_err)?;
+        let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
+            .await
+            .map_err(map_boxed_err)?;
         let (mut write, mut read) = ws_stream.split();
 
         // Send Identify (Op 0) or Resume (Op 7)
@@ -169,8 +170,13 @@ impl VoiceGateway {
             };
             tracing::debug!("Sending voice Resume (Op 7) for guild {}", self.guild_id);
             write
-                .send(Message::Text(serde_json::to_string(&resume).map_err(map_boxed_err)?.into()))
-                .await.map_err(map_boxed_err)?;
+                .send(Message::Text(
+                    serde_json::to_string(&resume)
+                        .map_err(map_boxed_err)?
+                        .into(),
+                ))
+                .await
+                .map_err(map_boxed_err)?;
         } else {
             let identify = VoiceGatewayMessage {
                 op: 0,
@@ -183,8 +189,13 @@ impl VoiceGateway {
                 }),
             };
             write
-                .send(Message::Text(serde_json::to_string(&identify).map_err(map_boxed_err)?.into()))
-                .await.map_err(map_boxed_err)?;
+                .send(Message::Text(
+                    serde_json::to_string(&identify)
+                        .map_err(map_boxed_err)?
+                        .into(),
+                ))
+                .await
+                .map_err(map_boxed_err)?;
         }
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
@@ -281,10 +292,7 @@ impl VoiceGateway {
                                         }),
                                     };
                                     if let Ok(json) = serde_json::to_string(&hb) {
-                                        if tx_hb_inner
-                                            .send(Message::Text(json.into()))
-                                            .is_err()
-                                        {
+                                        if tx_hb_inner.send(Message::Text(json.into())).is_err() {
                                             break; // Channel closed — session ending
                                         }
                                     }
@@ -295,11 +303,11 @@ impl VoiceGateway {
                             ssrc = msg.d["ssrc"].as_u64().unwrap_or(0) as u32;
                             let ip = msg.d["ip"].as_str().unwrap_or("");
                             let port = msg.d["port"].as_u64().unwrap_or(0) as u16;
-                            udp_addr = Some(format!("{}:{}", ip, port).parse().map_err(map_boxed_err)?);
+                            udp_addr =
+                                Some(format!("{}:{}", ip, port).parse().map_err(map_boxed_err)?);
 
                             if let Some(modes) = msg.d["modes"].as_array() {
-                                let preferred =
-                                    ["aead_aes256_gcm_rtpsize", "xsalsa20_poly1305"];
+                                let preferred = ["aead_aes256_gcm_rtpsize", "xsalsa20_poly1305"];
                                 for p in preferred {
                                     if modes.iter().any(|m| m.as_str() == Some(p)) {
                                         selected_mode = p.to_string();
@@ -330,7 +338,9 @@ impl VoiceGateway {
                                 };
                                 if tx
                                     .send(Message::Text(
-                                        serde_json::to_string(&select).map_err(map_boxed_err)?.into(),
+                                        serde_json::to_string(&select)
+                                            .map_err(map_boxed_err)?
+                                            .into(),
                                     ))
                                     .is_err()
                                 {
@@ -353,7 +363,8 @@ impl VoiceGateway {
                                 if let Some(addr) = udp_addr {
                                     let mixer = self.mixer.clone();
                                     let dave_clone = dave.clone();
-                                    let socket_clone = udp_socket.try_clone().map_err(map_boxed_err)?;
+                                    let socket_clone =
+                                        udp_socket.try_clone().map_err(map_boxed_err)?;
                                     let mode_clone = selected_mode.clone();
                                     let cancel_clone = self.cancel_token.clone();
 
@@ -386,7 +397,9 @@ impl VoiceGateway {
                                     };
                                     if tx
                                         .send(Message::Text(
-                                            serde_json::to_string(&speaking).map_err(map_boxed_err)?.into(),
+                                            serde_json::to_string(&speaking)
+                                                .map_err(map_boxed_err)?
+                                                .into(),
                                         ))
                                         .is_err()
                                     {
@@ -413,7 +426,10 @@ impl VoiceGateway {
                         }
                         9 => {
                             // Op 9: Resumed — reset reconnect attempts
-                            info!("Voice session resumed successfully for guild {}", self.guild_id);
+                            info!(
+                                "Voice session resumed successfully for guild {}",
+                                self.guild_id
+                            );
                         }
                         11 => {
                             // USER_CONNECT
@@ -439,8 +455,7 @@ impl VoiceGateway {
                         21 => {
                             // PREPARE_TRANSITION
                             let tid = msg.d["transition_id"].as_u64().unwrap_or(0) as u16;
-                            let version =
-                                msg.d["protocol_version"].as_u64().unwrap_or(0) as u16;
+                            let version = msg.d["protocol_version"].as_u64().unwrap_or(0) as u16;
                             let mut dave_lock = dave.lock().await;
                             if dave_lock.prepare_transition(tid, version) {
                                 let ready = VoiceGatewayMessage {
@@ -461,8 +476,7 @@ impl VoiceGateway {
                         24 => {
                             // PREPARE_EPOCH
                             let epoch = msg.d["epoch"].as_u64().unwrap_or(0);
-                            let version =
-                                msg.d["protocol_version"].as_u64().unwrap_or(0) as u16;
+                            let version = msg.d["protocol_version"].as_u64().unwrap_or(0) as u16;
                             let mut dave_lock = dave.lock().await;
                             dave_lock.prepare_epoch(epoch, version);
                         }
@@ -501,8 +515,7 @@ impl VoiceGateway {
                         }
                         27 => {
                             // PROPOSALS
-                            match dave_lock.process_proposals(payload, &connected_users)
-                            {
+                            match dave_lock.process_proposals(payload, &connected_users) {
                                 Ok(Some(cw)) => {
                                     let mut out = vec![28];
                                     out.extend_from_slice(&cw);
@@ -511,17 +524,22 @@ impl VoiceGateway {
                                 Ok(None) => {}
                                 Err(e) => {
                                     let err_str = e.to_string();
-                                    warn!("DAVE process proposals error: {}. Recovering...", err_str);
+                                    warn!(
+                                        "DAVE process proposals error: {}. Recovering...",
+                                        err_str
+                                    );
 
                                     // Recovery: Reset session -> Op 31 (Invalid) -> Op 26 (Key Package)
                                     dave_lock.reset();
-   
+
                                     // Send Op 31 INVALID_COMMIT_WELCOME
                                     let invalid = VoiceGatewayMessage {
                                         op: 31,
-                                        d: serde_json::json!({ "transition_id": 0 }), 
+                                        d: serde_json::json!({ "transition_id": 0 }),
                                     };
-                                    let _ = tx.send(Message::Text(serde_json::to_string(&invalid).unwrap().into()));
+                                    let _ = tx.send(Message::Text(
+                                        serde_json::to_string(&invalid).unwrap().into(),
+                                    ));
 
                                     // Re-advertise Key Package (Op 26)
                                     if let Ok(kp) = dave_lock.setup_session(1) {
@@ -542,24 +560,30 @@ impl VoiceGateway {
                                             d: serde_json::json!({ "transition_id": tid }),
                                         };
                                         let _ = tx.send(Message::Text(
-                                            serde_json::to_string(&ready).map_err(map_boxed_err)?.into(),
+                                            serde_json::to_string(&ready)
+                                                .map_err(map_boxed_err)?
+                                                .into(),
                                         ));
                                     }
                                 }
                                 Err(e) => {
                                     warn!("DAVE process welcome error: {}. Recovering...", e);
-                                    
+
                                     let tid = if payload.len() >= 2 {
                                         u16::from_be_bytes([payload[0], payload[1]])
-                                    } else { 0 };
+                                    } else {
+                                        0
+                                    };
 
                                     dave_lock.reset();
 
                                     let invalid = VoiceGatewayMessage {
                                         op: 31,
-                                        d: serde_json::json!({ "transition_id": tid }), 
+                                        d: serde_json::json!({ "transition_id": tid }),
                                     };
-                                    let _ = tx.send(Message::Text(serde_json::to_string(&invalid).unwrap().into()));
+                                    let _ = tx.send(Message::Text(
+                                        serde_json::to_string(&invalid).unwrap().into(),
+                                    ));
 
                                     if let Ok(kp) = dave_lock.setup_session(1) {
                                         let mut bin = vec![26];
@@ -579,24 +603,30 @@ impl VoiceGateway {
                                             d: serde_json::json!({ "transition_id": tid }),
                                         };
                                         let _ = tx.send(Message::Text(
-                                            serde_json::to_string(&ready).map_err(map_boxed_err)?.into(),
+                                            serde_json::to_string(&ready)
+                                                .map_err(map_boxed_err)?
+                                                .into(),
                                         ));
                                     }
                                 }
                                 Err(e) => {
                                     warn!("DAVE process commit error: {}. Recovering...", e);
-                                    
+
                                     let tid = if payload.len() >= 2 {
                                         u16::from_be_bytes([payload[0], payload[1]])
-                                    } else { 0 };
+                                    } else {
+                                        0
+                                    };
 
                                     dave_lock.reset();
 
                                     let invalid = VoiceGatewayMessage {
                                         op: 31,
-                                        d: serde_json::json!({ "transition_id": tid }), 
+                                        d: serde_json::json!({ "transition_id": tid }),
                                     };
-                                    let _ = tx.send(Message::Text(serde_json::to_string(&invalid).unwrap().into()));
+                                    let _ = tx.send(Message::Text(
+                                        serde_json::to_string(&invalid).unwrap().into(),
+                                    ));
 
                                     if let Ok(kp) = dave_lock.setup_session(1) {
                                         let mut bin = vec![26];
@@ -606,10 +636,7 @@ impl VoiceGateway {
                                 }
                             }
                         }
-                        _ => tracing::debug!(
-                            "Received unknown binary op {} (seq {})",
-                            op, seq
-                        ),
+                        _ => tracing::debug!("Received unknown binary op {} (seq {})", op, seq),
                     }
                 }
                 Message::Close(frame) => {
@@ -640,11 +667,7 @@ impl VoiceGateway {
         drop(tx);
         drop(tx_hb);
         // Give the write task a moment to exit cleanly
-        let _ = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            write_task,
-        )
-        .await;
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(500), write_task).await;
 
         Ok(outcome)
     }
@@ -663,22 +686,30 @@ impl VoiceGateway {
         socket.send_to(&packet, addr).map_err(map_boxed_err)?;
 
         let mut buf = [0u8; 74];
-        let tokio_socket = TokioUdpSocket::from_std(socket.try_clone().map_err(map_boxed_err)?).map_err(map_boxed_err)?;
+        let tokio_socket = TokioUdpSocket::from_std(socket.try_clone().map_err(map_boxed_err)?)
+            .map_err(map_boxed_err)?;
 
         let timeout = tokio::time::Duration::from_secs(2);
         match tokio::time::timeout(timeout, tokio_socket.recv(&mut buf)).await {
             Ok(Ok(n)) => {
                 if n < 74 {
-                    return Err(map_boxed_err(std::io::Error::new(std::io::ErrorKind::Other, "IP discovery response too short")));
+                    return Err(map_boxed_err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "IP discovery response too short",
+                    )));
                 }
-                let ip_str = std::str::from_utf8(&buf[8..72]).map_err(map_boxed_err)?
+                let ip_str = std::str::from_utf8(&buf[8..72])
+                    .map_err(map_boxed_err)?
                     .trim_matches('\0')
                     .to_string();
                 let port = u16::from_le_bytes([buf[72], buf[73]]);
                 Ok((ip_str, port))
             }
             Ok(Err(e)) => Err(map_boxed_err(e)),
-            Err(_) => Err(map_boxed_err(std::io::Error::new(std::io::ErrorKind::TimedOut, "IP discovery timeout"))),
+            Err(_) => Err(map_boxed_err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "IP discovery timeout",
+            ))),
         }
     }
 }
@@ -697,7 +728,7 @@ async fn speak_loop(
     use crate::audio::pipeline::encoder::Encoder;
     use crate::gateway::UdpBackend;
     let mut encoder = Encoder::new().map_err(map_boxed_err)?;
-    let udp = UdpBackend::new(socket, addr, ssrc, key, &mode).map_err(map_boxed_err)?;
+    let mut udp = UdpBackend::new(socket, addr, ssrc, key, &mode).map_err(map_boxed_err)?;
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(20));
     // Use Burst to catch up if we fall behind, preventing perceived packet loss gaps
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
