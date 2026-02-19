@@ -10,13 +10,11 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-
 const CLIENT_NAME: &str = "WEB";
 const CLIENT_ID: &str = "1";
 const CLIENT_VERSION: &str = "2.20251030.01.00";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
      AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
-
 
 pub struct WebClient {
     http: reqwest::Client,
@@ -81,7 +79,6 @@ impl WebClient {
         Ok(res.json().await?)
     }
 }
-
 
 #[async_trait]
 impl YouTubeClient for WebClient {
@@ -171,18 +168,12 @@ impl YouTubeClient for WebClient {
         playlist_id: &str,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>> {
-        let browse_id = if playlist_id.starts_with("PL") || playlist_id.starts_with("RD") {
-            format!("VL{}", playlist_id)
-        } else {
-            playlist_id.to_string()
-        };
-
         let body = json!({
             "context": self.build_context(),
-            "browseId": browse_id
+            "playlistId": playlist_id
         });
 
-        let url = format!("{}/youtubei/v1/browse?prettyPrint=false", INNERTUBE_API);
+        let url = format!("{}/youtubei/v1/next?prettyPrint=false", INNERTUBE_API);
 
         let mut req = self
             .http
@@ -201,13 +192,16 @@ impl YouTubeClient for WebClient {
         }
 
         let response: Value = res.json().await?;
-        Ok(extract_from_browse(&response, "youtube"))
+        Ok(crate::sources::youtube::extractor::extract_from_next(
+            &response, "youtube",
+        ))
     }
 
     async fn resolve_url(
         &self,
         _url: &str,
         _context: &Value,
+        _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(None)
     }
@@ -217,9 +211,9 @@ impl YouTubeClient for WebClient {
         track_id: &str,
         _context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
+        oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         // Web client requires cipher resolution (signatureTimestamp / n-param).
-        let oauth = Arc::new(crate::sources::youtube::oauth::YouTubeOAuth::new(vec![]));
         let body = self.player_request(track_id, &oauth).await?;
 
         let playability = body

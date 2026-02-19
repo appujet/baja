@@ -37,12 +37,14 @@ pub trait YouTubeClient: Send + Sync {
         &self,
         url: &str,
         context: &Value,
+        oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>>;
     async fn get_track_url(
         &self,
         track_id: &str,
         context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
+        oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>>;
     async fn get_playlist(
         &self,

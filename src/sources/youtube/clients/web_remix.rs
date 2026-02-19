@@ -431,6 +431,7 @@ impl YouTubeClient for WebRemixClient {
         &self,
         _url: &str,
         _context: &Value,
+        _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(None)
     }
@@ -440,8 +441,8 @@ impl YouTubeClient for WebRemixClient {
         track_id: &str,
         _context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
+        oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let oauth = Arc::new(YouTubeOAuth::new(vec![]));
         let body = self.player_request(track_id, &oauth).await?;
 
         let playability = body

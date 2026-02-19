@@ -154,6 +154,22 @@ impl YouTubeSource {
         }
     }
 
+    fn prioritize_clients<'a>(
+        &'a self,
+        clients: &'a [Box<dyn YouTubeClient>],
+        prefer_music: bool,
+    ) -> Vec<&'a Box<dyn YouTubeClient>> {
+        let mut ordered = Vec::with_capacity(clients.len());
+        if prefer_music {
+            ordered.extend(clients.iter().filter(|c| c.name().starts_with("Music")));
+            ordered.extend(clients.iter().filter(|c| !c.name().starts_with("Music")));
+        } else {
+            ordered.extend(clients.iter().filter(|c| !c.name().starts_with("Music")));
+            ordered.extend(clients.iter().filter(|c| c.name().starts_with("Music")));
+        }
+        ordered
+    }
+
     pub fn cipher_manager(&self) -> Arc<YouTubeCipherManager> {
         self.cipher_manager.clone()
     }
@@ -188,16 +204,10 @@ impl SourcePlugin for YouTubeSource {
 
             tracing::debug!("Searching for: {} (type: {})", query, search_type);
 
-            for client in &self.search_clients {
-                let is_music_client = client.name().starts_with("Music");
+            let clients_to_try =
+                self.prioritize_clients(&self.search_clients, search_type == "music");
 
-                if search_type == "music" && !is_music_client {
-                    continue;
-                }
-                if search_type == "video" && is_music_client {
-                    continue;
-                }
-
+            for client in clients_to_try {
                 tracing::debug!("Trying search client: {}", client.name());
                 match client.search(query, &context, self.oauth.clone()).await {
                     Ok(tracks) => {
@@ -217,7 +227,11 @@ impl SourcePlugin for YouTubeSource {
         if identifier.starts_with("ytrec:") {
             let seed_id = &identifier["ytrec:".len()..];
             let playlist_id = format!("RD{}", seed_id);
-            for client in &self.search_clients {
+
+            // Recommendations are almost always music related
+            let clients_to_try = self.prioritize_clients(&self.search_clients, true);
+
+            for client in clients_to_try {
                 match client.get_playlist(&playlist_id, self.oauth.clone()).await {
                     Ok(Some((tracks, title))) => {
                         let filtered_tracks: Vec<Track> = tracks
@@ -248,17 +262,17 @@ impl SourcePlugin for YouTubeSource {
 
             // First check for playlist
             if let Some(playlist_id) = self.extract_playlist_id(identifier) {
-                for client in &self.search_clients {
-                    let is_music_client = client.name().starts_with("Music");
-                    if is_music_url && !is_music_client {
-                        continue;
-                    }
-                    if !is_music_url && is_music_client {
-                        continue;
-                    }
+                let clients_to_try = self.prioritize_clients(&self.search_clients, is_music_url);
 
+                for client in clients_to_try {
+                    tracing::debug!("Trying playlist client: {}", client.name());
                     match client.get_playlist(&playlist_id, self.oauth.clone()).await {
                         Ok(Some((tracks, title))) => {
+                            tracing::debug!(
+                                "Successfully loaded playlist '{}' with {}",
+                                title,
+                                client.name()
+                            );
                             return LoadResult::Playlist(PlaylistData {
                                 info: PlaylistInfo {
                                     name: title,
@@ -268,7 +282,14 @@ impl SourcePlugin for YouTubeSource {
                                 tracks,
                             });
                         }
-                        Ok(None) => continue,
+                        Ok(None) => {
+                            tracing::debug!(
+                                "Client {} returned no playlist for {}",
+                                client.name(),
+                                playlist_id
+                            );
+                            continue;
+                        }
                         Err(e) => {
                             tracing::error!("Playlist error with {}: {}", client.name(), e);
                         }
@@ -276,17 +297,16 @@ impl SourcePlugin for YouTubeSource {
                 }
             }
 
-            for client in &self.playback_clients {
-                let is_music_client = client.name().starts_with("Music");
-                if is_music_url && !is_music_client {
-                    continue;
-                }
-                if !is_music_url && is_music_client {
-                    continue;
-                }
+            // Fallback to track loading if playlist failed or was skipped
+            let clients_to_try = self.prioritize_clients(&self.playback_clients, is_music_url);
 
+            for client in clients_to_try {
+                tracing::debug!("Trying track info client: {}", client.name());
                 match client.get_track_info(&id, self.oauth.clone()).await {
-                    Ok(Some(track)) => return LoadResult::Track(track),
+                    Ok(Some(track)) => {
+                        tracing::debug!("Successfully loaded track {} with {}", id, client.name());
+                        return LoadResult::Track(track);
+                    }
                     Ok(None) => continue,
                     Err(e) => {
                         tracing::error!("Track info error with {}: {}", client.name(), e);
@@ -307,20 +327,23 @@ impl SourcePlugin for YouTubeSource {
         let id = self.extract_id(identifier);
         let is_music_url = identifier.contains("music.youtube.com");
 
-        for client in &self.playback_clients {
-            let is_music_client = client.name().starts_with("Music");
-            if is_music_url && !is_music_client {
-                continue;
-            }
-            if !is_music_url && is_music_client {
-                continue;
-            }
+        let clients_to_try = self.prioritize_clients(&self.playback_clients, is_music_url);
 
+        for client in clients_to_try {
+            tracing::debug!("Trying playback URL client: {}", client.name());
             match client
-                .get_track_url(&id, &context, self.cipher_manager.clone())
+                .get_track_url(
+                    &id,
+                    &context,
+                    self.cipher_manager.clone(),
+                    self.oauth.clone(),
+                )
                 .await
             {
-                Ok(Some(url)) => return Some(url),
+                Ok(Some(url)) => {
+                    tracing::debug!("Resolved playback URL with {}", client.name());
+                    return Some(url);
+                }
                 Ok(None) => continue,
                 Err(e) => {
                     tracing::error!("Playback URL error with {}: {}", client.name(), e);

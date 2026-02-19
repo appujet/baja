@@ -316,6 +316,7 @@ impl YouTubeClient for MusicAndroidClient {
         let body = json!({
             "context": self.build_context(),
             "playlistId": playlist_id,
+            "enablePersistentPlaylistPanel": true,
             "isAudioOnly": true
         });
 
@@ -337,74 +338,37 @@ impl YouTubeClient for MusicAndroidClient {
             return Ok(None);
         }
 
-        let response: Value = res.json().await?;
-        let mut tracks = Vec::new();
-        let title = response
-            .get("contents")
-            .and_then(|c| c.get("singleColumnMusicWatchNextResultsRenderer"))
-            .and_then(|s| s.get("playlist"))
-            .and_then(|p| p.get("playlist"))
-            .and_then(|p| p.get("title"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("Unknown Playlist")
-            .to_string();
+        let body: Value = res.json().await?;
+        let result = crate::sources::youtube::extractor::extract_from_next(&body, "youtube");
 
-        let entries = response
-            .get("contents")
-            .and_then(|c| c.get("singleColumnMusicWatchNextResultsRenderer"))
-            .and_then(|s| s.get("playlist"))
-            .and_then(|p| p.get("playlist"))
-            .and_then(|p| p.get("contents"))
-            .and_then(|c| c.as_array());
-
-        if let Some(entries) = entries {
-            for entry in entries {
-                if let Some(renderer) = entry.get("playlistPanelVideoRenderer") {
-                    let id = renderer.get("videoId").and_then(|v| v.as_str());
-                    let title = renderer
-                        .get("title")
-                        .and_then(|t| t.get("runs"))
-                        .and_then(|r| r.get(0))
-                        .and_then(|r| r.get("text"))
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("Unknown Title");
-                    let author = renderer
-                        .get("longBylineText")
-                        .and_then(|t| t.get("runs"))
-                        .and_then(|r| r.get(0))
-                        .and_then(|r| r.get("text"))
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("Unknown Artist");
-
-                    if let Some(id) = id {
-                        tracks.push(Track::new(TrackInfo {
-                            identifier: id.to_string(),
-                            is_seekable: true,
-                            title: title.to_string(),
-                            author: author.to_string(),
-                            length: 0,
-                            is_stream: false,
-                            uri: Some(format!("https://music.youtube.com/watch?v={}", id)),
-                            source_name: "youtube".to_string(),
-                            isrc: None,
-                            artwork_url: extract_thumbnail(renderer, Some(id)),
-                            position: 0,
-                        }));
+        if result.is_none() {
+            tracing::warn!("MusicAndroid: extract_from_next returned None");
+            if let Some(obj) = body.as_object() {
+                tracing::warn!("Response keys: {:?}", obj.keys());
+            }
+            if let Some(contents) = body.get("contents") {
+                if let Some(obj) = contents.as_object() {
+                    tracing::warn!("Contents keys: {:?}", obj.keys());
+                    if let Some(renderer) = obj.get("singleColumnMusicWatchNextResultsRenderer") {
+                        tracing::warn!(
+                            "Renderer keys: {:?}",
+                            renderer.as_object().map(|o| o.keys())
+                        );
                     }
                 }
+            } else {
+                tracing::warn!("No 'contents' field in response");
             }
         }
 
-        if tracks.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some((tracks, title)))
+        Ok(result)
     }
 
     async fn resolve_url(
         &self,
         _url: &str,
         _context: &Value,
+        _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(None)
     }
@@ -414,8 +378,8 @@ impl YouTubeClient for MusicAndroidClient {
         track_id: &str,
         _context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
+        oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let oauth = Arc::new(YouTubeOAuth::new(vec![]));
         let body = self.player_request(track_id, &oauth).await?;
 
         let playability = body

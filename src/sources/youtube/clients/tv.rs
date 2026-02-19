@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-
 const CLIENT_NAME: &str = "TVHTML5";
 const CLIENT_ID: &str = "7";
 const CLIENT_VERSION: &str = "7.20250219.19.00";
@@ -47,6 +46,7 @@ impl TvClient {
     async fn player_request(
         &self,
         video_id: &str,
+        oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let body = json!({
             "context": self.build_context(),
@@ -57,14 +57,18 @@ impl TvClient {
 
         let url = format!("{}/youtubei/v1/player?prettyPrint=false", INNERTUBE_API);
 
-        let res = self
+        let mut req = self
             .http
             .post(&url)
             .header("X-YouTube-Client-Name", CLIENT_ID)
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .json(&body)
-            .send()
-            .await?;
+            .json(&body);
+
+        if let Some(auth) = oauth.get_auth_header().await {
+            req = req.header("Authorization", auth);
+        }
+
+        let res = req.send().await?;
 
         let status = res.status();
         if !status.is_success() {
@@ -74,7 +78,6 @@ impl TvClient {
         Ok(res.json().await?)
     }
 }
-
 
 #[async_trait]
 impl YouTubeClient for TvClient {
@@ -168,6 +171,7 @@ impl YouTubeClient for TvClient {
         &self,
         _url: &str,
         _context: &Value,
+        _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(None)
     }
@@ -177,8 +181,9 @@ impl YouTubeClient for TvClient {
         track_id: &str,
         _context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
+        oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let body = self.player_request(track_id).await?;
+        let body = self.player_request(track_id, &oauth).await?;
 
         let playability = body
             .get("playabilityStatus")

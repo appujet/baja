@@ -2,17 +2,24 @@ use crate::api::tracks::{Track, TrackInfo};
 use serde_json::Value;
 
 pub fn extract_from_player(body: &Value, source_name: &str) -> Option<Track> {
-    let details = body.get("videoDetails")?;
-    let video_id = details.get("videoId")?.as_str()?;
+    let details = body
+        .get("videoDetails")
+        .or_else(|| body.get("video_details"))?;
+    let video_id = details
+        .get("videoId")
+        .or_else(|| details.get("video_id"))?
+        .as_str()?;
 
     let title = details.get("title")?.as_str()?.to_string();
     let author = details.get("author")?.as_str()?.to_string();
     let is_stream = details
         .get("isLiveContent")
+        .or_else(|| details.get("is_live_content"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let length_seconds = details
         .get("lengthSeconds")
+        .or_else(|| details.get("length_seconds"))
         .and_then(|v| v.as_str())
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(0);
@@ -30,7 +37,11 @@ pub fn extract_from_player(body: &Value, source_name: &str) -> Option<Track> {
         identifier: video_id.to_string(),
         is_seekable: !is_stream,
         author,
-        length: if is_stream { 0 } else { length_seconds * 1000 },
+        length: if is_stream {
+            9223372036854775807
+        } else {
+            length_seconds * 1000
+        },
         is_stream,
         position: 0,
         title,
@@ -41,12 +52,89 @@ pub fn extract_from_player(body: &Value, source_name: &str) -> Option<Track> {
     }))
 }
 
+pub fn extract_from_next(body: &Value, source_name: &str) -> Option<(Vec<Track>, String)> {
+    let contents_root = body.get("contents").and_then(|c| {
+        c.get("singleColumnWatchNextResults")
+            .or_else(|| c.get("singleColumnMusicWatchNextResultsRenderer"))
+    })?;
+
+    let playlist_content = contents_root
+        .get("playlist")
+        .and_then(|p| p.get("playlist"))
+        .and_then(|p| p.get("contents"))
+        .and_then(|c| c.as_array())
+        .or_else(|| {
+            contents_root
+                .get("tabbedRenderer")
+                .and_then(|t| t.get("watchNextTabbedResultsRenderer"))
+                .and_then(|w| w.get("tabs"))
+                .and_then(|t| t.get(0))
+                .and_then(|t| t.get("tabRenderer"))
+                .and_then(|t| t.get("content"))
+                .and_then(|c| c.get("musicQueueRenderer"))
+                .and_then(|music_queue| {
+                    music_queue
+                        .get("content")
+                        .and_then(|c| c.get("playlistPanelRenderer"))
+                        .and_then(|p| p.get("contents"))
+                        .or_else(|| music_queue.get("contents"))
+                        .and_then(|c| c.as_array())
+                })
+        })?;
+
+    if playlist_content.is_empty() {
+        return None;
+    }
+
+    let mut tracks = Vec::new();
+    for item in playlist_content {
+        if let Some(track) = extract_track(item, source_name) {
+            tracks.push(track);
+        }
+    }
+
+    if tracks.is_empty() {
+        return None;
+    }
+
+    // Attempt to extract title
+    let title = contents_root
+        .get("tabbedRenderer")
+        .and_then(|t| t.get("watchNextTabbedResultsRenderer"))
+        .and_then(|t| t.get("tabs"))
+        .and_then(|t| t.get(0))
+        .and_then(|t| t.get("tabRenderer"))
+        .and_then(|t| t.get("content"))
+        .and_then(|c| c.get("musicQueueRenderer"))
+        .and_then(|m| m.get("header"))
+        .and_then(|h| h.get("musicQueueHeaderRenderer"))
+        .and_then(|m| m.get("subtitle"))
+        .and_then(|s| get_text(s))
+        .or_else(|| {
+            contents_root
+                .get("playlist")
+                .and_then(|p| p.get("playlist"))
+                .and_then(|p| p.get("title"))
+                .and_then(|t| t.as_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "Unknown Playlist".to_string());
+
+    Some((tracks, title))
+}
+
 pub fn extract_from_browse(body: &Value, source_name: &str) -> Option<(Vec<Track>, String)> {
     let title = body
         .get("header")
         .and_then(|h| {
             h.get("playlistHeaderRenderer")
                 .or_else(|| h.get("musicAlbumReleaseHeaderRenderer"))
+                .or_else(|| h.get("musicDetailHeaderRenderer"))
+                .or_else(|| {
+                    h.get("musicEditablePlaylistDetailHeaderRenderer")
+                        .and_then(|m| m.get("header"))
+                        .and_then(|h| h.get("musicDetailHeaderRenderer"))
+                })
         })
         .and_then(|h| h.get("title"))
         .and_then(|t| get_text(t))
@@ -82,6 +170,40 @@ pub fn extract_from_browse(body: &Value, source_name: &str) -> Option<(Vec<Track
                         if let Some(track) = extract_track(item, source_name) {
                             tracks.push(track);
                         }
+                    }
+                }
+                // Additional check for music playlist shelf renderer directly in section contents
+                if let Some(shelf) = section.get("musicPlaylistShelfRenderer") {
+                    if let Some(list) = shelf.get("contents").and_then(|c| c.as_array()) {
+                        for item in list {
+                            if let Some(track) = extract_track(item, source_name) {
+                                tracks.push(track);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // Fallback: check simpler structures for browse (like music playlist shelf directly)
+        if let Some(contents) = body
+            .get("contents")
+            .and_then(|c| c.get("singleColumnBrowseResultsRenderer"))
+            .and_then(|s| s.get("tabs"))
+            .and_then(|t| t.as_array())
+            .and_then(|t| t.get(0))
+            .and_then(|t| t.get("tabRenderer"))
+            .and_then(|t| t.get("content"))
+            .and_then(|c| c.get("sectionListRenderer"))
+            .and_then(|s| s.get("contents"))
+            .and_then(|c| c.as_array())
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("musicPlaylistShelfRenderer"))
+        {
+            if let Some(list) = contents.get("contents").and_then(|c| c.as_array()) {
+                for item in list {
+                    if let Some(track) = extract_track(item, source_name) {
+                        tracks.push(track);
                     }
                 }
             }
@@ -130,12 +252,15 @@ pub fn find_section_list(value: &Value) -> Option<&Value> {
 }
 
 pub fn extract_track(item: &Value, source_name: &str) -> Option<Track> {
+    // Check for different renderer types
     let renderer = item
         .get("videoRenderer")
         .or_else(|| item.get("compactVideoRenderer"))
         .or_else(|| item.get("playlistVideoRenderer"))
         .or_else(|| item.get("musicResponsiveListItemRenderer"))
-        .or_else(|| item.get("musicTwoColumnItemRenderer"))?;
+        .or_else(|| item.get("musicTwoColumnItemRenderer"))
+        .or_else(|| item.get("playlistPanelVideoRenderer"))
+        .or_else(|| item.get("gridVideoRenderer"))?;
 
     let video_id = renderer
         .get("videoId")
@@ -152,16 +277,26 @@ pub fn extract_track(item: &Value, source_name: &str) -> Option<Track> {
                 .and_then(|c| c.get("watchEndpoint"))
                 .and_then(|w| w.get("videoId"))
                 .and_then(|v| v.as_str())
+        })
+        .or_else(|| {
+            renderer
+                .get("navigationEndpoint")
+                .and_then(|n| n.get("watchEndpoint"))
+                .and_then(|w| w.get("videoId"))
+                .and_then(|v| v.as_str())
         })?;
 
+    // Improved title extraction
     let title = get_text(renderer.get("title").or_else(|| {
         renderer
             .get("flexColumns")
             .and_then(|c| c.get(0))
             .and_then(|c| c.get("musicResponsiveListItemFlexColumnRenderer"))
             .and_then(|r| r.get("text"))
-    })?)?;
+    })?)
+    .unwrap_or_else(|| "Unknown Title".to_string());
 
+    // Improved author extraction
     let author = if let Some(long_byline) = renderer.get("longBylineText") {
         get_text(long_byline)
     } else if let Some(short_byline) = renderer.get("shortBylineText") {
@@ -174,9 +309,18 @@ pub fn extract_track(item: &Value, source_name: &str) -> Option<Track> {
         .and_then(|c| c.get("musicResponsiveListItemFlexColumnRenderer"))
         .and_then(|r| r.get("text"))
     {
-        get_text(flex)
+        // For music responsive list items, the second column often contains "Artist • Album • ...".
+        // We take the first run as the artist.
+        if let Some(runs) = flex.get("runs").and_then(|r| r.as_array()) {
+            runs.first()
+                .and_then(|r| r.get("text"))
+                .and_then(|t| t.as_str())
+                .map(|s| s.to_string())
+        } else {
+            get_text(flex)
+        }
     } else {
-        Some("Unknown Artist".to_string())
+        None
     }
     .unwrap_or("Unknown Artist".to_string());
 
@@ -200,12 +344,20 @@ pub fn extract_track(item: &Value, source_name: &str) -> Option<Track> {
             .unwrap_or(false);
 
     let length_ms = if is_stream {
-        9223372036854775807 // u64::MAX technically for duration but here we use large number
+        9223372036854775807
     } else {
         renderer
             .get("lengthText")
             .and_then(|t| get_text(t))
             .map(|s| parse_duration(&s))
+            .or_else(|| {
+                // Fallback to lengthSeconds if available (e.g. videoRenderer)
+                renderer
+                    .get("lengthSeconds")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .map(|s| s * 1000)
+            })
             .unwrap_or(0)
     };
 

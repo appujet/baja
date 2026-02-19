@@ -8,12 +8,10 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-
 const CLIENT_NAME: &str = "IOS";
 const CLIENT_VERSION: &str = "21.02.1";
 const USER_AGENT: &str =
     "com.google.ios.youtube/21.02.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)";
-
 
 pub struct IosClient {
     http: reqwest::Client,
@@ -84,7 +82,6 @@ impl IosClient {
         Ok(res.json().await?)
     }
 }
-
 
 #[async_trait]
 impl YouTubeClient for IosClient {
@@ -183,6 +180,7 @@ impl YouTubeClient for IosClient {
         &self,
         _url: &str,
         _context: &Value,
+        _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(None)
     }
@@ -192,10 +190,10 @@ impl YouTubeClient for IosClient {
         track_id: &str,
         _context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
+        oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         // IOS does NOT require a player script for cipher – URLs come pre-signed.
-        let oauth_dummy = Arc::new(crate::sources::youtube::oauth::YouTubeOAuth::new(vec![]));
-        let body = self.player_request(track_id, &oauth_dummy).await?;
+        let body = self.player_request(track_id, &oauth).await?;
 
         let playability = body
             .get("playabilityStatus")
