@@ -1,10 +1,9 @@
-use blowfish::Blowfish;
-use cbc::cipher::{BlockDecryptMut, KeyIvInit};
 use crate::audio::reader::RemoteReader;
-use md5::{Md5, Digest};
+use cbc::cipher::{BlockDecryptMut, KeyIvInit};
+use hex;
+use md5::{Digest, Md5};
 use std::io::{Read, Seek, SeekFrom};
 use symphonia::core::io::MediaSource;
-use hex;
 
 type BlowfishCbc = cbc::Decryptor<blowfish::Blowfish>;
 
@@ -27,7 +26,7 @@ impl DeezerReader {
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let reader = RemoteReader::new(url, local_addr, proxy)?;
         let key = Self::compute_key(track_id, master_key);
-        
+
         Ok(Self {
             reader,
             key,
@@ -48,7 +47,7 @@ impl DeezerReader {
         for i in 0..16 {
             key[i] = md5_bytes[i] ^ md5_bytes[i + 16] ^ master_bytes[i];
         }
-        
+
         key
     }
 }
@@ -72,9 +71,9 @@ impl Read for DeezerReader {
             }
 
             // 3. Read from remote into overflow buffer until we have at least 2048 bytes or EOF
-            let mut temp_buf = [0u8; 4096]; 
+            let mut temp_buf = [0u8; 4096];
             let mut read_something = false;
-            
+
             // Try to fill overflow_buf to at least 2048
             while self.overflow_buf.len() < 2048 {
                 let n = self.reader.read(&mut temp_buf)?;
@@ -84,7 +83,7 @@ impl Read for DeezerReader {
                 self.overflow_buf.extend_from_slice(&temp_buf[..n]);
                 read_something = true;
             }
-            
+
             // If we didn't read anything and overflow is empty, we are truly EOF
             if !read_something && self.overflow_buf.is_empty() && self.decrypted_buf.is_empty() {
                 return Ok(0);
@@ -92,34 +91,36 @@ impl Read for DeezerReader {
 
             // 4. Process chunks from overflow buffer
             while self.overflow_buf.len() >= 2048 {
-                 let chunk_data: Vec<u8> = self.overflow_buf.drain(..2048).collect();
-                 
-                 // Decrypt every 3rd chunk (0, 3, 6...)
-                 if (self.pos / 2048) % 3 == 0 {
+                let chunk_data: Vec<u8> = self.overflow_buf.drain(..2048).collect();
+
+                // Decrypt every 3rd chunk (0, 3, 6...)
+                if (self.pos / 2048) % 3 == 0 {
                     let iv = [0, 1, 2, 3, 4, 5, 6, 7];
                     let cipher = BlowfishCbc::new_from_slices(&self.key, &iv)
                         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-                    
+
                     let mut chunk_mut = chunk_data.clone();
-                    if let Ok(_) = cipher.decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut chunk_mut) {
+                    if let Ok(_) = cipher
+                        .decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut chunk_mut)
+                    {
                         self.decrypted_buf.extend_from_slice(&chunk_mut);
                     } else {
                         self.decrypted_buf.extend_from_slice(&chunk_data);
                     }
-                 } else {
-                     self.decrypted_buf.extend_from_slice(&chunk_data);
-                 }
-                 self.pos += 2048;
+                } else {
+                    self.decrypted_buf.extend_from_slice(&chunk_data);
+                }
+                self.pos += 2048;
             }
 
             // If we hit EOF (implied by loop exit without filling 2048) and have leftovers
             // And we know we won't get more data (read returned 0)
             if !read_something && !self.overflow_buf.is_empty() {
-                 self.decrypted_buf.extend_from_slice(&self.overflow_buf);
-                 self.pos += self.overflow_buf.len() as u64;
-                 self.overflow_buf.clear();
+                self.decrypted_buf.extend_from_slice(&self.overflow_buf);
+                self.pos += self.overflow_buf.len() as u64;
+                self.overflow_buf.clear();
             }
-            
+
             // Loop back to start: drain skips, then serve.
         }
     }
@@ -130,10 +131,19 @@ impl Seek for DeezerReader {
         // We only support Start(pos) properly for now, or Current(0)
         let target_pos = match pos {
             SeekFrom::Start(p) => p,
-            SeekFrom::Current(0) => return Ok(self.pos - self.decrypted_buf.len() as u64 - self.overflow_buf.len() as u64), // Approximate
+            SeekFrom::Current(0) => {
+                return Ok(self.pos
+                    - self.decrypted_buf.len() as u64
+                    - self.overflow_buf.len() as u64);
+            } // Approximate
             // Other seeks implementation implies we need to know current size, which is hard.
             // RemoteReader handles it?
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "Only SeekFrom::Start supported")),
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "Only SeekFrom::Start supported",
+                ));
+            }
         };
 
         let aligned_pos = (target_pos / 2048) * 2048;
@@ -141,13 +151,13 @@ impl Seek for DeezerReader {
 
         // Seek the underlying reader to the aligned block start
         let new_pos = self.reader.seek(SeekFrom::Start(aligned_pos))?;
-        
+
         // Reset state
         self.pos = new_pos;
         self.overflow_buf.clear();
         self.decrypted_buf.clear();
         self.skip_bytes = skip; // We need to discard this many bytes from the stream we are about to read
-        
+
         // Return correct logical position
         Ok(target_pos)
     }
