@@ -1,6 +1,7 @@
 use super::resampler::Resampler;
 use crate::audio::hls_reader::HlsReader;
 use crate::audio::reader::RemoteReader;
+use crate::configs::HttpProxyConfig;
 use crate::sources::youtube::sabr::reader::SabrReader;
 use crate::sources::youtube::sabr::structs::FormatId;
 use base64::Engine as _;
@@ -12,6 +13,8 @@ use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{CODEC_TYPE_NULL, DecoderOptions};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::FormatOptions;
+use symphonia::core::io::MediaSource;
+use symphonia::core::io::MediaSourceStream;
 use symphonia::core::io::{MediaSource, MediaSourceStream};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
@@ -40,8 +43,13 @@ use crate::sources::youtube::cipher::YouTubeCipherManager;
 use std::sync::Arc;
 
 pub fn start_decoding(
-    url: String,
+    playback_url: String,
     local_addr: Option<std::net::IpAddr>,
+    proxy: Option<HttpProxyConfig>,
+) -> (
+    Receiver<i16>,
+    Sender<crate::audio::pipeline::decoder::DecoderCommand>,
+) {
     cipher_manager: Option<Arc<YouTubeCipherManager>>,
     proxy: Option<crate::configs::HttpProxyConfig>,
 ) -> (Receiver<i16>, Sender<DecoderCommand>) {
@@ -50,6 +58,16 @@ pub fn start_decoding(
     let (tx, rx) = flume::bounded::<i16>(4096 * 4);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
 
+    std::thread::spawn(move || {
+        let reader = match crate::audio::reader::create_media_source(&playback_url, local_addr, proxy) {
+            Ok(r) => r,
+            Err(e) => {
+                error!("Failed to create media source: {}", e);
+                return;
+            }
+        };
+
+        if let Err(e) = decode_loop(playback_url, reader, tx, cmd_rx) {
     let handle = tokio::runtime::Handle::current();
     thread::spawn(move || {
         let _guard = handle.enter();
@@ -77,6 +95,16 @@ fn is_hls_url(url: &str) -> bool {
 }
 
 fn decode_loop(
+    playback_url: String,
+    reader: Box<dyn MediaSource>,
+    tx: Sender<i16>,
+    cmd_rx: Receiver<DecoderCommand>,
+) -> Result<(), Error> {
+    // Create the media source stream using the reader
+    let mss = MediaSourceStream::new(reader, Default::default());
+
+    let mut hint = Hint::new();
+    if let Some(ext) = std::path::Path::new(&playback_url).extension().and_then(|s| s.to_str()) {
     url: String,
     local_addr: Option<std::net::IpAddr>,
     cipher_manager: Option<Arc<YouTubeCipherManager>>,
@@ -170,7 +198,7 @@ fn decode_loop(
         .tracks()
         .iter()
         .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-        .ok_or("no audio track found")?;
+        .ok_or(Error::IoError(std::io::Error::new(std::io::ErrorKind::NotFound, "no audio track found")))?;
 
     let track_id = track.id;
     let mut decoder =
@@ -191,7 +219,7 @@ fn decode_loop(
 
     loop {
         // Check for commands
-        match rx_cmd.try_recv() {
+        match cmd_rx.try_recv() {
             Ok(DecoderCommand::Seek(pos_ms)) => {
                 debug!("Seeking to {}ms", pos_ms);
                 let time = symphonia::core::units::Time::from(pos_ms as f64 / 1000.0);
@@ -239,7 +267,7 @@ fn decode_loop(
                 if tx.is_disconnected() {
                     return Ok(());
                 }
-                return Err(Box::new(e));
+                return Err(Error::IoError(e));
             }
             Err(Error::DecodeError(e)) => {
                 error!("decode error: {}", e);
@@ -267,7 +295,7 @@ fn decode_loop(
                 let samples = buf.samples();
 
                 if source_rate != target_rate {
-                    resampler.process(samples, &tx)?;
+                    resampler.process(samples, &tx).map_err(|e| Error::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
                 } else {
                     for &s in samples {
                         if tx.send(s).is_err() {
@@ -282,7 +310,7 @@ fn decode_loop(
                 if tx.is_disconnected() {
                     return Ok(());
                 }
-                return Err(Box::new(e));
+                return Err(Error::IoError(e));
             }
             Err(Error::DecodeError(e)) => {
                 error!("decode error: {}", e);
