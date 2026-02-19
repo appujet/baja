@@ -10,6 +10,8 @@ pub struct SourcesConfig {
     pub jiosaavn: bool,
     #[serde(default)]
     pub deezer: bool,
+    #[serde(default)]
+    pub applemusic: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -203,6 +205,38 @@ impl Default for DeezerConfig {
 }
 
 
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AppleMusicConfig {
+    pub country_code: String,
+    pub media_api_token: Option<String>,
+    #[serde(default = "default_am_playlist_load_limit")]
+    pub playlist_load_limit: usize,
+    #[serde(default = "default_am_album_load_limit")]
+    pub album_load_limit: usize,
+    #[serde(default = "default_am_playlist_page_load_concurrency")]
+    pub playlist_page_load_concurrency: usize,
+    #[serde(default = "default_am_album_page_load_concurrency")]
+    pub album_page_load_concurrency: usize,
+}
+
+fn default_am_playlist_load_limit() -> usize { 0 }
+fn default_am_album_load_limit() -> usize { 0 }
+fn default_am_playlist_page_load_concurrency() -> usize { 5 }
+fn default_am_album_page_load_concurrency() -> usize { 5 }
+
+impl Default for AppleMusicConfig {
+    fn default() -> Self {
+        Self {
+            country_code: "us".to_string(),
+            media_api_token: None,
+            playlist_load_limit: default_am_playlist_load_limit(),
+            album_load_limit: default_am_album_load_limit(),
+            playlist_page_load_concurrency: default_am_playlist_page_load_concurrency(),
+            album_page_load_concurrency: default_am_album_page_load_concurrency(),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct MirrorsConfig {

@@ -15,6 +15,7 @@ http = true
 local = false
 jiosaavn = true
 deezer = true
+applemusic = true
 
 [mirrors]
 providers = [
@@ -77,3 +78,11 @@ recommendations_limit = 10 # Limit number of recommendation results
 playlist_page_load_concurrency = 10 # Number of playlist pages to fetch concurrently
 album_page_load_concurrency = 5 # Number of album pages to fetch concurrently
 track_resolve_concurrency = 50 # Number of tracks to resolve concurrently
+
+[applemusic]
+country_code = "us"
+# media_api_token = "your_token_here"
+playlist_load_limit = 0
+album_load_limit = 0
+playlist_page_load_concurrency = 5
+album_page_load_concurrency = 5

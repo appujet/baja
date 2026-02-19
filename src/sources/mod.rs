@@ -1,3 +1,4 @@
+pub mod applemusic;
 pub mod http;
 pub mod jiosaavn;
 
