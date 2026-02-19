@@ -8,14 +8,12 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CLIENT_NAME: &str = "IOS";
 const CLIENT_VERSION: &str = "21.02.1";
 const USER_AGENT: &str =
     "com.google.ios.youtube/21.02.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)";
 
-// ─── Client ───────────────────────────────────────────────────────────────────
 
 pub struct IosClient {
     http: reqwest::Client,
@@ -52,7 +50,6 @@ impl IosClient {
         })
     }
 
-    /// POST /youtubei/v1/player to the googleapis endpoint.
     async fn player_request(
         &self,
         video_id: &str,
@@ -88,7 +85,6 @@ impl IosClient {
     }
 }
 
-// ─── Trait impl ───────────────────────────────────────────────────────────────
 
 #[async_trait]
 impl YouTubeClient for IosClient {

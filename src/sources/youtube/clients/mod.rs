@@ -2,10 +2,11 @@ pub mod android;
 pub mod android_vr;
 pub mod common;
 pub mod ios;
-pub mod music;
+pub mod music_android;
 pub mod tv;
 pub mod web;
 pub mod web_embedded;
+pub mod web_remix;
 
 use super::cipher::YouTubeCipherManager;
 use super::oauth::YouTubeOAuth;

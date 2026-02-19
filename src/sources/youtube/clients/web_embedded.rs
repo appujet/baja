@@ -8,15 +8,11 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const CLIENT_NAME: &str = "WEB_EMBEDDED_PLAYER";
 const CLIENT_ID: &str = "56";
 const CLIENT_VERSION: &str = "1.20250219.01.00";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
      AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
-
-// ─── Client ───────────────────────────────────────────────────────────────────
 
 pub struct WebEmbeddedClient {
     http: reqwest::Client,
@@ -80,7 +76,6 @@ impl WebEmbeddedClient {
     }
 }
 
-// ─── Trait impl ───────────────────────────────────────────────────────────────
 
 #[async_trait]
 impl YouTubeClient for WebEmbeddedClient {

@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CLIENT_NAME: &str = "ANDROID_VR";
 const CLIENT_ID: &str = "28";
@@ -16,8 +15,6 @@ const CLIENT_VERSION: &str = "1.61.48";
 const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro Build/UQ1A.240205.002; wv) \
      AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 \
      Chrome/121.0.6167.164 Mobile Safari/537.36 YouTubeVR/1.61.48 (gzip)";
-
-// ─── Client ───────────────────────────────────────────────────────────────────
 
 pub struct AndroidVrClient {
     http: reqwest::Client,
@@ -84,7 +81,6 @@ impl AndroidVrClient {
     }
 }
 
-// ─── Trait impl ───────────────────────────────────────────────────────────────
 
 #[async_trait]
 impl YouTubeClient for AndroidVrClient {

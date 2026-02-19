@@ -50,19 +50,22 @@ impl Default for YouTubeClientsConfig {
 
 fn default_yt_search_clients_list() -> Vec<String> {
     vec![
+        "MUSIC_ANDROID".to_string(),
+        "MUSIC_WEB".to_string(),
         "WEB".to_string(),
         "ANDROID".to_string(),
-        "MUSIC".to_string(),
     ]
 }
 
 fn default_yt_playback_clients_list() -> Vec<String> {
     vec![
+        "ANDROID".to_string(),
+        "MUSIC_ANDROID".to_string(),
+        "MUSIC_WEB".to_string(),
         "IOS".to_string(),
         "TV".to_string(),
         "ANDROID_VR".to_string(),
         "WEB".to_string(),
-        "ANDROID".to_string(),
     ]
 }
 
@@ -185,8 +188,6 @@ pub struct HttpProxyConfig {
     pub password: Option<String>,
 }
 
-
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct DeezerConfig {
     pub arls: Option<Vec<String>>,
@@ -204,8 +205,6 @@ impl Default for DeezerConfig {
     }
 }
 
-
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AppleMusicConfig {
     pub country_code: String,
@@ -220,10 +219,18 @@ pub struct AppleMusicConfig {
     pub album_page_load_concurrency: usize,
 }
 
-fn default_am_playlist_load_limit() -> usize { 0 }
-fn default_am_album_load_limit() -> usize { 0 }
-fn default_am_playlist_page_load_concurrency() -> usize { 5 }
-fn default_am_album_page_load_concurrency() -> usize { 5 }
+fn default_am_playlist_load_limit() -> usize {
+    0
+}
+fn default_am_album_load_limit() -> usize {
+    0
+}
+fn default_am_playlist_page_load_concurrency() -> usize {
+    5
+}
+fn default_am_album_page_load_concurrency() -> usize {
+    5
+}
 
 impl Default for AppleMusicConfig {
     fn default() -> Self {

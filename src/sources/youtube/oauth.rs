@@ -24,8 +24,9 @@ impl YouTubeOAuth {
         }
     }
 
-    pub async fn get_access_token(&self) -> Option<String> {
-        if self.refresh_tokens.is_empty() {
+    pub async fn get_access_token(&self, idx: usize) -> Option<String> {
+        let max_tokens = self.refresh_tokens.len();
+        if max_tokens == 0 {
             return None;
         }
 
@@ -34,6 +35,7 @@ impl YouTubeOAuth {
             .unwrap()
             .as_secs();
 
+        // Check if cached token at this index is valid
         {
             let expiry = self.token_expiry.read().await;
             let token = self.access_token.read().await;
@@ -44,40 +46,29 @@ impl YouTubeOAuth {
             }
         }
 
-        // Need to refresh
-        let mut tokens_tried = 0;
-        let max_tokens = self.refresh_tokens.len();
-
-        while tokens_tried < max_tokens {
-            let idx = {
-                let mut current_idx = self.current_token_index.write().await;
-                let val = *current_idx;
-                *current_idx = (val + 1) % max_tokens;
-                val
-            };
-
-            let refresh_token = &self.refresh_tokens[idx];
-            if refresh_token.is_empty() {
-                tokens_tried += 1;
-                continue;
-            }
-
-            match self.refresh_token_request(refresh_token).await {
-                Ok((new_token, expires_in)) => {
-                    let mut token_store = self.access_token.write().await;
-                    let mut expiry_store = self.token_expiry.write().await;
-                    *token_store = Some(new_token.clone());
-                    *expiry_store = now + expires_in - 30; // 30s buffer
-                    return Some(new_token);
-                }
-                Err(e) => {
-                    tracing::error!("Failed to refresh YouTube token for index {}: {}", idx, e);
-                }
-            }
-            tokens_tried += 1;
+        // Need to refresh using the specified index
+        let refresh_token = &self.refresh_tokens[idx % max_tokens];
+        if refresh_token.is_empty() {
+            return None;
         }
 
-        None
+        match self.refresh_token_request(refresh_token).await {
+            Ok((new_token, expires_in)) => {
+                let mut token_store = self.access_token.write().await;
+                let mut expiry_store = self.token_expiry.write().await;
+                *token_store = Some(new_token.clone());
+                *expiry_store = now + expires_in - 30; // 30s buffer
+                return Some(new_token);
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to refresh YouTube token for index {}: {}",
+                    idx % max_tokens,
+                    e
+                );
+                None
+            }
+        }
     }
 
     async fn refresh_token_request(
@@ -112,7 +103,18 @@ impl YouTubeOAuth {
     }
 
     pub async fn get_auth_header(&self) -> Option<String> {
-        self.get_access_token()
+        if self.refresh_tokens.is_empty() {
+            return None;
+        }
+
+        let idx = {
+            let mut current_idx = self.current_token_index.write().await;
+            let val = *current_idx;
+            *current_idx = (val + 1) % self.refresh_tokens.len();
+            val
+        };
+
+        self.get_access_token(idx)
             .await
             .map(|t| format!("Bearer {}", t))
     }

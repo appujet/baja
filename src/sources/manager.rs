@@ -9,7 +9,7 @@ use super::youtube::cipher::YouTubeCipherManager;
 use std::sync::Arc;
 use tracing::info;
 
-/// Source Manager - coordinates all registered source plugins
+/// Source Manager 
 pub struct SourceManager {
     sources: Vec<Box<dyn SourcePlugin>>,
     mirrors: Option<crate::configs::MirrorsConfig>,
@@ -22,8 +22,7 @@ impl SourceManager {
         let mut sources: Vec<Box<dyn SourcePlugin>> = Vec::new();
         let mut youtube_cipher_manager = None;
 
-        // Register all sources in priority order
-        // Specialized sources first
+        // Register all sources
         if config.sources.jiosaavn {
             info!("Registering JioSaavn source");
             sources.push(Box::new(JioSaavnSource::new(config.jiosaavn.clone())));
@@ -49,7 +48,6 @@ impl SourceManager {
             info!("Registering Apple Music source");
             sources.push(Box::new(AppleMusicSource::new(config.applemusic.clone())));
         }
-        // Generic HTTP source last
         if config.sources.http {
             info!("Registering HTTP source");
             sources.push(Box::new(HttpSource::new()));
@@ -87,7 +85,6 @@ impl SourceManager {
     ) -> Option<String> {
         let identifier = track_info.uri.as_deref().unwrap_or(&track_info.identifier);
 
-        // 1. Try resolving with the original source first
         for source in &self.sources {
             if source.can_handle(identifier) {
                 tracing::debug!(
@@ -102,16 +99,10 @@ impl SourceManager {
                 {
                     return Some(url);
                 }
-
-                // If this source claimed to handle it but returned None,
-                // AND it's the one that should have handled it (we assume first match is correct source),
-                // then we fall through to mirrors.
-                // We break the loop so we don't try other sources for direct resolution.
                 break;
             }
         }
 
-        // 2. If direct resolution failed (or no source handled it), try mirrors
         if let Some(mirrors) = &self.mirrors {
             let isrc = track_info.isrc.as_deref().unwrap_or("");
             let query = format!("{} - {}", track_info.title, track_info.author);
@@ -123,14 +114,12 @@ impl SourceManager {
             for provider in &mirrors.providers {
                 let search_query = provider.replace("%ISRC%", isrc).replace("%QUERY%", &query);
 
-                // Skip if ISRC is empty but provider requires it
                 if isrc.is_empty() && provider.contains("%ISRC%") {
                     continue;
                 }
 
                 tracing::debug!("Attempting mirror provider: {}", search_query);
 
-                // Use the manager's own load() to resolve the mirror query (e.g. "ytsearch:Title - Artist")
                 match self.load(&search_query, routeplanner.clone()).await {
                     crate::api::tracks::LoadResult::Track(track) => {
                         let nested_id = track.info.uri.as_deref().unwrap_or(&track.info.identifier);

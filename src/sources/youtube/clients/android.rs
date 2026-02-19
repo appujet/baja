@@ -10,15 +10,12 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CLIENT_NAME: &str = "ANDROID";
-/// Client ID used in X-YouTube-Client-Name header.
 const CLIENT_ID: &str = "3";
 const CLIENT_VERSION: &str = "20.01.35";
 const USER_AGENT: &str = "com.google.android.youtube/20.01.35 (Linux; U; Android 14) identity";
 
-// ─── Client ───────────────────────────────────────────────────────────────────
 
 pub struct AndroidClient {
     http: reqwest::Client,
@@ -54,7 +51,6 @@ impl AndroidClient {
         })
     }
 
-    /// Common POST helper for `/youtubei/v1/player`.
     async fn player_request(
         &self,
         video_id: &str,
@@ -90,7 +86,6 @@ impl AndroidClient {
     }
 }
 
-// ─── Trait impl ───────────────────────────────────────────────────────────────
 
 #[async_trait]
 impl YouTubeClient for AndroidClient {
@@ -258,9 +253,6 @@ impl YouTubeClient for AndroidClient {
             }
         };
 
-        // ── SABR path ────────────────────────────────────────────────────────
-        // Android often returns a serverAbrStreamingUrl. Encode it as a `sabr://`
-        // URI understood by the SABR decoder pipeline.
         if let Some(server_abr_url) = streaming_data
             .get("serverAbrStreamingUrl")
             .and_then(|v| v.as_str())
@@ -315,7 +307,6 @@ impl YouTubeClient for AndroidClient {
             return Ok(Some(format!("sabr://{}", encoded)));
         }
 
-        // ── HLS path (live streams) ───────────────────────────────────────────
         if let Some(hls) = streaming_data
             .get("hlsManifestUrl")
             .and_then(|v| v.as_str())
@@ -324,7 +315,6 @@ impl YouTubeClient for AndroidClient {
             return Ok(Some(hls.to_string()));
         }
 
-        // ── Direct / ciphered format path ────────────────────────────────────
         let adaptive = streaming_data
             .get("adaptiveFormats")
             .and_then(|v| v.as_array());

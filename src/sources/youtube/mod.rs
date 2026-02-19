@@ -16,10 +16,11 @@ use clients::YouTubeClient;
 use clients::android::AndroidClient;
 use clients::android_vr::AndroidVrClient;
 use clients::ios::IosClient;
-use clients::music::MusicClient;
+use clients::music_android::MusicAndroidClient;
 use clients::tv::TvClient;
 use clients::web::WebClient;
 use clients::web_embedded::WebEmbeddedClient;
+use clients::web_remix::WebRemixClient;
 use oauth::YouTubeOAuth;
 
 pub struct YouTubeSource {
@@ -44,7 +45,8 @@ impl YouTubeSource {
                 "ANDROID" => Some(Box::new(AndroidClient::new())),
                 "IOS" => Some(Box::new(IosClient::new())),
                 "TV" => Some(Box::new(TvClient::new())),
-                "MUSIC" => Some(Box::new(MusicClient::new())),
+                "MUSIC" | "MUSIC_ANDROID" => Some(Box::new(MusicAndroidClient::new())),
+                "WEB_REMIX" | "MUSIC_WEB" => Some(Box::new(WebRemixClient::new())),
                 "ANDROID_VR" | "ANDROIDVR" => Some(Box::new(AndroidVrClient::new())),
                 "WEB_EMBEDDED" | "WEBEMBEDDED" => Some(Box::new(WebEmbeddedClient::new())),
                 _ => {
@@ -179,6 +181,15 @@ impl SourcePlugin for YouTubeSource {
             tracing::debug!("Searching for: {} (type: {})", query, search_type);
 
             for client in &self.search_clients {
+                let is_music_client = client.name().starts_with("Music");
+
+                if search_type == "music" && !is_music_client {
+                    continue;
+                }
+                if search_type == "video" && is_music_client {
+                    continue;
+                }
+
                 tracing::debug!("Trying search client: {}", client.name());
                 match client.search(query, &context, self.oauth.clone()).await {
                     Ok(tracks) => {
@@ -224,10 +235,20 @@ impl SourcePlugin for YouTubeSource {
         }
 
         if self.url_regex.is_match(identifier) {
+            let id = self.extract_id(identifier);
+            let is_music_url = identifier.contains("music.youtube.com");
+
             // First check for playlist
             if let Some(playlist_id) = self.extract_playlist_id(identifier) {
                 for client in &self.search_clients {
-                    // Browse usually works on search clients (Web/Android)
+                    let is_music_client = client.name().starts_with("Music");
+                    if is_music_url && !is_music_client {
+                        continue;
+                    }
+                    if !is_music_url && is_music_client {
+                        continue;
+                    }
+
                     match client.get_playlist(&playlist_id, self.oauth.clone()).await {
                         Ok(Some((tracks, title))) => {
                             return LoadResult::Playlist(PlaylistData {
@@ -247,8 +268,15 @@ impl SourcePlugin for YouTubeSource {
                 }
             }
 
-            let id = self.extract_id(identifier);
             for client in &self.playback_clients {
+                let is_music_client = client.name().starts_with("Music");
+                if is_music_url && !is_music_client {
+                    continue;
+                }
+                if !is_music_url && is_music_client {
+                    continue;
+                }
+
                 match client.get_track_info(&id, self.oauth.clone()).await {
                     Ok(Some(track)) => return LoadResult::Track(track),
                     Ok(None) => continue,
@@ -269,8 +297,17 @@ impl SourcePlugin for YouTubeSource {
     ) -> Option<String> {
         let context = serde_json::json!({});
         let id = self.extract_id(identifier);
+        let is_music_url = identifier.contains("music.youtube.com");
 
         for client in &self.playback_clients {
+            let is_music_client = client.name().starts_with("Music");
+            if is_music_url && !is_music_client {
+                continue;
+            }
+            if !is_music_url && is_music_client {
+                continue;
+            }
+
             match client
                 .get_track_url(&id, &context, self.cipher_manager.clone())
                 .await

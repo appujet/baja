@@ -8,16 +8,12 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const CLIENT_NAME: &str = "TVHTML5";
 const CLIENT_ID: &str = "7";
 const CLIENT_VERSION: &str = "7.20250219.19.00";
-// TVHTML5 uses a smart-TV UA — must match what was sent in the player request.
 const USER_AGENT: &str = "Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV; Maple2012) \
      AppleWebKit/534.7 (KHTML, like Gecko) SmartTV Safari/534.7";
-
-// ─── Client ───────────────────────────────────────────────────────────────────
 
 pub struct TvClient {
     http: reqwest::Client,
@@ -79,7 +75,6 @@ impl TvClient {
     }
 }
 
-// ─── Trait impl ───────────────────────────────────────────────────────────────
 
 #[async_trait]
 impl YouTubeClient for TvClient {
