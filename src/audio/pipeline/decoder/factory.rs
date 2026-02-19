@@ -8,6 +8,9 @@ use serde::Deserialize;
 use symphonia::core::io::MediaSource;
 use tracing::debug;
 
+const SABR_PREFIX: &str = "sabr://";
+const DEEZER_PREFIX: &str = "deezer_encrypted:";
+
 #[derive(Deserialize)]
 struct SabrData {
     url: String,
@@ -30,11 +33,11 @@ enum SourceType {
 
 impl SourceType {
     fn from_url(url: &str) -> Self {
-        if url.starts_with("sabr://") {
+        if url.starts_with(SABR_PREFIX) {
             SourceType::Sabr
-        } else if url.contains(".m3u8") || url.contains("/api/manifest/hls_") {
+        } else if is_hls_url(url) {
             SourceType::Hls
-        } else if url.starts_with("deezer_encrypted:") {
+        } else if url.starts_with(DEEZER_PREFIX) {
             SourceType::Deezer
         } else {
             SourceType::Generic
@@ -51,7 +54,7 @@ pub fn create_reader(
 
     match source_type {
         SourceType::Sabr => {
-            let encoded = &url[7..];
+            let encoded = &url[SABR_PREFIX.len()..];
             let decoded = BASE64_STANDARD.decode(encoded)?;
             let sabr_data: SabrData = serde_json::from_slice(&decoded)?;
 
@@ -84,7 +87,7 @@ pub fn create_reader(
         }
 
         SourceType::Deezer => {
-            let rest = &url["deezer_encrypted:".len()..];
+            let rest = &url[DEEZER_PREFIX.len()..];
             let (track_id, real_url) = rest.split_once(':').ok_or_else(|| {
                 std::io::Error::new(std::io::ErrorKind::InvalidInput, "Malformed Deezer URL")
             })?;
@@ -111,4 +114,8 @@ pub fn create_reader(
             ctx.proxy.clone(),
         )?)),
     }
+}
+
+fn is_hls_url(url: &str) -> bool {
+    url.contains(".m3u8") || url.contains("/api/manifest/hls_")
 }
