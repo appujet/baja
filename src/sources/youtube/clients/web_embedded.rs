@@ -56,38 +56,23 @@ impl WebEmbeddedClient {
         &self,
         video_id: &str,
         visitor_data: Option<&str>,
+        signature_timestamp: Option<u32>,
         _oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        let body = json!({
-            "context": self.build_context(visitor_data),
-            "videoId": video_id,
-            "contentCheckOk": true,
-            "racyCheckOk": true
-        });
-
-        let url = format!("{}/youtubei/v1/player?prettyPrint=false", INNERTUBE_API);
-
-        let mut req = self
-            .http
-            .post(&url)
-            .header("X-YouTube-Client-Name", CLIENT_ID)
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .header("Referer", "https://www.youtube.com"); // embedded player needs referrer
-
-        if let Some(vd) = visitor_data {
-            req = req.header("X-Goog-Visitor-Id", vd);
-        }
-
-        let req = req.json(&body);
-
-        let res = req.send().await?;
-
-        let status = res.status();
-        if !status.is_success() {
-            return Err(format!("WebEmbedded player request returned {status}").into());
-        }
-
-        Ok(res.json().await?)
+        crate::sources::youtube::clients::common::make_player_request(
+            &self.http,
+            video_id,
+            self.build_context(visitor_data),
+            CLIENT_ID,
+            CLIENT_VERSION,
+            None,
+            visitor_data,
+            signature_timestamp,
+            None,
+            Some("https://www.youtube.com"),
+            None,
+        )
+        .await
     }
 }
 
@@ -216,7 +201,10 @@ impl YouTubeClient for WebEmbeddedClient {
             .and_then(|v| v.as_str())
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
-        let body = self.player_request(track_id, visitor_data, &oauth).await?;
+        let signature_timestamp = cipher_manager.get_signature_timestamp().await.ok();
+        let body = self
+            .player_request(track_id, visitor_data, signature_timestamp, &oauth)
+            .await?;
 
         let playability = body
             .get("playabilityStatus")

@@ -71,6 +71,15 @@ impl YouTubeCipherManager {
         Ok(sts)
     }
 
+    pub async fn get_signature_timestamp(
+        &self,
+    ) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
+        let player_url =
+            "https://www.youtube.com/s/player/6182c448/player_ias.vflset/en_US/base.js";
+        let sts = self.get_sts(player_url).await?;
+        sts.parse::<u32>().map_err(|e| e.into())
+    }
+
     pub async fn resolve_url(
         &self,
         stream_url: &str,

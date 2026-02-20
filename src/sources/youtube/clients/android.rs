@@ -5,8 +5,6 @@ use crate::sources::youtube::cipher::YouTubeCipherManager;
 use crate::sources::youtube::extractor::{extract_from_player, extract_track};
 use crate::sources::youtube::oauth::YouTubeOAuth;
 use async_trait::async_trait;
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -31,7 +29,6 @@ impl AndroidClient {
     }
 
     /// Build the InnerTube context for Android.
-    /// Mirrors NodeLink's Android.js `getClient()` — passes visitorData when available.
     fn build_context(&self, visitor_data: Option<&str>) -> Value {
         let mut client = json!({
             "clientName": CLIENT_NAME,
@@ -63,47 +60,23 @@ impl AndroidClient {
         &self,
         video_id: &str,
         visitor_data: Option<&str>,
+        signature_timestamp: Option<u32>,
         _oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        let body = json!({
-            "context": self.build_context(visitor_data),
-            "videoId": video_id,
-            "contentCheckOk": true,
-            "racyCheckOk": true
-        });
-
-        let url = format!("{}/youtubei/v1/player?prettyPrint=false", INNERTUBE_API);
-
-        let mut req = self
-            .http
-            .post(&url)
-            .header("X-YouTube-Client-Name", CLIENT_ID)
-            .header("X-YouTube-Client-Version", CLIENT_VERSION);
-
-        if let Some(vd) = visitor_data {
-            req = req.header("X-Goog-Visitor-Id", vd);
-        }
-
-        let req = req.json(&body);
-
-        tracing::debug!("Android player request URL: {}", url);
-        tracing::debug!(
-            "Android player request body: {}",
-            serde_json::to_string_pretty(&body).unwrap_or_default()
-        );
-
-        let res = req.send().await?;
-        let status = res.status();
-        let body_text = res.text().await?;
-
-        tracing::debug!("Android player response status: {}", status);
-        tracing::debug!("Android player response body: {}", body_text);
-
-        if !status.is_success() {
-            return Err(format!("Android player request returned {status}: {body_text}").into());
-        }
-
-        Ok(serde_json::from_str(&body_text)?)
+        crate::sources::youtube::clients::common::make_player_request(
+            &self.http,
+            video_id,
+            self.build_context(visitor_data),
+            CLIENT_ID,
+            CLIENT_VERSION,
+            None,
+            visitor_data,
+            signature_timestamp,
+            None,
+            None,
+            None,
+        )
+        .await
     }
 }
 
@@ -230,7 +203,9 @@ impl YouTubeClient for AndroidClient {
             .and_then(|v| v.as_str())
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
-        let body = self.player_request(track_id, visitor_data, &oauth).await?;
+        let body = self
+            .player_request(track_id, visitor_data, None, &oauth)
+            .await?;
         Ok(extract_from_player(&body, "youtube"))
     }
 
@@ -302,7 +277,10 @@ impl YouTubeClient for AndroidClient {
             .and_then(|v| v.as_str())
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
-        let body = self.player_request(track_id, visitor_data, &oauth).await?;
+        let signature_timestamp = cipher_manager.get_signature_timestamp().await.ok();
+        let body = self
+            .player_request(track_id, visitor_data, signature_timestamp, &oauth)
+            .await?;
 
         let playability = body
             .get("playabilityStatus")
@@ -333,58 +311,13 @@ impl YouTubeClient for AndroidClient {
             }
         };
 
-        if let Some(server_abr_url) = streaming_data
-            .get("serverAbrStreamingUrl")
-            .and_then(|v| v.as_str())
-        {
-            tracing::debug!("Android player: SABR URL found for {}", track_id);
-
-            let ustreamer_config = body
-                .get("playerConfig")
-                .and_then(|p| p.get("mediaCommonConfig"))
-                .and_then(|m| m.get("mediaUstreamerRequestConfig"))
-                .and_then(|m| m.get("videoPlaybackUstreamerConfig"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-
-            // Use visitorData from the response itself
-            let response_visitor_data = body
-                .get("responseContext")
-                .and_then(|r| r.get("visitorData"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-
-            let formats: Vec<Value> = streaming_data
-                .get("adaptiveFormats")
-                .and_then(|f| f.as_array())
-                .into_iter()
-                .flatten()
-                .map(|f| {
-                    json!({
-                        "itag":         f.get("itag").and_then(|v| v.as_i64()).unwrap_or(0),
-                        "lastModified": f.get("lastModified")
-                            .or_else(|| f.get("last_modified_ms"))
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| s.parse::<i64>().ok()),
-                        "xtags":        f.get("xtags").and_then(|v| v.as_str()),
-                        "mimeType":     f.get("mimeType").and_then(|v| v.as_str()),
-                        "bitrate":      f.get("bitrate").and_then(|v| v.as_i64()),
-                        "audioQuality": f.get("audioQuality").and_then(|v| v.as_str()),
-                    })
-                })
-                .collect();
-
-            let sabr_payload = json!({
-                "url":           server_abr_url,
-                "config":        ustreamer_config,
-                "clientName":    3,  // ANDROID
-                "clientVersion": CLIENT_VERSION,
-                "visitorData":   response_visitor_data,
-                "formats":       formats,
-            });
-
-            let encoded = BASE64_STANDARD.encode(serde_json::to_string(&sabr_payload)?);
-            return Ok(Some(format!("sabr://{}", encoded)));
+        if let Some(sabr_url) = crate::sources::youtube::clients::common::extract_sabr_payload(
+            &body,
+            streaming_data,
+            3, // ANDROID client_id = 3
+            CLIENT_VERSION,
+        ) {
+            return Ok(Some(sabr_url));
         }
 
         if let Some(hls) = streaming_data

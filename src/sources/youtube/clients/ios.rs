@@ -60,38 +60,23 @@ impl IosClient {
         &self,
         video_id: &str,
         visitor_data: Option<&str>,
-        oauth: &Arc<YouTubeOAuth>,
+        signature_timestamp: Option<u32>,
+        _oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        let body = json!({
-            "context": self.build_context(visitor_data),
-            "videoId": video_id,
-            "contentCheckOk": true,
-            "racyCheckOk": true
-        });
-
-        let url = format!("{}/youtubei/v1/player?prettyPrint=false", INNERTUBE_API);
-
-        let mut req = self
-            .http
-            .post(&url)
-            .header("X-YouTube-Client-Name", "5") // IOS client_id = 5
-            .header("X-YouTube-Client-Version", CLIENT_VERSION);
-
-        if let Some(vd) = visitor_data {
-            req = req.header("X-Goog-Visitor-Id", vd);
-        }
-
-        let req = req.json(&body);
-
-        let _ = oauth;
-
-        let res = req.send().await?;
-        let status = res.status();
-        if !status.is_success() {
-            return Err(format!("IOS player request failed with status {status}").into());
-        }
-
-        Ok(res.json().await?)
+        crate::sources::youtube::clients::common::make_player_request(
+            &self.http,
+            video_id,
+            self.build_context(visitor_data),
+            "5", // CLIENT_ID for IOS
+            CLIENT_VERSION,
+            None,
+            visitor_data,
+            signature_timestamp,
+            None,
+            None,
+            None,
+        )
+        .await
     }
 }
 
@@ -115,7 +100,7 @@ impl YouTubeClient for IosClient {
         &self,
         query: &str,
         context: &Value,
-        oauth: Arc<YouTubeOAuth>,
+        _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Vec<Track>, Box<dyn std::error::Error + Send + Sync>> {
         let visitor_data = context
             .get("client")
@@ -143,8 +128,6 @@ impl YouTubeClient for IosClient {
         }
 
         let req = req.json(&body);
-
-        let _ = oauth;
 
         let res = req.send().await?;
         if !res.status().is_success() {
@@ -175,7 +158,6 @@ impl YouTubeClient for IosClient {
             }
         }
 
-        let _ = context; // not needed for IOS search
         Ok(tracks)
     }
 
@@ -191,7 +173,9 @@ impl YouTubeClient for IosClient {
             .and_then(|v| v.as_str())
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
-        let body = self.player_request(track_id, visitor_data, &oauth).await?;
+        let body = self
+            .player_request(track_id, visitor_data, None, &oauth)
+            .await?;
         Ok(extract_from_player(&body, "youtube"))
     }
 
@@ -228,7 +212,9 @@ impl YouTubeClient for IosClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         // IOS does NOT require a player script for cipher – URLs come pre-signed.
-        let body = self.player_request(track_id, visitor_data, &oauth).await?;
+        let body = self
+            .player_request(track_id, visitor_data, None, &oauth)
+            .await?;
 
         let playability = body
             .get("playabilityStatus")

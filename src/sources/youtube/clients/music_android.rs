@@ -1,17 +1,15 @@
 use super::YouTubeClient;
 use super::common::{
-    extract_thumbnail, is_duration, parse_duration, resolve_format_url, select_best_audio_format,
+    extract_thumbnail, is_duration, parse_duration,
 };
 use crate::api::tracks::{Track, TrackInfo};
 use crate::sources::youtube::cipher::YouTubeCipherManager;
 use crate::sources::youtube::oauth::YouTubeOAuth;
 use async_trait::async_trait;
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
-/// Using ANDROID_MUSIC as it mirrors the NodeLink-dev Music.js implementation.
+
 const CLIENT_NAME: &str = "ANDROID_MUSIC";
 const CLIENT_VERSION: &str = "8.47.54";
 const USER_AGENT: &str =
@@ -65,39 +63,23 @@ impl MusicAndroidClient {
         &self,
         video_id: &str,
         visitor_data: Option<&str>,
-        oauth: &Arc<YouTubeOAuth>,
+        signature_timestamp: Option<u32>,
+        _oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        let body = json!({
-            "context": self.build_context(visitor_data),
-            "videoId": video_id,
-            "contentCheckOk": true,
-            "racyCheckOk": true
-        });
-
-        let url = format!("{}/youtubei/v1/player?prettyPrint=false", INNERTUBE_API);
-
-        let mut req = self
-            .http
-            .post(&url)
-            .header("X-YouTube-Client-Name", "67") // 67 is for ANDROID_MUSIC
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .header("Origin", INNERTUBE_API);
-
-        if let Some(vd) = visitor_data {
-            req = req.header("X-Goog-Visitor-Id", vd);
-        }
-
-        let req = req.json(&body);
-
-        let _ = oauth;
-
-        let res = req.send().await?;
-        let status = res.status();
-        if !status.is_success() {
-            return Err(format!("Music Android player request returned {status}").into());
-        }
-
-        Ok(res.json().await?)
+        crate::sources::youtube::clients::common::make_player_request(
+            &self.http,
+            video_id,
+            self.build_context(visitor_data),
+            "67", // ANDROID_MUSIC client_id = 67
+            CLIENT_VERSION,
+            None,
+            visitor_data,
+            signature_timestamp,
+            None,
+            None,
+            Some(INNERTUBE_API),
+        )
+        .await
     }
 }
 
@@ -291,8 +273,9 @@ impl YouTubeClient for MusicAndroidClient {
             .and_then(|c| c.get("visitorData"))
             .and_then(|v| v.as_str())
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
-
-        let body = self.player_request(track_id, visitor_data, &oauth).await?;
+        let body = self
+            .player_request(track_id, visitor_data, None, &oauth)
+            .await?;
 
         let playability = body
             .get("playabilityStatus")
@@ -412,93 +395,12 @@ impl YouTubeClient for MusicAndroidClient {
 
     async fn get_track_url(
         &self,
-        track_id: &str,
-        context: &Value,
-        cipher_manager: Arc<YouTubeCipherManager>,
-        oauth: Arc<YouTubeOAuth>,
+        _track_id: &str,
+        _context: &Value,
+        _cipher_manager: Arc<YouTubeCipherManager>,
+        _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let visitor_data = context
-            .get("client")
-            .and_then(|c| c.get("visitorData"))
-            .and_then(|v| v.as_str())
-            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
-
-        let body = self.player_request(track_id, visitor_data, &oauth).await?;
-
-        let playability = body
-            .get("playabilityStatus")
-            .and_then(|p| p.get("status"))
-            .and_then(|s| s.as_str())
-            .unwrap_or("UNKNOWN");
-        if playability != "OK" {
-            return Ok(None);
-        }
-
-        let streaming_data = match body.get("streamingData") {
-            Some(sd) => sd,
-            None => return Ok(None),
-        };
-
-        if let Some(server_abr_url) = streaming_data
-            .get("serverAbrStreamingUrl")
-            .and_then(|v| v.as_str())
-        {
-            let ustreamer_config = body
-                .get("playerConfig")
-                .and_then(|p| p.get("mediaCommonConfig"))
-                .and_then(|m| m.get("mediaUstreamerRequestConfig"))
-                .and_then(|m| m.get("videoPlaybackUstreamerConfig"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let visitor_data = body
-                .get("responseContext")
-                .and_then(|r| r.get("visitorData"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let formats: Vec<Value> = streaming_data.get("adaptiveFormats").and_then(|f| f.as_array()).into_iter().flatten().map(|f| {
-                json!({
-                    "itag": f.get("itag").and_then(|v| v.as_i64()).unwrap_or(0),
-                    "lastModified": f.get("lastModified").or_else(|| f.get("last_modified_ms")).and_then(|v| v.as_str()).and_then(|s| s.parse::<i64>().ok()),
-                    "xtags": f.get("xtags").and_then(|v| v.as_str()),
-                    "mimeType": f.get("mimeType").and_then(|v| v.as_str()),
-                    "bitrate": f.get("bitrate").and_then(|v| v.as_i64()),
-                })
-            }).collect();
-
-            let sabr_payload = json!({
-                "url": server_abr_url,
-                "config": ustreamer_config,
-                "clientName":      67, // ANDROID_MUSIC
-                "clientVersion":   CLIENT_VERSION,
-                "visitorData":     visitor_data,
-                "formats":         formats,
-            });
-
-            let encoded = BASE64_STANDARD.encode(serde_json::to_string(&sabr_payload)?);
-            return Ok(Some(format!("sabr://{}", encoded)));
-        }
-
-        if let Some(hls) = streaming_data
-            .get("hlsManifestUrl")
-            .and_then(|v| v.as_str())
-        {
-            return Ok(Some(hls.to_string()));
-        }
-
-        let adaptive = streaming_data
-            .get("adaptiveFormats")
-            .and_then(|v| v.as_array());
-        let formats = streaming_data.get("formats").and_then(|v| v.as_array());
-        let player_page_url = format!("https://music.youtube.com/watch?v={}", track_id);
-
-        if let Some(best) = select_best_audio_format(adaptive, formats) {
-            match resolve_format_url(best, &player_page_url, &cipher_manager).await {
-                Ok(Some(url)) => return Ok(Some(url)),
-                Ok(None) => {}
-                Err(e) => return Err(e),
-            }
-        }
-
+        tracing::debug!("{} client does not provide direct track URLs", self.name());
         Ok(None)
     }
 }

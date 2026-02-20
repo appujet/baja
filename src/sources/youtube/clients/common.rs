@@ -1,6 +1,8 @@
 use super::YouTubeCipherManager;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use regex::Regex;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::sync::{Arc, OnceLock};
 
 pub const INNERTUBE_API: &str = "https://youtubei.googleapis.com";
@@ -113,7 +115,6 @@ pub async fn resolve_format_url(
     Ok(None)
 }
 
-
 static DURATION_REGEX: OnceLock<Regex> = OnceLock::new();
 
 pub fn is_duration(text: &str) -> bool {
@@ -161,4 +162,133 @@ pub fn extract_thumbnail(renderer: &Value, video_id: Option<&str>) -> Option<Str
     }
 
     None
+}
+
+pub async fn make_player_request(
+    http: &reqwest::Client,
+    video_id: &str,
+    context: Value,
+    client_id: &str,
+    client_version: &str,
+    params: Option<&str>,
+    visitor_data: Option<&str>,
+    signature_timestamp: Option<u32>,
+    auth_header: Option<String>,
+    referer: Option<&str>,
+    origin: Option<&str>,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let mut body = json!({
+        "context": context,
+        "videoId": video_id,
+        "contentCheckOk": true,
+        "racyCheckOk": true
+    });
+
+    if let Some(p) = params {
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("params".to_string(), p.into());
+        }
+    }
+
+    if let Some(sts) = signature_timestamp {
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert(
+                "playbackContext".to_string(),
+                json!({
+                    "contentPlaybackContext": {
+                        "signatureTimestamp": sts
+                    }
+                }),
+            );
+        }
+    }
+
+    let url = format!("{}/youtubei/v1/player?prettyPrint=false", INNERTUBE_API);
+
+    let mut req = http
+        .post(&url)
+        .header("X-YouTube-Client-Name", client_id)
+        .header("X-YouTube-Client-Version", client_version);
+
+    if let Some(vd) = visitor_data {
+        req = req.header("X-Goog-Visitor-Id", vd);
+    }
+
+    if let Some(auth) = auth_header {
+        req = req.header("Authorization", auth);
+    }
+
+    if let Some(ref_url) = referer {
+        req = req.header("Referer", ref_url);
+    }
+
+    if let Some(orig_url) = origin {
+        req = req.header("Origin", orig_url);
+    }
+
+    let res = req.json(&body).send().await?;
+    let status = res.status();
+    if !status.is_success() {
+        let text = res
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!("Player request failed (status={}): {}", status, text).into());
+    }
+
+    Ok(res.json().await?)
+}
+
+pub fn extract_sabr_payload(
+    body: &Value,
+    streaming_data: &Value,
+    client_id: i64,
+    client_version: &str,
+) -> Option<String> {
+    let server_abr_url = streaming_data.get("serverAbrStreamingUrl")?.as_str()?;
+    let ustreamer_config = body
+        .get("playerConfig")
+        .and_then(|p| p.get("mediaCommonConfig"))
+        .and_then(|m| m.get("mediaUstreamerRequestConfig"))
+        .and_then(|m| m.get("videoPlaybackUstreamerConfig"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let visitor_data = body
+        .get("responseContext")
+        .and_then(|r| r.get("visitorData"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let formats: Vec<Value> = streaming_data
+        .get("adaptiveFormats")
+        .and_then(|f| f.as_array())
+        .into_iter()
+        .flatten()
+        .map(|f| {
+            json!({
+                "itag": f.get("itag").and_then(|v| v.as_i64()).unwrap_or(0),
+                "lastModified": f.get("lastModified")
+                    .or_else(|| f.get("last_modified_ms"))
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<i64>().ok()),
+                "xtags": f.get("xtags").and_then(|v| v.as_str()),
+                "mimeType": f.get("mimeType").and_then(|v| v.as_str()),
+                "bitrate": f.get("bitrate").and_then(|v| v.as_i64()),
+                "audioQuality": f.get("audioQuality").and_then(|v| v.as_str()),
+            })
+        })
+        .collect();
+
+    let sabr_payload = json!({
+        "url":           server_abr_url,
+        "config":        ustreamer_config,
+        "clientName":    client_id,
+        "clientVersion": client_version,
+        "visitorData":   visitor_data,
+        "formats":       formats,
+    });
+
+    let encoded = BASE64_STANDARD.encode(serde_json::to_string(&sabr_payload).ok()?);
+    Some(format!("sabr://{}", encoded))
 }
