@@ -1,3 +1,5 @@
+
+use crate::common::types::{Shared};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
@@ -17,9 +19,9 @@ pub struct PlayerContext {
     pub track_handle: Option<TrackHandle>,
     pub position: u64,
     pub voice: VoiceConnectionState,
-    pub engine: Arc<Mutex<crate::gateway::VoiceEngine>>,
+    pub engine: Shared<crate::gateway::VoiceEngine>,
     pub filters: Filters,
-    pub filter_chain: Arc<Mutex<FilterChain>>,
+    pub filter_chain: Shared<FilterChain>,
     pub end_time: Option<u64>,
     pub stop_signal: Arc<std::sync::atomic::AtomicBool>,
     pub gateway_task: Option<tokio::task::JoinHandle<()>>,

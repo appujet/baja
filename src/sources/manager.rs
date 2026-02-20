@@ -8,7 +8,7 @@ use super::{
     gaana::GaanaSource,
     http::HttpSource,
     jiosaavn::JioSaavnSource,
-    plugin::{PlayableTrack, SourcePlugin},
+    plugin::{BoxedSource, BoxedTrack, PlayableTrack},
     spotify::manager::SpotifySource,
     youtube::{YouTubeSource, cipher::YouTubeCipherManager},
 };
@@ -16,7 +16,7 @@ use crate::audio::processor::DecoderCommand;
 
 /// Source Manager
 pub struct SourceManager {
-    sources: Vec<Box<dyn SourcePlugin>>,
+    sources: Vec<BoxedSource>,
     mirrors: Option<crate::configs::MirrorsConfig>,
     pub youtube_cipher_manager: Option<Arc<YouTubeCipherManager>>,
 }
@@ -24,7 +24,7 @@ pub struct SourceManager {
 impl SourceManager {
     /// Create a new SourceManager with all available sources
     pub fn new(config: &crate::configs::Config) -> Self {
-        let mut sources: Vec<Box<dyn SourcePlugin>> = Vec::new();
+        let mut sources: Vec<BoxedSource> = Vec::new();
         let mut youtube_cipher_manager = None;
 
         // Register all sources
@@ -91,7 +91,7 @@ impl SourceManager {
         &self,
         track_info: &crate::api::tracks::TrackInfo,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<Box<dyn crate::sources::plugin::PlayableTrack>> {
+    ) -> Option<BoxedTrack> {
         let identifier = track_info.uri.as_deref().unwrap_or(&track_info.identifier);
 
         for source in &self.sources {
@@ -175,7 +175,7 @@ impl SourceManager {
         &self,
         identifier: &str,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<Box<dyn crate::sources::plugin::PlayableTrack>> {
+    ) -> Option<BoxedTrack> {
         for source in &self.sources {
             if source.can_handle(identifier) {
                 if let Some(track) = source.get_track(identifier, routeplanner.clone()).await {

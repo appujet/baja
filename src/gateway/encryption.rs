@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyError, AnyResult};
 use std::{
     collections::{HashMap, HashSet},
     num::NonZeroU16,
@@ -17,7 +19,7 @@ pub struct DaveHandler {
     was_ready: bool,
 }
 
-fn map_boxed_err<E: std::fmt::Display>(e: E) -> Box<dyn std::error::Error + Send + Sync> {
+fn map_boxed_err<E: std::fmt::Display>(e: E) -> AnyError {
     Box::new(std::io::Error::new(
         std::io::ErrorKind::Other,
         e.to_string(),
@@ -41,7 +43,7 @@ impl DaveHandler {
     pub fn setup_session(
         &mut self,
         version: u16,
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Vec<u8>> {
         self.protocol_version = version;
         let nz_version = NonZeroU16::new(version).unwrap_or(NonZeroU16::new(1).unwrap());
 
@@ -120,7 +122,7 @@ impl DaveHandler {
         &mut self,
         data: &[u8],
         connected_users: &HashSet<u64>,
-    ) -> Result<Vec<Vec<u8>>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Vec<Vec<u8>>> {
         let mut responses = Vec::new();
 
         if let Some(session) = &mut self.session {
@@ -144,7 +146,7 @@ impl DaveHandler {
     pub fn process_welcome(
         &mut self,
         data: &[u8],
-    ) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<u16> {
         if data.len() < 2 {
             return Err(map_boxed_err(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -166,7 +168,7 @@ impl DaveHandler {
     pub fn process_commit(
         &mut self,
         data: &[u8],
-    ) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<u16> {
         if data.len() < 2 {
             return Err(map_boxed_err(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -189,7 +191,7 @@ impl DaveHandler {
         &mut self,
         data: &[u8],
         connected_users: &HashSet<u64>,
-    ) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Option<Vec<u8>>> {
         if data.is_empty() {
             return Err(map_boxed_err(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -241,7 +243,7 @@ impl DaveHandler {
     pub fn encrypt_opus(
         &mut self,
         packet: &[u8],
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Vec<u8>> {
         // Discord special 3-byte silence frame: [0xf8, 0xff, 0xfe]
         if packet.len() == 3 && packet[0] == 0xf8 && packet[1] == 0xff && packet[2] == 0xfe {
             return Ok(packet.to_vec());

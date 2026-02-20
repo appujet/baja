@@ -1,3 +1,4 @@
+use rustalink::common::types::AnyResult;
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{Router, routing::get};
@@ -10,7 +11,7 @@ use tracing::info;
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> AnyResult<()> {
     let config = rustalink::configs::Config::load()?;
 
     rustalink::common::logger::init(&config);

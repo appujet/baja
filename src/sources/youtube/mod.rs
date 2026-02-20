@@ -1,3 +1,4 @@
+use crate::common::types::SharedRw;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -8,7 +9,7 @@ use tokio::sync::RwLock;
 use crate::{
     api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track},
     configs::sources::YouTubeConfig,
-    sources::SourcePlugin,
+    sources::{SourcePlugin, plugin::BoxedTrack},
 };
 
 pub mod cipher;
@@ -35,7 +36,7 @@ pub struct YouTubeSource {
     playback_clients: Vec<Arc<dyn YouTubeClient>>,
     oauth: Arc<YouTubeOAuth>,
     cipher_manager: Arc<YouTubeCipherManager>,
-    visitor_data: Arc<RwLock<Option<String>>>,
+    visitor_data: SharedRw<Option<String>>,
     #[allow(dead_code)]
     http: reqwest::Client,
 }
@@ -402,7 +403,7 @@ impl SourcePlugin for YouTubeSource {
         &self,
         identifier: &str,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<Box<dyn crate::sources::plugin::PlayableTrack>> {
+    ) -> Option<BoxedTrack> {
         let visitor_data = self.visitor_data.read().await.clone();
         let id = self.extract_id(identifier);
         let is_music_url = identifier.contains("music.youtube.com");

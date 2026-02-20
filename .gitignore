@@ -4,6 +4,10 @@
 .vscode
 .idea
 
+# AGENTS
+.agents/
+
+
 voice-main
 lavaplayer-main
 Lavalink-master

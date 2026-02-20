@@ -1,9 +1,9 @@
+
+use crate::common::types::{Shared};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
-
-use tokio::sync::Mutex;
 
 use crate::audio::playback::handle::PlaybackState;
 
@@ -14,8 +14,8 @@ pub struct Mixer {
 
 struct MixerTrack {
     rx: flume::Receiver<i16>,
-    state: Arc<Mutex<PlaybackState>>,
-    volume: Arc<Mutex<f32>>,
+    state: Shared<PlaybackState>,
+    volume: Shared<f32>,
     position: Arc<AtomicU64>,
 }
 
@@ -30,8 +30,8 @@ impl Mixer {
     pub fn add_track(
         &mut self,
         rx: flume::Receiver<i16>,
-        state: Arc<Mutex<PlaybackState>>,
-        volume: Arc<Mutex<f32>>,
+        state: Shared<PlaybackState>,
+        volume: Shared<f32>,
         position: Arc<AtomicU64>,
     ) {
         self.tracks.push(MixerTrack {

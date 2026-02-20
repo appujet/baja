@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 use std::sync::{Arc, OnceLock};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
@@ -79,7 +81,7 @@ pub async fn resolve_format_url(
     format: &Value,
     player_page_url: &str,
     cipher_manager: &Arc<YouTubeCipherManager>,
-) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+) -> AnyResult<Option<String>> {
     // Plain URL path
     if let Some(url) = format.get("url").and_then(|u| u.as_str()) {
         // n-param throttling: must be decoded via cipher
@@ -177,7 +179,7 @@ pub async fn make_player_request(
     auth_header: Option<String>,
     referer: Option<&str>,
     origin: Option<&str>,
-) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+) -> AnyResult<Value> {
     let mut body = json!({
         "context": context,
         "videoId": video_id,

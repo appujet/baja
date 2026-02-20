@@ -1,3 +1,5 @@
+
+use crate::common::types::{Shared};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
@@ -5,7 +7,7 @@ use tokio::sync::Mutex;
 use crate::audio::playback::Mixer;
 
 pub struct VoiceEngine {
-    pub mixer: Arc<Mutex<Mixer>>,
+    pub mixer: Shared<Mixer>,
 }
 
 impl VoiceEngine {

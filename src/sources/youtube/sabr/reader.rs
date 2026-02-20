@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 use std::io::{Read, Seek, SeekFrom};
 
 use flume::{Receiver, Sender};
@@ -112,7 +114,7 @@ async fn run_sabr_loop(
     visitor_data: String,
     formats: Vec<FormatId>,
     tx: Sender<Vec<u8>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> AnyResult<()> {
     let client = reqwest::Client::new();
     let mut url = reqwest::Url::parse(&server_abr_url)?;
     {

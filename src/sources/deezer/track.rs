@@ -82,7 +82,7 @@ impl PlayableTrack for DeezerTrack {
 
                     if let Some(error) = json.get("error").and_then(|v| v.as_array()).filter(|v| !v.is_empty()) {
                         debug!("DeezerTrack: API error: {:?}", error);
-                        token_tracker.invalidate_token(tokens.arl_index);
+                        token_tracker.invalidate_token(tokens.arl_index).await;
                         retry_count += 1;
                         continue;
                     }
@@ -90,7 +90,7 @@ impl PlayableTrack for DeezerTrack {
                     let track_token = match json.get("results").and_then(|r| r.get("TRACK_TOKEN")).and_then(|v| v.as_str()) {
                         Some(t) => t,
                         None => {
-                            token_tracker.invalidate_token(tokens.arl_index);
+                            token_tracker.invalidate_token(tokens.arl_index).await;
                             retry_count += 1;
                             continue;
                         }
@@ -128,7 +128,7 @@ impl PlayableTrack for DeezerTrack {
 
                     if let Some(errors) = json.get("data").and_then(|d| d.get(0)).and_then(|d| d.get("errors")).and_then(|e| e.as_array()).filter(|e| !e.is_empty()) {
                         debug!("DeezerTrack: get_url errors: {:?}", errors);
-                        token_tracker.invalidate_token(tokens.arl_index);
+                        token_tracker.invalidate_token(tokens.arl_index).await;
                         retry_count += 1;
                         continue;
                     }
@@ -138,7 +138,7 @@ impl PlayableTrack for DeezerTrack {
                     if let Some(url) = url_opt {
                         return Some(format!("deezer_encrypted:{}:{}", track_id, url));
                     } else {
-                        token_tracker.invalidate_token(tokens.arl_index);
+                        token_tracker.invalidate_token(tokens.arl_index).await;
                         retry_count += 1;
                         continue;
                     }

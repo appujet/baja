@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 pub mod crypt;
 
 use std::io::{Read, Seek, SeekFrom};
@@ -24,7 +26,7 @@ impl DeezerReader {
         master_key: &str,
         local_addr: Option<std::net::IpAddr>,
         proxy: Option<crate::configs::HttpProxyConfig>,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Self> {
         debug!("Initializing DeezerReader for track {}", track_id);
 
         let source = RemoteReader::new(url, local_addr, proxy)?;

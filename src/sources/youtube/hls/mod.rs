@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 pub mod fetcher;
 pub mod parser;
 pub mod resolver;
@@ -102,7 +104,7 @@ impl HlsReader {
         cipher_manager: Option<Arc<YouTubeCipherManager>>,
         player_url: Option<String>,
         proxy: Option<HttpProxyConfig>,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Self> {
         let mut builder = reqwest::blocking::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
             .timeout(std::time::Duration::from_secs(15));
@@ -498,7 +500,7 @@ fn resolve_resource_static(
     res: &Resource,
     cipher_manager: &Option<Arc<YouTubeCipherManager>>,
     player_url: &Option<String>,
-) -> Result<Resource, Box<dyn std::error::Error + Send + Sync>> {
+) -> AnyResult<Resource> {
     let mut resolved = res.clone();
     resolved.url = resolve_url_string(&res.url, cipher_manager, player_url)?;
     Ok(resolved)
@@ -509,7 +511,7 @@ fn fetch_and_demux_into(
     client: &reqwest::blocking::Client,
     res: &Resource,
     out: &mut Vec<u8>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> AnyResult<()> {
     let mut raw = Vec::new();
     fetch_segment_into(client, res, &mut raw)?;
 

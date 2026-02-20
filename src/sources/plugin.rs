@@ -10,26 +10,22 @@ pub trait PlayableTrack: Send + Sync {
     fn start_decoding(&self) -> (Receiver<i16>, Sender<DecoderCommand>);
 }
 
+/// A boxed playable track.
+pub type BoxedTrack = Box<dyn PlayableTrack>;
+
+/// A boxed source plugin.
+pub type BoxedSource = Box<dyn SourcePlugin>;
+
 /// Trait that all source plugins must implement.
-///
-/// Each source (HTTP, YouTube, Spotify, etc.) implements this trait
-/// to provide track resolution capabilities.
 #[async_trait]
 pub trait SourcePlugin: Send + Sync {
     /// Unique identifier for this source (e.g., "http", "youtube", "spotify")
     fn name(&self) -> &str;
 
     /// Check if this source can handle the given identifier.
-    ///
-    /// Examples:
-    /// - HTTP source: checks for http:// or https://
-    /// - YouTube source: checks for ytsearch: prefix or youtube.com URLs
-    /// - Spotify source: checks for spsearch: prefix or spotify.com URLs
     fn can_handle(&self, identifier: &str) -> bool;
 
     /// Resolve the identifier into track(s).
-    ///
-    /// Returns a LoadResult with the appropriate load_type and data.
     async fn load(
         &self,
         identifier: &str,
@@ -37,13 +33,11 @@ pub trait SourcePlugin: Send + Sync {
     ) -> crate::api::tracks::LoadResult;
 
     /// Get a playable track for the given identifier.
-    ///
-    /// This is the new pattern replacing get_playback_url.
     async fn get_track(
         &self,
         _identifier: &str,
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<Box<dyn PlayableTrack>> {
+    ) -> Option<BoxedTrack> {
         None
     }
 

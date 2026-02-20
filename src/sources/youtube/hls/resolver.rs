@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 use std::{io::Read, sync::Arc};
 
 use super::{
@@ -9,7 +11,7 @@ use crate::sources::youtube::cipher::YouTubeCipherManager;
 pub fn resolve_playlist(
     client: &reqwest::blocking::Client,
     url: &str,
-) -> Result<(Vec<Resource>, Option<Resource>), Box<dyn std::error::Error + Send + Sync>> {
+) -> AnyResult<(Vec<Resource>, Option<Resource>)> {
     let text = fetch_text(client, url)?;
     let playlist = parse_m3u8(&text, url);
 
@@ -72,7 +74,7 @@ pub fn resolve_playlist(
 pub fn fetch_text(
     client: &reqwest::blocking::Client,
     url: &str,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+) -> AnyResult<String> {
     let mut res = client
         .get(url)
         .header("Accept", "application/x-mpegURL, */*")
@@ -91,7 +93,7 @@ pub fn resolve_url_string(
     url: &str,
     cipher_manager: &Option<Arc<YouTubeCipherManager>>,
     player_url: &Option<String>,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+) -> AnyResult<String> {
     let (cipher, p_url) = match (cipher_manager, player_url) {
         (Some(c), Some(p)) => (c, p),
         _ => return Ok(url.to_string()),

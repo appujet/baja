@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -69,7 +71,7 @@ impl AndroidVrClient {
         visitor_data: Option<&str>,
         signature_timestamp: Option<u32>,
         _oauth: &Arc<YouTubeOAuth>,
-    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Value> {
         crate::sources::youtube::clients::common::make_player_request(
             &self.http,
             video_id,
@@ -107,7 +109,7 @@ impl YouTubeClient for AndroidVrClient {
         query: &str,
         context: &Value,
         _oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Vec<Track>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Vec<Track>> {
         let visitor_data = context
             .get("client")
             .and_then(|c| c.get("visitorData"))
@@ -172,7 +174,7 @@ impl YouTubeClient for AndroidVrClient {
         _track_id: &str,
         _context: &Value,
         _oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Option<Track>> {
         tracing::debug!("{} client does not support get_track_info", self.name());
         Ok(None)
     }
@@ -182,7 +184,7 @@ impl YouTubeClient for AndroidVrClient {
         _playlist_id: &str,
         _context: &Value,
         _oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Option<(Vec<Track>, String)>> {
         tracing::debug!("{} client does not support get_playlist", self.name());
         Ok(None)
     }
@@ -192,7 +194,7 @@ impl YouTubeClient for AndroidVrClient {
         _url: &str,
         _context: &Value,
         _oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Option<Track>> {
         tracing::debug!("{} client does not support resolve_url", self.name());
         Ok(None)
     }
@@ -203,7 +205,7 @@ impl YouTubeClient for AndroidVrClient {
         context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
         oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Option<String>> {
         let visitor_data = context
             .get("client")
             .and_then(|c| c.get("visitorData"))

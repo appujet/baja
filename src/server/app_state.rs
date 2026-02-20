@@ -1,14 +1,19 @@
+use dashmap::DashMap;
 use std::sync::Arc;
 
-use dashmap::DashMap;
+use crate::{
+    common::types::SessionId, routeplanner::RoutePlanner, server::session_manager::Session,
+    sources::SourceManager,
+};
 
-use crate::{routeplanner::RoutePlanner, server::session_manager::Session, sources::SourceManager};
+/// Alias for the primary session registry.
+pub type SessionMap = DashMap<SessionId, Arc<Session>>;
 
 /// Top-level application state.
 pub struct AppState {
-    pub sessions: DashMap<String, Arc<Session>>,
+    pub sessions: SessionMap,
     /// Sessions disconnected but waiting for resume within timeout.
-    pub resumable_sessions: DashMap<String, Arc<Session>>,
+    pub resumable_sessions: SessionMap,
     pub routeplanner: Option<Arc<dyn RoutePlanner>>,
     pub source_manager: Arc<SourceManager>,
     pub config: crate::configs::Config,

@@ -1,24 +1,28 @@
 use axum::extract::ws::Message;
 use dashmap::DashMap;
-use tokio::sync::Mutex;
 
-use crate::{api, playback::PlayerContext};
+use crate::{
+    api,
+    common::types::{GuildId, SessionId, UserId},
+    playback::PlayerContext,
+};
 
-pub type UserId = u64;
+/// Alias for the player registry within a session.
+pub type PlayerMap = DashMap<GuildId, PlayerContext>;
 
 /// client session.
 pub struct Session {
-    pub session_id: String,
+    pub session_id: SessionId,
     pub user_id: Option<UserId>,
-    pub players: DashMap<String, PlayerContext>,
+    pub players: PlayerMap,
     /// Sender for outgoing WS messages. Swapped on resume.
-    pub sender: Mutex<flume::Sender<Message>>,
+    pub sender: tokio::sync::Mutex<flume::Sender<Message>>,
     pub resumable: std::sync::atomic::AtomicBool,
     pub resume_timeout: std::sync::atomic::AtomicU64,
     /// True when WS is disconnected but session is kept for resume.
     pub paused: std::sync::atomic::AtomicBool,
     /// Events queued while session is paused.
-    pub event_queue: Mutex<Vec<String>>,
+    pub event_queue: tokio::sync::Mutex<Vec<String>>,
 }
 
 impl Session {

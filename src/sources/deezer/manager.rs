@@ -1,6 +1,7 @@
+use crate::common::types::Shared;
 use std::{
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
@@ -34,7 +35,7 @@ pub struct DeezerTokens {
 pub struct DeezerTokenTracker {
     client: reqwest::Client,
     arls: Vec<String>,
-    tokens: Arc<Mutex<Vec<Option<DeezerTokens>>>>,
+    tokens: Shared<Vec<Option<DeezerTokens>>>,
     current_index: AtomicUsize,
 }
 
@@ -44,7 +45,7 @@ impl DeezerTokenTracker {
         Self {
             client,
             arls,
-            tokens: Arc::new(Mutex::new(vec![None; size])),
+            tokens: Arc::new(tokio::sync::Mutex::new(vec![None; size])),
             current_index: AtomicUsize::new(0),
         }
     }
@@ -56,7 +57,7 @@ impl DeezerTokenTracker {
 
     pub async fn get_token_at(&self, index: usize) -> Option<DeezerTokens> {
         {
-            let guard = self.tokens.lock().unwrap();
+            let guard = self.tokens.lock().await;
             if let Some(tokens) = &guard[index] {
                 if Instant::now() < tokens.expire_at {
                     return Some(tokens.clone());
@@ -66,8 +67,8 @@ impl DeezerTokenTracker {
         self.refresh_session(index).await
     }
 
-    pub fn invalidate_token(&self, index: usize) {
-        let mut guard = self.tokens.lock().unwrap();
+    pub async fn invalidate_token(&self, index: usize) {
+        let mut guard = self.tokens.lock().await;
         guard[index] = None;
     }
 
@@ -134,7 +135,7 @@ impl DeezerTokenTracker {
         };
 
         {
-            let mut guard = self.tokens.lock().unwrap();
+            let mut guard = self.tokens.lock().await;
             guard[index] = Some(tokens.clone());
         }
 

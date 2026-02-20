@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -65,7 +67,7 @@ impl WebClient {
         visitor_data: Option<&str>,
         signature_timestamp: Option<u32>,
         _oauth: &Arc<YouTubeOAuth>,
-    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Value> {
         crate::sources::youtube::clients::common::make_player_request(
             &self.http,
             video_id,
@@ -103,7 +105,7 @@ impl YouTubeClient for WebClient {
         query: &str,
         context: &Value,
         oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Vec<Track>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Vec<Track>> {
         let visitor_data = context
             .get("client")
             .and_then(|c| c.get("visitorData"))
@@ -171,7 +173,7 @@ impl YouTubeClient for WebClient {
         track_id: &str,
         context: &Value,
         oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Option<Track>> {
         let visitor_data = context
             .get("client")
             .and_then(|c| c.get("visitorData"))
@@ -189,7 +191,7 @@ impl YouTubeClient for WebClient {
         playlist_id: &str,
         context: &Value,
         oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Option<(Vec<Track>, String)>> {
         let visitor_data = context
             .get("client")
             .and_then(|c| c.get("visitorData"))
@@ -235,7 +237,7 @@ impl YouTubeClient for WebClient {
         _url: &str,
         _context: &Value,
         _oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Option<Track>> {
         Ok(None)
     }
 
@@ -245,7 +247,7 @@ impl YouTubeClient for WebClient {
         context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
         oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Option<String>> {
         let visitor_data = context
             .get("client")
             .and_then(|c| c.get("visitorData"))

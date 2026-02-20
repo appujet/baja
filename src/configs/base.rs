@@ -45,8 +45,10 @@ impl Default for Config {
     }
 }
 
+use crate::common::types::AnyResult;
+
 impl Config {
-    pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load() -> AnyResult<Self> {
         let config_path = if std::path::Path::new("config.toml").exists() {
             "config.toml"
         } else if std::path::Path::new("config.default.toml").exists() {

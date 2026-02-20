@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -101,7 +103,7 @@ impl YouTubeOAuth {
         }
     }
 
-    async fn fetch_device_code(&self) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_device_code(&self) -> AnyResult<Value> {
         let res = self
             .client
             .post("https://www.youtube.com/o/oauth2/device/code")
@@ -179,7 +181,7 @@ impl YouTubeOAuth {
     async fn fetch_refresh_token_from_device_code(
         &self,
         device_code: &str,
-    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Value> {
         let res = self
             .client
             .post("https://www.youtube.com/o/oauth2/token")
@@ -246,7 +248,7 @@ impl YouTubeOAuth {
     async fn refresh_token_request(
         &self,
         refresh_token: &str,
-    ) -> Result<(String, u64), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<(String, u64)> {
         let res = self
             .client
             .post("https://www.youtube.com/o/oauth2/token")

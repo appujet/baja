@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -31,7 +33,7 @@ impl HttpSource {
     fn probe_metadata(
         url: String,
         local_addr: Option<std::net::IpAddr>,
-    ) -> Result<TrackInfo, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<TrackInfo> {
         let source = crate::audio::RemoteReader::new(&url, local_addr, None)?;
         let mut hint = Hint::new();
 

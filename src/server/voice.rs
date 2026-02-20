@@ -1,6 +1,5 @@
-use std::sync::Arc;
 
-use tokio::sync::Mutex;
+use crate::common::types::{Shared};
 use tracing::error;
 
 use crate::{
@@ -9,11 +8,11 @@ use crate::{
 };
 
 pub async fn connect_voice(
-    engine: Arc<Mutex<crate::gateway::VoiceEngine>>,
+    engine: Shared<crate::gateway::VoiceEngine>,
     guild_id: String,
     user_id: UserId,
     voice: VoiceConnectionState,
-    filter_chain: Arc<Mutex<FilterChain>>,
+    filter_chain: Shared<FilterChain>,
 ) -> tokio::task::JoinHandle<()> {
     let engine_lock = engine.lock().await;
     let channel_id = voice

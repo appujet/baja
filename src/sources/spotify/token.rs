@@ -1,3 +1,5 @@
+
+use crate::common::types::{SharedRw};
 use std::sync::Arc;
 
 use regex::Regex;
@@ -14,7 +16,7 @@ pub struct SpotifyToken {
 
 pub struct SpotifyTokenTracker {
     client: reqwest::Client,
-    token: Arc<RwLock<Option<SpotifyToken>>>,
+    token: SharedRw<Option<SpotifyToken>>,
     token_regex: Regex,
     expiry_regex: Regex,
 }

@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
@@ -21,7 +23,7 @@ impl YouTubeCipherManager {
     pub async fn get_sts(
         &self,
         player_url: &str,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<String> {
         {
             let cache = self.sts_cache.read().await;
             if let Some(sts) = cache.get(player_url) {
@@ -74,7 +76,7 @@ impl YouTubeCipherManager {
 
     pub async fn get_signature_timestamp(
         &self,
-    ) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<u32> {
         let player_url =
             "https://www.youtube.com/s/player/6182c448/player_ias.vflset/en_US/base.js";
         let sts = self.get_sts(player_url).await?;
@@ -87,7 +89,7 @@ impl YouTubeCipherManager {
         player_url: &str,
         n_param: Option<&str>,
         sig: Option<&str>,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<String> {
         let url = self
             .config
             .url

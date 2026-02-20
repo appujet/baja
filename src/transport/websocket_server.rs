@@ -16,9 +16,10 @@ use tracing::{error, info, warn};
 
 use crate::{
     api,
+    common::types::{SessionId, UserId},
     monitoring::collect_stats,
     playback::PlayerState,
-    server::{AppState, Session, UserId, now_ms},
+    server::{AppState, Session, now_ms},
 };
 
 pub async fn websocket_handler(
@@ -92,7 +93,7 @@ pub async fn handle_socket(
     mut socket: WebSocket,
     state: Arc<AppState>,
     user_id: UserId,
-    client_session_id: Option<String>,
+    client_session_id: Option<SessionId>,
 ) {
     let (tx, rx) = flume::unbounded();
 
@@ -291,7 +292,7 @@ pub async fn handle_socket(
 }
 
 fn create_session(
-    session_id: String,
+    session_id: SessionId,
     user_id: Option<UserId>,
     tx: flume::Sender<Message>,
 ) -> Arc<Session> {

@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 use flume::Sender;
 
 pub struct Resampler {
@@ -21,7 +23,7 @@ impl Resampler {
         &mut self,
         input: &[i16],
         tx: &Sender<i16>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<()> {
         let num_frames = input.len() / self.channels;
 
         while self.index < num_frames as f64 {

@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyError, AnyResult, Shared};
 use std::{
     collections::HashSet,
     net::{SocketAddr, UdpSocket},
@@ -43,14 +45,14 @@ pub struct VoiceGateway {
     session_id: String,
     token: String,
     endpoint: String,
-    mixer: Arc<Mutex<Mixer>>,
-    filter_chain: Arc<Mutex<crate::audio::filters::FilterChain>>,
+    mixer: Shared<Mixer>,
+    filter_chain: Shared<crate::audio::filters::FilterChain>,
     cancel_token: CancellationToken,
 }
 
 const MAX_RECONNECT_ATTEMPTS: u32 = 5;
 
-fn map_boxed_err<E: std::fmt::Display>(e: E) -> Box<dyn std::error::Error + Send + Sync> {
+fn map_boxed_err<E: std::fmt::Display>(e: E) -> AnyError {
     Box::new(std::io::Error::new(
         std::io::ErrorKind::Other,
         e.to_string(),
@@ -71,8 +73,8 @@ impl VoiceGateway {
         session_id: String,
         token: String,
         endpoint: String,
-        mixer: Arc<Mutex<Mixer>>,
-        filter_chain: Arc<Mutex<crate::audio::filters::FilterChain>>,
+        mixer: Shared<Mixer>,
+        filter_chain: Shared<crate::audio::filters::FilterChain>,
     ) -> Self {
         Self {
             guild_id,
@@ -88,7 +90,7 @@ impl VoiceGateway {
     }
 
     /// Main entry point — handles reconnection loop around `run_session`.
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn run(self) -> AnyResult<()> {
         let mut attempt = 0u32;
         let mut is_resume = false;
         // Shared seq_ack for heartbeat + resume (atomic so heartbeat task can read it)
@@ -152,7 +154,7 @@ impl VoiceGateway {
         &self,
         is_resume: bool,
         seq_ack: Arc<AtomicI64>,
-    ) -> Result<SessionOutcome, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<SessionOutcome> {
         let url = format!("wss://{}/?v=8", self.endpoint);
         tracing::debug!("Connecting to voice gateway: {}", url);
 
@@ -681,7 +683,7 @@ impl VoiceGateway {
         socket: &UdpSocket,
         addr: SocketAddr,
         ssrc: u32,
-    ) -> Result<(String, u16), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<(String, u16)> {
         let mut packet = [0u8; 74];
         packet[0..2].copy_from_slice(&1u16.to_be_bytes());
         packet[2..4].copy_from_slice(&70u16.to_be_bytes());
@@ -719,16 +721,16 @@ impl VoiceGateway {
 }
 
 async fn speak_loop(
-    mixer: Arc<Mutex<Mixer>>,
+    mixer: Shared<Mixer>,
     socket: UdpSocket,
     addr: SocketAddr,
     ssrc: u32,
     key: [u8; 32],
     mode: String,
-    dave: Arc<Mutex<DaveHandler>>,
-    filter_chain: Arc<Mutex<crate::audio::filters::FilterChain>>,
+    dave: Shared<DaveHandler>,
+    filter_chain: Shared<crate::audio::filters::FilterChain>,
     cancel_token: CancellationToken,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> AnyResult<()> {
     use crate::{audio::pipeline::encoder::Encoder, gateway::UdpBackend};
     let mut encoder = Encoder::new().map_err(map_boxed_err)?;
     let mut udp = UdpBackend::new(socket, addr, ssrc, key, &mode).map_err(map_boxed_err)?;

@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 pub mod ua;
 
 use std::{
@@ -38,7 +40,7 @@ impl RemoteReader {
         url: &str,
         local_addr: Option<std::net::IpAddr>,
         proxy: Option<crate::configs::HttpProxyConfig>,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<Self> {
         let user_agent = ua::get_youtube_ua(url)
             .map(str::to_string)
             .unwrap_or_else(crate::common::http::HttpClient::random_user_agent);
@@ -110,7 +112,7 @@ impl RemoteReader {
         client: &reqwest::blocking::Client,
         url: &str,
         offset: u64,
-    ) -> Result<reqwest::blocking::Response, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> AnyResult<reqwest::blocking::Response> {
         let mut req = client
             .get(url)
             .header("Accept", "*/*")

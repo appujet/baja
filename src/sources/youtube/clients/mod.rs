@@ -1,3 +1,5 @@
+
+use crate::common::types::{AnyResult};
 pub mod android;
 pub mod android_vr;
 pub mod common;
@@ -28,30 +30,30 @@ pub trait YouTubeClient: Send + Sync {
         query: &str,
         context: &Value,
         oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Vec<Track>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> AnyResult<Vec<Track>>;
     async fn get_track_info(
         &self,
         track_id: &str,
         context: &Value,
         oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> AnyResult<Option<Track>>;
     async fn resolve_url(
         &self,
         url: &str,
         context: &Value,
         oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> AnyResult<Option<Track>>;
     async fn get_track_url(
         &self,
         track_id: &str,
         context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
         oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> AnyResult<Option<String>>;
     async fn get_playlist(
         &self,
         playlist_id: &str,
         context: &Value,
         oauth: Arc<YouTubeOAuth>,
-    ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>>;
+    ) -> AnyResult<Option<(Vec<Track>, String)>>;
 }
