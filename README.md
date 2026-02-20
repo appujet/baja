@@ -67,3 +67,12 @@ rustalink is designed to be extremely lightweight, leveraging Rust's zero-cost a
 - **Rust** (Edition 2024)
 - **C Compiler** (for `audiopus` / `opus` dependencies)
 - **Discord Bot Token**
+
+
+
+
+## Format Code
+
+```bash
+rustup run nightly cargo fmt
+```

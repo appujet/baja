@@ -11,9 +11,7 @@ use crate::{
     api::tracks::Track,
     common::types::AnyResult,
     sources::youtube::{
-        cipher::YouTubeCipherManager,
-        extractor::{extract_from_player, extract_track, find_section_list},
-        oauth::YouTubeOAuth,
+        cipher::YouTubeCipherManager, clients::common::extract_sabr_payload, extractor::{extract_from_player, extract_track, find_section_list}, oauth::YouTubeOAuth
     },
 };
 
@@ -287,6 +285,16 @@ impl YouTubeClient for WebClient {
                 return Ok(None);
             }
         };
+
+        if let Some(sabr_url) = extract_sabr_payload(
+            &body,
+            streaming_data,
+            1, // WEB client_id = 1
+            CLIENT_VERSION,
+            track_id,
+        ) {
+            return Ok(Some(sabr_url));
+        }
 
         // HLS for live streams
         if let Some(hls) = streaming_data

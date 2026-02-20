@@ -1,6 +1,3 @@
-// No top-level imports needed if only submodules use them,
-// but wait, I see ProtoReader used in submodules.
-// Actually, I'll just remove the unused ones.
 
 pub struct ProtoReader<'a> {
     pub buffer: &'a [u8],
