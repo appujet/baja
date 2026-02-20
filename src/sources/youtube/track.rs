@@ -1,6 +1,5 @@
 use std::{net::IpAddr, sync::Arc};
 
-use base64::Engine;
 use flume::{Receiver, Sender};
 use tracing::{debug, error};
 
@@ -82,66 +81,69 @@ impl PlayableTrack for YoutubeTrack {
             if let Some(url) = playback_url {
                 let custom_reader = if url.starts_with("sabr://") {
                     let data_str = url.strip_prefix("sabr://").unwrap_or("");
-                    if let Ok(data_bytes) =
-                        base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(data_str.as_bytes())
-                    {
-                        if let Ok(data) = serde_json::from_slice::<serde_json::Value>(&data_bytes) {
-                            let streaming_url = data
-                                .get("url")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let config_str =
-                                data.get("config").and_then(|v| v.as_str()).unwrap_or("");
-                            if let Ok(config) = base64::engine::general_purpose::STANDARD
-                                .decode(config_str.as_bytes())
-                            {
-                                let client_name =
-                                    data.get("clientName").and_then(|v| v.as_i64()).unwrap_or(0)
-                                        as i32;
-                                let client_version = data
-                                    .get("clientVersion")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let visitor_data = data
-                                    .get("visitorData")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let video_id = data
-                                    .get("videoId")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or(&identifier)
-                                    .to_string();
-                                let formats: Vec<FormatId> = data
-                                    .get("formats")
-                                    .and_then(|v| v.as_array())
-                                    .map(|arr| {
-                                        arr.iter()
-                                            .filter_map(|f| serde_json::from_value(f.clone()).ok())
-                                            .collect()
-                                    })
-                                    .unwrap_or_default();
 
-                                let (reader, _) = SabrReader::new(
-                                    streaming_url,
-                                    config,
-                                    client_name,
-                                    client_version,
-                                    visitor_data,
-                                    video_id,
-                                    formats,
-                                );
-                                Some(Box::new(reader) as Box<dyn symphonia::core::io::MediaSource>)
-                            } else {
-                                None
+                    fn decode_base64_auto(encoded: &str) -> Result<Vec<u8>, base64::DecodeError> {
+                        use base64::Engine;
+                        use base64::engine::general_purpose::{
+                            STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD,
+                        };
+                        URL_SAFE_NO_PAD
+                            .decode(encoded)
+                            .or_else(|_| URL_SAFE.decode(encoded))
+                            .or_else(|_| STANDARD_NO_PAD.decode(encoded))
+                            .or_else(|_| STANDARD.decode(encoded))
+                    }
+
+                    match decode_base64_auto(data_str) {
+                        Ok(decoded_bytes) => {
+                            #[derive(serde::Deserialize)]
+                            struct SabrPayload {
+                                url: String,
+                                config: String,
+                                #[serde(rename = "clientName")]
+                                client_name: i32,
+                                #[serde(rename = "clientVersion")]
+                                client_version: String,
+                                #[serde(rename = "visitorData")]
+                                visitor_data: String,
+                                #[serde(rename = "videoId")]
+                                video_id: Option<String>,
+                                formats: Vec<FormatId>,
                             }
-                        } else {
+
+                            match serde_json::from_slice::<SabrPayload>(&decoded_bytes) {
+                                Ok(data) => {
+                                    let config_bytes = if data.config.is_empty() {
+                                        Vec::new()
+                                    } else {
+                                        decode_base64_auto(&data.config).unwrap_or_default()
+                                    };
+
+                                    let video_id =
+                                        data.video_id.unwrap_or_else(|| identifier.clone());
+
+                                    let (reader, _) = SabrReader::new(
+                                        data.url,
+                                        config_bytes,
+                                        data.client_name,
+                                        data.client_version,
+                                        data.visitor_data,
+                                        video_id,
+                                        data.formats,
+                                    );
+                                    Some(Box::new(reader)
+                                        as Box<dyn symphonia::core::io::MediaSource>)
+                                }
+                                Err(e) => {
+                                    tracing::error!("Failed to parse SABR JSON: {}", e);
+                                    None
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to decode SABR base64: {}", e);
                             None
                         }
-                    } else {
-                        None
                     }
                 } else if url.contains(".m3u8") || url.contains("/playlist") {
                     let player_url = if url.contains("youtube.com") {
