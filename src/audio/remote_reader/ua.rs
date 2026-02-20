@@ -5,8 +5,8 @@ pub mod yt_ua {
     pub const ANDROID_VR: &str = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro Build/UQ1A.240205.002; wv) \
          AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 \
          Chrome/121.0.6167.164 Mobile Safari/537.36 YouTubeVR/1.42.15 (gzip)";
-    pub const TVHTML5: &str = "Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV; Maple2012) \
-         AppleWebKit/534.7 (KHTML, like Gecko) SmartTV Safari/534.7";
+    pub const TVHTML5: &str = "Mozilla/5.0 (Fuchsia) AppleWebKit/537.36 (KHTML, like Gecko) \
+         Chrome/140.0.0.0 Safari/537.36 CrKey/1.56.500000";
     pub const MWEB: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) \
          AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
     pub const WEB_EMBEDDED: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \

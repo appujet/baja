@@ -66,9 +66,17 @@ impl RemoteReader {
 
         let client = builder.build()?;
 
-        // Blocking initial fetch to extract Content-Length early.
-        let response = Self::fetch_stream(&client, url, 0)?;
-        let len = response.content_length();
+        // Request just the first byte to get headers and total length safely and instantly.
+        let response = Self::fetch_stream(&client, url, 0, Some(1))?;
+        
+        let content_range_len = response.headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split('/').last())
+            .and_then(|v| v.parse::<u64>().ok());
+
+        let len = content_range_len.or_else(|| response.content_length());
+        
         let content_type = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
@@ -93,7 +101,7 @@ impl RemoteReader {
         thread::Builder::new()
             .name("remote-prefetch".to_string())
             .spawn(move || {
-                prefetch_loop(shared_clone, client, url_clone, 0, Some(response));
+                prefetch_loop(shared_clone, client, url_clone, 0, Some(response), len);
             })?;
 
         Ok(Self {
@@ -111,15 +119,19 @@ impl RemoteReader {
         client: &reqwest::blocking::Client,
         url: &str,
         offset: u64,
+        limit: Option<u64>,
     ) -> AnyResult<reqwest::blocking::Response> {
         let mut req = client
             .get(url)
             .header("Accept", "*/*")
-            .header("Accept-Encoding", "identity");
+            .header("Accept-Encoding", "identity")
+            .header("Connection", "keep-alive");
 
-        if offset > 0 {
-            req = req.header("Range", format!("bytes={}-", offset));
-        }
+        let range = match limit {
+            Some(l) => format!("bytes={}-{}", offset, offset + l - 1),
+            None => format!("bytes={}-", offset),
+        };
+        req = req.header("Range", range);
 
         let res = req.send()?;
         if !res.status().is_success() {
@@ -139,8 +151,9 @@ fn prefetch_loop(
     url: String,
     mut current_pos: u64,
     mut current_response: Option<reqwest::blocking::Response>,
+    total_len: Option<u64>,
 ) {
-    let mut chunk = vec![0u8; 128 * 1024];
+    let mut chunk = vec![0u8; 512 * 1024];
 
     loop {
         let mut target_seek = None;
@@ -162,6 +175,7 @@ fn prefetch_loop(
                     while !state.need_data
                         && !state.done
                         && matches!(state.command, PrefetchCommand::Continue)
+                        && state.next_buf.len() >= 8 * 1024 * 1024
                     {
                         state = cvar.wait(state).unwrap();
                     }
@@ -216,7 +230,9 @@ fn prefetch_loop(
 
         // 2. Ensure connection
         if current_response.is_none() {
-            match RemoteReader::fetch_stream(&client, &url, current_pos) {
+            // Request in 5MB chunks to avoid YouTube throttling giant streams
+            let chunk_limit = 5 * 1024 * 1024;
+            match RemoteReader::fetch_stream(&client, &url, current_pos, Some(chunk_limit)) {
                 Ok(res) => current_response = Some(res),
                 Err(e) => {
                     warn!("RemoteReader prefetch fetch failed: {}", e);
@@ -233,12 +249,25 @@ fn prefetch_loop(
                 Ok(0) => {
                     let (lock, cvar) = &*shared;
                     let mut state = lock.lock().unwrap();
-                    state.done = true;
-                    cvar.notify_all();
 
-                    // Wait for new commands
-                    while state.done && matches!(state.command, PrefetchCommand::Continue) {
-                        state = cvar.wait(state).unwrap();
+                    let is_eof = if let Some(l) = total_len {
+                        current_pos >= l
+                    } else {
+                        // If length is unknown, 0 means real EOF
+                        true
+                    };
+
+                    if is_eof {
+                        state.done = true;
+                        cvar.notify_all();
+
+                        // Wait for new commands
+                        while state.done && matches!(state.command, PrefetchCommand::Continue) {
+                            state = cvar.wait(state).unwrap();
+                        }
+                    } else {
+                        // Chunk finished, but more data remains
+                        current_response = None;
                     }
                     continue;
                 }
@@ -267,8 +296,8 @@ fn prefetch_loop(
 
             state.next_buf.extend_from_slice(&chunk[..read_bytes]);
 
-            // Pause fetching if we have 2MB buffered ahead
-            if state.next_buf.len() >= 2 * 1024 * 1024 {
+            // Pause fetching if we have 8MB buffered ahead
+            if state.next_buf.len() >= 8 * 1024 * 1024 {
                 state.need_data = false;
             }
             cvar.notify_all();

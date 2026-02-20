@@ -28,11 +28,64 @@ pub struct YoutubeTrack {
     pub proxy: Option<HttpProxyConfig>,
 }
 
+impl YoutubeTrack {
+    fn decode_sabr_payload(&self, url: &str) -> Option<Box<dyn symphonia::core::io::MediaSource>> {
+        let data_str = url.strip_prefix("sabr://")?;
+
+        use base64::Engine;
+        use base64::engine::general_purpose::{
+            STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD,
+        };
+
+        let decode = |encoded: &str| {
+            URL_SAFE_NO_PAD
+                .decode(encoded)
+                .or_else(|_| URL_SAFE.decode(encoded))
+                .or_else(|_| STANDARD_NO_PAD.decode(encoded))
+                .or_else(|_| STANDARD.decode(encoded))
+        };
+
+        let decoded_bytes = decode(data_str).ok()?;
+
+        #[derive(serde::Deserialize)]
+        struct SabrPayload {
+            url: String,
+            config: String,
+            #[serde(rename = "clientName")]
+            client_name: i32,
+            #[serde(rename = "clientVersion")]
+            client_version: String,
+            #[serde(rename = "visitorData")]
+            visitor_data: String,
+            #[serde(rename = "videoId")]
+            video_id: Option<String>,
+            formats: Vec<FormatId>,
+        }
+
+        let data: SabrPayload = serde_json::from_slice(&decoded_bytes).ok()?;
+        let config_bytes = decode(&data.config).unwrap_or_default();
+        let video_id = data.video_id.unwrap_or_else(|| self.identifier.clone());
+
+        let (reader, _) = SabrReader::new(
+            data.url,
+            config_bytes,
+            data.client_name,
+            data.client_version,
+            data.visitor_data,
+            video_id,
+            data.formats,
+        );
+
+        Some(Box::new(reader))
+    }
+}
+
 impl PlayableTrack for YoutubeTrack {
     fn start_decoding(&self) -> (Receiver<i16>, Sender<DecoderCommand>) {
         let (tx, rx) = flume::bounded::<i16>(4096 * 4);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
 
+        // Clone needed data for the thread
         let identifier = self.identifier.clone();
         let clients = self.clients.clone();
         let oauth = self.oauth.clone();
@@ -41,156 +94,146 @@ impl PlayableTrack for YoutubeTrack {
         let local_addr = self.local_addr;
         let proxy = self.proxy.clone();
 
+        // Use a persistent reference for helper calls
+        let track_ref = Arc::new(YoutubeTrack {
+            identifier: identifier.clone(),
+            clients,
+            oauth,
+            cipher_manager,
+            visitor_data: visitor_data.clone(),
+            local_addr,
+            proxy: proxy.clone(),
+        });
+
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .unwrap();
 
-            let context = if let Some(vd) = visitor_data {
+            let context = if let Some(vd) = &visitor_data {
                 serde_json::json!({ "visitorData": vd })
             } else {
                 serde_json::json!({})
             };
 
-            let playback_url = runtime.block_on(async {
-                for client in &clients {
-                    debug!(
-                        "YoutubeTrack: Resolving playback URL for '{}' using {}",
-                        identifier,
-                        client.name()
-                    );
+            let mut success = false;
+
+            for client in &track_ref.clients {
+                debug!(
+                    "YoutubeTrack: Attempting playback for '{}' with {}",
+                    identifier,
+                    client.name()
+                );
+
+                let playback_url = runtime.block_on(async {
                     match client
-                        .get_track_url(&identifier, &context, cipher_manager.clone(), oauth.clone())
+                        .get_track_url(
+                            &identifier,
+                            &context,
+                            track_ref.cipher_manager.clone(),
+                            track_ref.oauth.clone(),
+                        )
                         .await
                     {
-                        Ok(Some(url)) => return Some(url),
-                        Ok(None) => continue,
-                        Err(e) => {
-                            error!(
-                                "YoutubeTrack: Playback URL error with {}: {}",
-                                client.name(),
-                                e
-                            );
-                        }
+                        Ok(Some(url)) => Some(url),
+                        _ => None,
                     }
-                }
-                None
-            });
+                });
 
-            if let Some(url) = playback_url {
-                let custom_reader = if url.starts_with("sabr://") {
-                    let data_str = url.strip_prefix("sabr://").unwrap_or("");
-
-                    fn decode_base64_auto(encoded: &str) -> Result<Vec<u8>, base64::DecodeError> {
-                        use base64::Engine;
-                        use base64::engine::general_purpose::{
-                            STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD,
-                        };
-                        URL_SAFE_NO_PAD
-                            .decode(encoded)
-                            .or_else(|_| URL_SAFE.decode(encoded))
-                            .or_else(|_| STANDARD_NO_PAD.decode(encoded))
-                            .or_else(|_| STANDARD.decode(encoded))
+                let url = match playback_url {
+                    Some(u) => u,
+                    None => {
+                        debug!(
+                            "YoutubeTrack: Client {} failed to resolve URL",
+                            client.name()
+                        );
+                        continue;
                     }
+                };
 
-                    match decode_base64_auto(data_str) {
-                        Ok(decoded_bytes) => {
-                            #[derive(serde::Deserialize)]
-                            struct SabrPayload {
-                                url: String,
-                                config: String,
-                                #[serde(rename = "clientName")]
-                                client_name: i32,
-                                #[serde(rename = "clientVersion")]
-                                client_version: String,
-                                #[serde(rename = "visitorData")]
-                                visitor_data: String,
-                                #[serde(rename = "videoId")]
-                                video_id: Option<String>,
-                                formats: Vec<FormatId>,
-                            }
+                debug!("YoutubeTrack: Resolved URL using {}", client.name());
 
-                            match serde_json::from_slice::<SabrPayload>(&decoded_bytes) {
-                                Ok(data) => {
-                                    let config_bytes = if data.config.is_empty() {
-                                        Vec::new()
-                                    } else {
-                                        decode_base64_auto(&data.config).unwrap_or_default()
-                                    };
-
-                                    let video_id =
-                                        data.video_id.unwrap_or_else(|| identifier.clone());
-
-                                    let (reader, _) = SabrReader::new(
-                                        data.url,
-                                        config_bytes,
-                                        data.client_name,
-                                        data.client_version,
-                                        data.visitor_data,
-                                        video_id,
-                                        data.formats,
-                                    );
-                                    Some(Box::new(reader)
-                                        as Box<dyn symphonia::core::io::MediaSource>)
-                                }
-                                Err(e) => {
-                                    tracing::error!("Failed to parse SABR JSON: {}", e);
-                                    None
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to decode SABR base64: {}", e);
+                let custom_reader: Option<Box<dyn symphonia::core::io::MediaSource>> =
+                    if url.starts_with("sabr://") {
+                        track_ref.decode_sabr_payload(&url)
+                    } else if url.contains(".m3u8") || url.contains("/playlist") {
+                        let player_url = if url.contains("youtube.com") {
+                            Some(url.clone())
+                        } else {
                             None
-                        }
-                    }
-                } else if url.contains(".m3u8") || url.contains("/playlist") {
-                    let player_url = if url.contains("youtube.com") {
-                        Some(url.clone())
+                        };
+                        HlsReader::new(
+                            &url,
+                            local_addr,
+                            Some(track_ref.cipher_manager.clone()),
+                            player_url,
+                            proxy.clone(),
+                        )
+                        .ok()
+                        .map(|r| Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
                     } else {
                         None
                     };
-                    HlsReader::new(
-                        &url,
-                        local_addr,
-                        Some(cipher_manager.clone()),
-                        player_url,
-                        proxy.clone(),
-                    )
-                    .ok()
-                    .map(|r| Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
-                } else {
-                    None
-                };
 
-                let reader = custom_reader.unwrap_or_else(|| {
-                    Box::new(
-                        crate::audio::RemoteReader::new(&url, local_addr, proxy.clone()).unwrap(),
-                    ) as Box<dyn symphonia::core::io::MediaSource>
-                });
+                let reader = match custom_reader {
+                    Some(r) => r,
+                    None => {
+                        match crate::audio::RemoteReader::new(&url, local_addr, proxy.clone()) {
+                            Ok(r) => Box::new(r),
+                            Err(e) => {
+                                error!(
+                                    "YoutubeTrack: Failed to open RemoteReader for {}: {}",
+                                    client.name(),
+                                    e
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                };
 
                 let ext_hint = if url.contains(".m3u8") || url.contains("/api/manifest/hls_") {
                     Some("aac")
+                } else if url.contains("itag=251")
+                    || url.contains("itag=250")
+                    || url.contains("mime=audio/webm")
+                {
+                    Some("webm")
+                } else if url.contains("itag=140") || url.contains("mime=audio/mp4") {
+                    Some("mp4")
                 } else {
                     std::path::Path::new(&url)
                         .extension()
                         .and_then(|s| s.to_str())
                 };
 
-                match AudioProcessor::new(reader, ext_hint, tx, cmd_rx) {
+                match AudioProcessor::new(reader, ext_hint, tx.clone(), cmd_rx.clone()) {
                     Ok(mut processor) => {
+                        debug!(
+                            "YoutubeTrack: Playback started successfully with {}",
+                            client.name()
+                        );
+                        success = true;
                         if let Err(e) = processor.run() {
-                            error!("YoutubeTrack: Audio processor error: {}", e);
+                            error!("YoutubeTrack: Decoding session failed: {}", e);
                         }
+                        break; // Stop trying other clients if we successfully started and then finished/failed
                     }
                     Err(e) => {
-                        error!("YoutubeTrack: Failed to initialize audio processor: {}", e);
+                        error!(
+                            "YoutubeTrack: Initialization failed with {}: {}. Trying next client...",
+                            client.name(),
+                            e
+                        );
+                        continue;
                     }
                 }
-            } else {
+            }
+
+            if !success {
                 error!(
-                    "YoutubeTrack: Failed to resolve playback URL for {}",
+                    "YoutubeTrack: All configured playback clients failed for {}",
                     identifier
                 );
             }

@@ -36,6 +36,8 @@ pub struct YouTubeClientsConfig {
     pub search: Vec<String>,
     #[serde(default = "default_yt_playback_clients_list")]
     pub playback: Vec<String>,
+    #[serde(default = "default_yt_resolve_clients_list")]
+    pub resolve: Vec<String>,
     #[serde(default)]
     pub refresh_tokens: Vec<String>,
     #[serde(default)]
@@ -47,6 +49,7 @@ impl Default for YouTubeClientsConfig {
         Self {
             search: default_yt_search_clients_list(),
             playback: default_yt_playback_clients_list(),
+            resolve: default_yt_resolve_clients_list(),
             refresh_tokens: Vec::new(),
             get_oauth_token: false,
         }
@@ -57,20 +60,27 @@ fn default_yt_search_clients_list() -> Vec<String> {
     vec![
         "MUSIC_ANDROID".to_string(),
         "MUSIC_WEB".to_string(),
-        "WEB".to_string(),
         "ANDROID".to_string(),
+        "WEB".to_string(),
     ]
 }
 
 fn default_yt_playback_clients_list() -> Vec<String> {
     vec![
-        "ANDROID".to_string(),
-        "MUSIC_ANDROID".to_string(),
-        "MUSIC_WEB".to_string(),
-        "IOS".to_string(),
         "TV".to_string(),
-        "ANDROID_VR".to_string(),
+        "ANDROID_MUSIC".to_string(),
         "WEB".to_string(),
+        "IOS".to_string(),
+        "ANDROID_VR".to_string(),
+    ]
+}
+
+fn default_yt_resolve_clients_list() -> Vec<String> {
+    vec![
+        "WEB".to_string(),
+        "MUSIC_WEB".to_string(),
+        "ANDROID".to_string(),
+        "TVHTML5_SIMPLY".to_string(),
     ]
 }
 

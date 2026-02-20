@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track},
+    api::tracks::*,
     common::types::SharedRw,
     configs::sources::YouTubeConfig,
     sources::{SourcePlugin, plugin::BoxedTrack},
@@ -34,6 +34,7 @@ pub struct YouTubeSource {
     // Store clients separated by function
     search_clients: Vec<Arc<dyn YouTubeClient>>,
     playback_clients: Vec<Arc<dyn YouTubeClient>>,
+    resolve_clients: Vec<Arc<dyn YouTubeClient>>,
     oauth: Arc<YouTubeOAuth>,
     cipher_manager: Arc<YouTubeCipherManager>,
     visitor_data: SharedRw<Option<String>>,
@@ -79,11 +80,15 @@ impl YouTubeSource {
         let create_client = |name: &str| -> Option<Arc<dyn YouTubeClient>> {
             match name.to_uppercase().as_str() {
                 "WEB" => Some(Arc::new(WebClient::new())),
+                "MWEB" | "MUSIC_WEB" | "WEB_REMIX" | "REMIX" => {
+                    Some(Arc::new(WebRemixClient::new()))
+                }
                 "ANDROID" => Some(Arc::new(AndroidClient::new())),
                 "IOS" => Some(Arc::new(IosClient::new())),
-                "TV" => Some(Arc::new(TvClient::new())),
-                "MUSIC" | "MUSIC_ANDROID" => Some(Arc::new(MusicAndroidClient::new())),
-                "WEB_REMIX" | "MUSIC_WEB" => Some(Arc::new(WebRemixClient::new())),
+                "TV" | "TVHTML5" | "TVHTML5_SIMPLY" => Some(Arc::new(TvClient::new())),
+                "MUSIC" | "MUSIC_ANDROID" | "ANDROID_MUSIC" => {
+                    Some(Arc::new(MusicAndroidClient::new()))
+                }
                 "ANDROID_VR" | "ANDROIDVR" => Some(Arc::new(AndroidVrClient::new())),
                 "WEB_EMBEDDED" | "WEBEMBEDDED" => Some(Arc::new(WebEmbeddedClient::new())),
                 _ => {
@@ -110,9 +115,21 @@ impl YouTubeSource {
                 playback_clients.push(client);
             }
         }
+
         if playback_clients.is_empty() {
             tracing::warn!("No valid YouTube playback clients configured! Fallback to Web.");
             playback_clients.push(Arc::new(WebClient::new()));
+        }
+
+        let mut resolve_clients = Vec::new();
+        for name in &config.clients.resolve {
+            if let Some(client) = create_client(name) {
+                resolve_clients.push(client);
+            }
+        }
+        if resolve_clients.is_empty() {
+            tracing::warn!("No valid YouTube resolve clients configured! Fallback to Web.");
+            resolve_clients.push(Arc::new(WebClient::new()));
         }
 
         Self {
@@ -120,6 +137,7 @@ impl YouTubeSource {
             url_regex: Regex::new(r"(?:youtube\.com|youtu\.be)").unwrap(),
             search_clients,
             playback_clients,
+            resolve_clients,
             oauth,
             cipher_manager,
             visitor_data,
@@ -232,11 +250,27 @@ impl YouTubeSource {
     ) -> Vec<&'a Arc<dyn YouTubeClient>> {
         let mut ordered = Vec::with_capacity(clients.len());
         if prefer_music {
-            ordered.extend(clients.iter().filter(|c| c.name().starts_with("Music")));
-            ordered.extend(clients.iter().filter(|c| !c.name().starts_with("Music")));
+            ordered.extend(
+                clients
+                    .iter()
+                    .filter(|c| c.name().contains("Music") || c.name().contains("Remix")),
+            );
+            ordered.extend(
+                clients
+                    .iter()
+                    .filter(|c| !c.name().contains("Music") && !c.name().contains("Remix")),
+            );
         } else {
-            ordered.extend(clients.iter().filter(|c| !c.name().starts_with("Music")));
-            ordered.extend(clients.iter().filter(|c| c.name().starts_with("Music")));
+            ordered.extend(
+                clients
+                    .iter()
+                    .filter(|c| !c.name().contains("Music") && !c.name().contains("Remix")),
+            );
+            ordered.extend(
+                clients
+                    .iter()
+                    .filter(|c| c.name().contains("Music") || c.name().contains("Remix")),
+            );
         }
         ordered
     }
@@ -272,128 +306,15 @@ impl SourcePlugin for YouTubeSource {
         };
 
         if identifier.starts_with(&self.search_prefix) || identifier.starts_with("ytmsearch:") {
-            let (query, search_type) = if identifier.starts_with("ytmsearch:") {
-                (&identifier["ytmsearch:".len()..], "music")
-            } else {
-                (&identifier["ytsearch:".len()..], "video")
-            };
-
-            let clients_to_try =
-                self.prioritize_clients(&self.search_clients, search_type == "music");
-
-            for client in clients_to_try {
-                tracing::debug!("Searching for: {} using {}", query, client.name());
-                match client.search(query, &context, self.oauth.clone()).await {
-                    Ok(tracks) => {
-                        if !tracks.is_empty() {
-                            return LoadResult::Search(tracks);
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("Search error with {}: {}", client.name(), e);
-                    }
-                }
-            }
-            return LoadResult::Empty {};
+            return self.handle_search(identifier, &context).await;
         }
 
         if identifier.starts_with("ytrec:") {
-            let seed_id = &identifier["ytrec:".len()..];
-            let playlist_id = format!("RD{}", seed_id);
-
-            // Recommendations are almost always music related
-            let clients_to_try = self.prioritize_clients(&self.search_clients, true);
-
-            for client in clients_to_try {
-                match client
-                    .get_playlist(&playlist_id, &context, self.oauth.clone())
-                    .await
-                {
-                    Ok(Some((tracks, title))) => {
-                        let filtered_tracks: Vec<Track> = tracks
-                            .into_iter()
-                            .filter(|t| t.info.identifier != seed_id)
-                            .collect();
-                        return LoadResult::Playlist(PlaylistData {
-                            info: PlaylistInfo {
-                                name: format!("Recommendations: {}", title),
-                                selected_track: -1,
-                            },
-                            plugin_info: serde_json::json!({ "type": "recommendations" }),
-                            tracks: filtered_tracks,
-                        });
-                    }
-                    Ok(None) => continue,
-                    Err(e) => {
-                        tracing::error!("Recommendations error with {}: {}", client.name(), e);
-                    }
-                }
-            }
-            return LoadResult::Empty {};
+            return self.handle_recommendations(identifier, &context).await;
         }
 
         if self.url_regex.is_match(identifier) {
-            let id = self.extract_id(identifier);
-            let is_music_url = identifier.contains("music.youtube.com");
-
-            // First check for playlist
-            if let Some(playlist_id) = self.extract_playlist_id(identifier) {
-                let clients_to_try = self.prioritize_clients(&self.search_clients, is_music_url);
-
-                for client in clients_to_try {
-                    tracing::debug!("Loading playlist '{}' using {}", playlist_id, client.name());
-                    match client
-                        .get_playlist(&playlist_id, &context, self.oauth.clone())
-                        .await
-                    {
-                        Ok(Some((tracks, title))) => {
-                            tracing::debug!(
-                                "Successfully loaded playlist '{}' with {}",
-                                title,
-                                client.name()
-                            );
-                            return LoadResult::Playlist(PlaylistData {
-                                info: PlaylistInfo {
-                                    name: title,
-                                    selected_track: -1,
-                                },
-                                plugin_info: serde_json::json!({}),
-                                tracks,
-                            });
-                        }
-                        Ok(None) => {
-                            tracing::debug!(
-                                "Client {} returned no playlist for {}",
-                                client.name(),
-                                playlist_id
-                            );
-                            continue;
-                        }
-                        Err(e) => {
-                            tracing::error!("Playlist error with {}: {}", client.name(), e);
-                        }
-                    }
-                }
-            }
-
-            let clients_to_try = self.prioritize_clients(&self.playback_clients, is_music_url);
-
-            for client in clients_to_try {
-                tracing::debug!("Loading track '{}' using {}", id, client.name());
-                match client
-                    .get_track_info(&id, &context, self.oauth.clone())
-                    .await
-                {
-                    Ok(Some(track)) => {
-                        tracing::debug!("Successfully loaded track {} with {}", id, client.name());
-                        return LoadResult::Track(track);
-                    }
-                    Ok(None) => continue,
-                    Err(e) => {
-                        tracing::error!("Track info error with {}: {}", client.name(), e);
-                    }
-                }
-            }
+            return self.handle_url(identifier, &context).await;
         }
 
         LoadResult::Empty {}
@@ -418,7 +339,132 @@ impl SourcePlugin for YouTubeSource {
             cipher_manager: self.cipher_manager.clone(),
             visitor_data,
             local_addr: routeplanner.and_then(|rp| rp.get_address()),
-            proxy: None, // YoutubeSource doesn't seem to use proxy the same way yet
+            proxy: None,
         }))
+    }
+}
+
+impl YouTubeSource {
+    async fn handle_search(&self, identifier: &str, context: &Value) -> LoadResult {
+        let (query, prefer_music) = if identifier.starts_with("ytmsearch:") {
+            (&identifier["ytmsearch:".len()..], true)
+        } else {
+            (&identifier["ytsearch:".len()..], false)
+        };
+
+        let clients = self.prioritize_clients(&self.search_clients, prefer_music);
+        for client in clients {
+            tracing::debug!("Searching '{}' with {}", query, client.name());
+            match client.search(query, context, self.oauth.clone()).await {
+                Ok(tracks) if !tracks.is_empty() => return LoadResult::Search(tracks),
+                Ok(_) => continue,
+                Err(e) => tracing::error!("Search error with {}: {}", client.name(), e),
+            }
+        }
+        LoadResult::Empty {}
+    }
+
+    async fn handle_recommendations(&self, identifier: &str, context: &Value) -> LoadResult {
+        let seed_id = &identifier["ytrec:".len()..];
+        let playlist_id = format!("RD{}", seed_id);
+
+        let clients = self.prioritize_clients(&self.resolve_clients, true);
+        for client in clients {
+            match client
+                .get_playlist(&playlist_id, context, self.oauth.clone())
+                .await
+            {
+                Ok(Some((tracks, title))) => {
+                    let filtered = tracks
+                        .into_iter()
+                        .filter(|t| t.info.identifier != seed_id)
+                        .collect();
+                    return LoadResult::Playlist(PlaylistData {
+                        info: PlaylistInfo {
+                            name: format!("Recommendations: {}", title),
+                            selected_track: -1,
+                        },
+                        plugin_info: json!({ "type": "recommendations" }),
+                        tracks: filtered,
+                    });
+                }
+                _ => continue,
+            }
+        }
+        LoadResult::Empty {}
+    }
+
+    async fn handle_url(&self, identifier: &str, context: &Value) -> LoadResult {
+        let is_music_url = identifier.contains("music.youtube.com");
+
+        // Playlist handling
+        if let Some(playlist_id) = self.extract_playlist_id(identifier) {
+            let mut clients = Vec::new();
+
+            // Try Android first as it's most reliable for playlists
+            if let Some(android) = self
+                .resolve_clients
+                .iter()
+                .chain(self.search_clients.iter())
+                .find(|c| c.name() == "Android")
+            {
+                clients.push(android);
+            }
+
+            for c in self.prioritize_clients(&self.resolve_clients, is_music_url) {
+                if !clients.iter().any(|&x| x.name() == c.name()) {
+                    clients.push(c);
+                }
+            }
+
+            for client in clients {
+                match client
+                    .get_playlist(&playlist_id, context, self.oauth.clone())
+                    .await
+                {
+                    Ok(Some((tracks, title))) => {
+                        return LoadResult::Playlist(PlaylistData {
+                            info: PlaylistInfo {
+                                name: title,
+                                selected_track: -1,
+                            },
+                            plugin_info: json!({}),
+                            tracks,
+                        });
+                    }
+                    _ => continue,
+                }
+            }
+        }
+
+        // Track info handling
+        let id = self.extract_id(identifier);
+
+        let resolve_clients = self.prioritize_clients(&self.resolve_clients, is_music_url);
+        for client in &resolve_clients {
+            match client
+                .get_track_info(&id, context, self.oauth.clone())
+                .await
+            {
+                Ok(Some(track)) => return LoadResult::Track(track),
+                _ => continue,
+            }
+        }
+
+        // Partial Fallback to Playback Clients for info
+        let playback_clients = self.prioritize_clients(&self.playback_clients, is_music_url);
+        for client in playback_clients {
+            if resolve_clients.iter().any(|&rc| rc.name() == client.name()) {
+                continue;
+            }
+            if let Ok(Some(track)) = client
+                .get_track_info(&id, context, self.oauth.clone())
+                .await
+            {
+                return LoadResult::Track(track);
+            }
+        }
+
+        LoadResult::Empty {}
     }
 }

@@ -9,7 +9,7 @@ use crate::common::types::AnyResult;
 
 pub const INNERTUBE_API: &str = "https://youtubei.googleapis.com";
 
-pub const AUDIO_ITAG_PRIORITY: &[i64] = &[251, 250, 140];
+pub const AUDIO_ITAG_PRIORITY: &[i64] = &[140, 251, 250];
 
 pub const ITAG_FALLBACK: i64 = 18;
 
@@ -236,6 +236,60 @@ pub async fn make_player_request(
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(format!("Player request failed (status={}): {}", status, text).into());
+    }
+
+    Ok(res.json().await?)
+}
+
+pub async fn make_next_request(
+    http: &reqwest::Client,
+    video_id: Option<&str>,
+    playlist_id: Option<&str>,
+    context: Value,
+    client_id: &str,
+    client_version: &str,
+    visitor_data: Option<&str>,
+    auth_header: Option<String>,
+) -> AnyResult<Value> {
+    let mut body = json!({
+        "context": context,
+    });
+
+    if let Some(vid) = video_id {
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("videoId".to_string(), vid.into());
+        }
+    }
+
+    if let Some(pid) = playlist_id {
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("playlistId".to_string(), pid.into());
+        }
+    }
+
+    let url = format!("{}/youtubei/v1/next?prettyPrint=false", INNERTUBE_API);
+
+    let mut req = http
+        .post(&url)
+        .header("X-YouTube-Client-Name", client_id)
+        .header("X-YouTube-Client-Version", client_version);
+
+    if let Some(vd) = visitor_data {
+        req = req.header("X-Goog-Visitor-Id", vd);
+    }
+
+    if let Some(auth) = auth_header {
+        req = req.header("Authorization", auth);
+    }
+
+    let res = req.json(&body).send().await?;
+    let status = res.status();
+    if !status.is_success() {
+        let text = res
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!("Next request failed (status={}): {}", status, text).into());
     }
 
     Ok(res.json().await?)

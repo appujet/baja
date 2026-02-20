@@ -29,8 +29,9 @@ providers = [
 [youtube]
 # YouTube Clients configuration
 [youtube.clients]
-search = ["MUSIC_ANDROID", "MUSIC_WEB", "WEB", "ANDROID"]
-playback = ["ANDROID", "MUSIC_ANDROID", "MUSIC_WEB", "IOS", "TV", "ANDROID_VR", "WEB"]
+search = ["MUSIC_ANDROID", "ANDROID", "WEB"]
+resolve = ["WEB", "MUSIC_WEB", "ANDROID", "TVHTML5_SIMPLY"]
+playback = ["TV", "ANDROID_MUSIC", "WEB", "IOS", "ANDROID_VR"]
 # refresh_tokens = [] # Optional: list of refresh tokens for clients
 get_oauth_token = false # Set to true to enable OAuth device flow initialization
 

@@ -5,21 +5,23 @@ use serde_json::{Value, json};
 
 use super::{
     YouTubeClient,
-    common::{INNERTUBE_API, resolve_format_url, select_best_audio_format},
+    common::{INNERTUBE_API, make_next_request, resolve_format_url, select_best_audio_format},
 };
 use crate::{
     api::tracks::Track,
     common::types::AnyResult,
     sources::youtube::{
-        cipher::YouTubeCipherManager, extractor::extract_track, oauth::YouTubeOAuth,
+        cipher::YouTubeCipherManager,
+        extractor::{extract_from_next, extract_from_player, extract_track},
+        oauth::YouTubeOAuth,
     },
 };
 
 const CLIENT_NAME: &str = "TVHTML5";
 const CLIENT_ID: &str = "7";
-const CLIENT_VERSION: &str = "7.20250219.19.00";
-const USER_AGENT: &str = "Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV; Maple2012) \
-     AppleWebKit/534.7 (KHTML, like Gecko) SmartTV Safari/534.7";
+const CLIENT_VERSION: &str = "7.20260113.16.00";
+const USER_AGENT: &str = "Mozilla/5.0 (Fuchsia) AppleWebKit/537.36 (KHTML, like Gecko) \
+     Chrome/140.0.0.0 Safari/537.36 CrKey/1.56.500000";
 
 pub struct TvClient {
     http: reqwest::Client,
@@ -77,6 +79,26 @@ impl TvClient {
             oauth.get_auth_header().await,
             None,
             None,
+        )
+        .await
+    }
+
+    async fn next_request(
+        &self,
+        video_id: Option<&str>,
+        playlist_id: Option<&str>,
+        visitor_data: Option<&str>,
+        oauth: &Arc<YouTubeOAuth>,
+    ) -> AnyResult<Value> {
+        make_next_request(
+            &self.http,
+            video_id,
+            playlist_id,
+            self.build_context(visitor_data),
+            CLIENT_ID,
+            CLIENT_VERSION,
+            visitor_data,
+            oauth.get_auth_header().await,
         )
         .await
     }
@@ -165,22 +187,49 @@ impl YouTubeClient for TvClient {
 
     async fn get_track_info(
         &self,
-        _track_id: &str,
-        _context: &Value,
-        _oauth: Arc<YouTubeOAuth>,
+        track_id: &str,
+        context: &Value,
+        oauth: Arc<YouTubeOAuth>,
     ) -> AnyResult<Option<Track>> {
-        tracing::debug!("{} client does not support get_track_info", self.name());
-        Ok(None)
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self
+            .player_request(track_id, visitor_data, None, &oauth)
+            .await?;
+
+        if body
+            .get("playabilityStatus")
+            .and_then(|p| p.get("status"))
+            .and_then(|s| s.as_str())
+            != Some("OK")
+        {
+            return Ok(None);
+        }
+
+        Ok(extract_from_player(&body, "youtube"))
     }
 
     async fn get_playlist(
         &self,
-        _playlist_id: &str,
-        _context: &Value,
-        _oauth: Arc<YouTubeOAuth>,
+        playlist_id: &str,
+        context: &Value,
+        oauth: Arc<YouTubeOAuth>,
     ) -> AnyResult<Option<(Vec<Track>, String)>> {
-        tracing::debug!("{} client does not support get_playlist", self.name());
-        Ok(None)
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self
+            .next_request(None, Some(playlist_id), visitor_data, &oauth)
+            .await?;
+
+        Ok(extract_from_next(&body, "youtube"))
     }
 
     async fn resolve_url(
