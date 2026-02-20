@@ -13,17 +13,11 @@ pub mod yt_ua {
          (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 }
 
-/// Detects and returns the appropriate YouTube User-Agent for a given URL.
-///
-/// It looks for the 'c=' parameter in the query string, which identifies the
-/// client that generated the playback URL.
 pub fn get_youtube_ua(url: &str) -> Option<&'static str> {
-    // Only process YouTube-related domains to avoid unnecessary string ops
     if !(url.contains("googlevideo.com") || url.contains("youtube.com")) {
         return None;
     }
 
-    // Pro-tip: Manual param extraction is faster than full URL parsing in high-frequency loops.
     extract_param(url, "c=").and_then(|client| match client {
         "IOS" => Some(yt_ua::IOS),
         "ANDROID" => Some(yt_ua::ANDROID),
@@ -35,14 +29,12 @@ pub fn get_youtube_ua(url: &str) -> Option<&'static str> {
     })
 }
 
-/// Robustly extracts a query parameter value. Handles both '?' and '&' boundaries.
 fn extract_param<'a>(url: &'a str, key: &str) -> Option<&'a str> {
     let query_start = url.find('?')?;
     let query = &url[query_start + 1..];
 
     for part in query.split('&') {
         if let Some(val) = part.strip_prefix(key) {
-            // Trim potential fragment identifiers at the end of the last param
             return Some(val.split('#').next().unwrap_or(val));
         }
     }
