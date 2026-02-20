@@ -56,7 +56,7 @@ impl WebEmbeddedClient {
         &self,
         video_id: &str,
         visitor_data: Option<&str>,
-        oauth: &Arc<YouTubeOAuth>,
+        _oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let body = json!({
             "context": self.build_context(visitor_data),
@@ -78,11 +78,7 @@ impl WebEmbeddedClient {
             req = req.header("X-Goog-Visitor-Id", vd);
         }
 
-        let mut req = req.json(&body);
-
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
-        }
+        let req = req.json(&body);
 
         let res = req.send().await?;
 
@@ -141,11 +137,9 @@ impl YouTubeClient for WebEmbeddedClient {
             req = req.header("X-Goog-Visitor-Id", vd);
         }
 
-        let mut req = req.json(&body);
+        let req = req.json(&body);
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
-        }
+        let _ = oauth;
 
         let res = req.send().await?;
         if !res.status().is_success() {
