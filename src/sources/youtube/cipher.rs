@@ -1,9 +1,7 @@
-
-use crate::common::types::{AnyResult};
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
-use crate::configs::sources::YouTubeCipherConfig;
+use crate::{common::types::AnyResult, configs::sources::YouTubeCipherConfig};
 
 pub struct YouTubeCipherManager {
     config: YouTubeCipherConfig,
@@ -20,10 +18,7 @@ impl YouTubeCipherManager {
         }
     }
 
-    pub async fn get_sts(
-        &self,
-        player_url: &str,
-    ) -> AnyResult<String> {
+    pub async fn get_sts(&self, player_url: &str) -> AnyResult<String> {
         {
             let cache = self.sts_cache.read().await;
             if let Some(sts) = cache.get(player_url) {
@@ -74,9 +69,7 @@ impl YouTubeCipherManager {
         Ok(sts)
     }
 
-    pub async fn get_signature_timestamp(
-        &self,
-    ) -> AnyResult<u32> {
+    pub async fn get_signature_timestamp(&self) -> AnyResult<u32> {
         let player_url =
             "https://www.youtube.com/s/player/6182c448/player_ias.vflset/en_US/base.js";
         let sts = self.get_sts(player_url).await?;

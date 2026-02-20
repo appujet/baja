@@ -1,10 +1,8 @@
-
-use crate::common::types::{Shared};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use crate::audio::playback::Mixer;
+use crate::{audio::playback::Mixer, common::types::Shared};
 
 pub struct VoiceEngine {
     pub mixer: Shared<Mixer>,

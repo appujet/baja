@@ -3,7 +3,7 @@
 // Actually, I'll just remove the unused ones.
 
 pub struct ProtoReader<'a> {
-    buffer: &'a [u8],
+    pub buffer: &'a [u8],
     pub pos: usize,
 }
 
@@ -76,8 +76,9 @@ impl<'a> ProtoReader<'a> {
     }
 }
 
-pub struct UmpReader<'a> {
-    reader: ProtoReader<'a>,
+pub struct UmpReader {
+    pub buffer: Vec<u8>,
+    pub pos: usize,
 }
 
 pub struct UmpPart {
@@ -85,26 +86,112 @@ pub struct UmpPart {
     pub data: Vec<u8>,
 }
 
-impl<'a> UmpReader<'a> {
-    pub fn new(buffer: &'a [u8]) -> Self {
+impl UmpReader {
+    pub fn new() -> Self {
         Self {
-            reader: ProtoReader::new(buffer),
+            buffer: Vec::new(),
+            pos: 0,
         }
     }
 
+    pub fn append(&mut self, chunk: &[u8]) {
+        self.buffer.extend_from_slice(chunk);
+    }
+
+    fn read_varint(&mut self) -> Option<u64> {
+        if self.pos >= self.buffer.len() {
+            return None;
+        }
+        let first_byte = self.buffer[self.pos];
+        let byte_length = if first_byte < 128 {
+            1
+        } else if first_byte < 192 {
+            2
+        } else if first_byte < 224 {
+            3
+        } else if first_byte < 240 {
+            4
+        } else {
+            5
+        };
+
+        if self.pos + byte_length > self.buffer.len() {
+            return None;
+        }
+
+        let value: u64;
+        match byte_length {
+            1 => {
+                value = self.buffer[self.pos] as u64;
+                self.pos += 1;
+            }
+            2 => {
+                let b1 = self.buffer[self.pos] as u64;
+                let b2 = self.buffer[self.pos + 1] as u64;
+                value = (b1 & 0x3f) + 64 * b2;
+                self.pos += 2;
+            }
+            3 => {
+                let b1 = self.buffer[self.pos] as u64;
+                let b2 = self.buffer[self.pos + 1] as u64;
+                let b3 = self.buffer[self.pos + 2] as u64;
+                value = (b1 & 0x1f) + 32 * (b2 + 256 * b3);
+                self.pos += 3;
+            }
+            4 => {
+                let b1 = self.buffer[self.pos] as u64;
+                let b2 = self.buffer[self.pos + 1] as u64;
+                let b3 = self.buffer[self.pos + 2] as u64;
+                let b4 = self.buffer[self.pos + 3] as u64;
+                value = (b1 & 0x0f) + 16 * (b2 + 256 * (b3 + 256 * b4));
+                self.pos += 4;
+            }
+            5 => {
+                let b1 = self.buffer[self.pos + 1] as u64;
+                let b2 = self.buffer[self.pos + 2] as u64;
+                let b3 = self.buffer[self.pos + 3] as u64;
+                let b4 = self.buffer[self.pos + 4] as u64;
+                value = b1 + 256 * (b2 + 256 * (b3 + 256 * b4));
+                self.pos += 5;
+            }
+            _ => unreachable!(),
+        }
+        Some(value)
+    }
+
     pub fn next_part(&mut self) -> Option<UmpPart> {
-        if self.reader.pos >= self.reader.buffer.len() {
+        let initial_pos = self.pos;
+
+        let part_type = match self.read_varint() {
+            Some(v) => v,
+            None => {
+                self.pos = initial_pos;
+                return None;
+            }
+        };
+
+        let length = match self.read_varint() {
+            Some(v) => v as usize,
+            None => {
+                self.pos = initial_pos;
+                return None;
+            }
+        };
+
+        if self.pos + length > self.buffer.len() {
+            // Not enough data for this part yet
+            self.pos = initial_pos;
             return None;
         }
-        let part_type = self.reader.read_varint()?;
-        let length = self.reader.read_varint()? as usize;
 
-        if self.reader.pos + length > self.reader.buffer.len() {
-            return None;
+        let data = self.buffer[self.pos..self.pos + length].to_vec();
+        self.pos += length;
+
+        // Clean up processed data if buffer gets too large
+        if self.pos > 1024 * 1024 {
+            self.buffer.drain(..self.pos);
+            self.pos = 0;
         }
-
-        let data = self.reader.buffer[self.reader.pos..self.reader.pos + length].to_vec();
-        self.reader.pos += length;
 
         Some(UmpPart { part_type, data })
     }
@@ -248,6 +335,76 @@ pub mod decoders {
             match field {
                 1 => msg.error_type = reader.read_string(),
                 2 => msg.code = reader.read_varint().unwrap_or(0) as i32,
+                _ => reader.skip(wire_type),
+            }
+        }
+        msg
+    }
+
+    pub fn decode_sabr_context_update(reader: &mut ProtoReader, len: usize) -> SabrContextUpdate {
+        let end = reader.pos + len;
+        let mut msg = SabrContextUpdate::default();
+        while reader.pos < end {
+            let tag = reader.read_varint().unwrap_or(0);
+            if tag == 0 {
+                break;
+            }
+            let field = tag >> 3;
+            let wire_type = (tag & 7) as u8;
+            match field {
+                1 => msg.context_type = reader.read_varint().unwrap_or(0) as i32,
+                3 => msg.value = reader.read_bytes(),
+                4 => msg.send_by_default = reader.read_varint().unwrap_or(0) != 0,
+                _ => reader.skip(wire_type),
+            }
+        }
+        msg
+    }
+
+    pub fn decode_sabr_context_sending_policy(
+        reader: &mut ProtoReader,
+        len: usize,
+    ) -> SabrContextSendingPolicy {
+        let end = reader.pos + len;
+        let mut msg = SabrContextSendingPolicy::default();
+        while reader.pos < end {
+            let tag = reader.read_varint().unwrap_or(0);
+            if tag == 0 {
+                break;
+            }
+            let field = tag >> 3;
+            let wire_type = (tag & 7) as u8;
+            match field {
+                1 => msg
+                    .start_policy
+                    .push(reader.read_varint().unwrap_or(0) as i32),
+                2 => msg
+                    .stop_policy
+                    .push(reader.read_varint().unwrap_or(0) as i32),
+                3 => msg
+                    .discard_policy
+                    .push(reader.read_varint().unwrap_or(0) as i32),
+                _ => reader.skip(wire_type),
+            }
+        }
+        msg
+    }
+
+    pub fn decode_stream_protection_status(
+        reader: &mut ProtoReader,
+        len: usize,
+    ) -> StreamProtectionStatus {
+        let end = reader.pos + len;
+        let mut msg = StreamProtectionStatus::default();
+        while reader.pos < end {
+            let tag = reader.read_varint().unwrap_or(0);
+            if tag == 0 {
+                break;
+            }
+            let field = tag >> 3;
+            let wire_type = (tag & 7) as u8;
+            match field {
+                1 => msg.status = reader.read_varint().unwrap_or(0) as i32,
                 _ => reader.skip(wire_type),
             }
         }

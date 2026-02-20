@@ -1,5 +1,4 @@
-
-use crate::common::types::{AnyResult};
+use crate::common::types::AnyResult;
 pub mod crypt;
 
 use std::io::{Read, Seek, SeekFrom};

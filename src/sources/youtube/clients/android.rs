@@ -1,5 +1,3 @@
-
-use crate::common::types::{AnyResult};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -11,6 +9,7 @@ use super::{
 };
 use crate::{
     api::tracks::Track,
+    common::types::AnyResult,
     sources::youtube::{
         cipher::YouTubeCipherManager,
         extractor::{extract_from_player, extract_track},
@@ -325,6 +324,7 @@ impl YouTubeClient for AndroidClient {
             streaming_data,
             3, // ANDROID client_id = 3
             CLIENT_VERSION,
+            track_id,
         ) {
             return Ok(Some(sabr_url));
         }

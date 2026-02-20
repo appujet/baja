@@ -1,11 +1,9 @@
-
-use crate::common::types::{Shared};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
 
-use crate::audio::playback::handle::PlaybackState;
+use crate::{audio::playback::handle::PlaybackState, common::types::Shared};
 
 pub struct Mixer {
     tracks: Vec<MixerTrack>,

@@ -1,5 +1,3 @@
-
-use crate::common::types::{Shared};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
@@ -7,7 +5,7 @@ use std::sync::{
 
 use tokio::sync::Mutex;
 
-use crate::audio::processor::DecoderCommand;
+use crate::{audio::processor::DecoderCommand, common::types::Shared};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PlaybackState {
@@ -29,12 +27,7 @@ pub struct TrackHandle {
 impl TrackHandle {
     pub fn new(
         command_tx: flume::Sender<DecoderCommand>,
-    ) -> (
-        Self,
-        Shared<PlaybackState>,
-        Shared<f32>,
-        Arc<AtomicU64>,
-    ) {
+    ) -> (Self, Shared<PlaybackState>, Shared<f32>, Arc<AtomicU64>) {
         let state = Arc::new(Mutex::new(PlaybackState::Playing));
         let volume = Arc::new(Mutex::new(1.0));
         let position = Arc::new(AtomicU64::new(0));

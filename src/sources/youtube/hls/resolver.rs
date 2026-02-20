@@ -1,12 +1,10 @@
-
-use crate::common::types::{AnyResult};
 use std::{io::Read, sync::Arc};
 
 use super::{
     parser::parse_m3u8,
     types::{M3u8Playlist, Resource},
 };
-use crate::sources::youtube::cipher::YouTubeCipherManager;
+use crate::{common::types::AnyResult, sources::youtube::cipher::YouTubeCipherManager};
 
 pub fn resolve_playlist(
     client: &reqwest::blocking::Client,
@@ -71,10 +69,7 @@ pub fn resolve_playlist(
     }
 }
 
-pub fn fetch_text(
-    client: &reqwest::blocking::Client,
-    url: &str,
-) -> AnyResult<String> {
+pub fn fetch_text(client: &reqwest::blocking::Client, url: &str) -> AnyResult<String> {
     let mut res = client
         .get(url)
         .header("Accept", "application/x-mpegURL, */*")

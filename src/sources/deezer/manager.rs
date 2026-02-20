@@ -1,4 +1,3 @@
-use crate::common::types::Shared;
 use std::{
     sync::{
         Arc,
@@ -16,6 +15,7 @@ use tracing::{debug, error};
 use super::track::DeezerTrack;
 use crate::{
     api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    common::types::Shared,
     sources::{SourcePlugin, plugin::PlayableTrack},
 };
 

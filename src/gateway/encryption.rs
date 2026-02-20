@@ -1,5 +1,3 @@
-
-use crate::common::types::{AnyError, AnyResult};
 use std::{
     collections::{HashMap, HashSet},
     num::NonZeroU16,
@@ -7,6 +5,8 @@ use std::{
 
 use davey::{DaveSession, ProposalsOperationType};
 use tracing::info;
+
+use crate::common::types::{AnyError, AnyResult};
 
 pub struct DaveHandler {
     session: Option<DaveSession>,
@@ -40,10 +40,7 @@ impl DaveHandler {
         }
     }
 
-    pub fn setup_session(
-        &mut self,
-        version: u16,
-    ) -> AnyResult<Vec<u8>> {
+    pub fn setup_session(&mut self, version: u16) -> AnyResult<Vec<u8>> {
         self.protocol_version = version;
         let nz_version = NonZeroU16::new(version).unwrap_or(NonZeroU16::new(1).unwrap());
 
@@ -143,10 +140,7 @@ impl DaveHandler {
         Ok(responses)
     }
 
-    pub fn process_welcome(
-        &mut self,
-        data: &[u8],
-    ) -> AnyResult<u16> {
+    pub fn process_welcome(&mut self, data: &[u8]) -> AnyResult<u16> {
         if data.len() < 2 {
             return Err(map_boxed_err(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -165,10 +159,7 @@ impl DaveHandler {
         Ok(transition_id)
     }
 
-    pub fn process_commit(
-        &mut self,
-        data: &[u8],
-    ) -> AnyResult<u16> {
+    pub fn process_commit(&mut self, data: &[u8]) -> AnyResult<u16> {
         if data.len() < 2 {
             return Err(map_boxed_err(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -240,10 +231,7 @@ impl DaveHandler {
         self.pending_transitions.values().any(|&v| v == 0)
     }
 
-    pub fn encrypt_opus(
-        &mut self,
-        packet: &[u8],
-    ) -> AnyResult<Vec<u8>> {
+    pub fn encrypt_opus(&mut self, packet: &[u8]) -> AnyResult<Vec<u8>> {
         // Discord special 3-byte silence frame: [0xf8, 0xff, 0xfe]
         if packet.len() == 3 && packet[0] == 0xf8 && packet[1] == 0xff && packet[2] == 0xfe {
             return Ok(packet.to_vec());

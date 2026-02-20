@@ -1,6 +1,6 @@
-
-use crate::common::types::{AnyResult};
 use flume::Sender;
+
+use crate::common::types::AnyResult;
 
 pub struct Resampler {
     ratio: f64,
@@ -19,11 +19,7 @@ impl Resampler {
         }
     }
 
-    pub fn process(
-        &mut self,
-        input: &[i16],
-        tx: &Sender<i16>,
-    ) -> AnyResult<()> {
+    pub fn process(&mut self, input: &[i16], tx: &Sender<i16>) -> AnyResult<()> {
         let num_frames = input.len() / self.channels;
 
         while self.index < num_frames as f64 {

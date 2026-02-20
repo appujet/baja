@@ -1,5 +1,3 @@
-
-use crate::common::types::{AnyResult};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -8,6 +6,7 @@ use serde_json::{Value, json};
 use super::YouTubeClient;
 use crate::{
     api::tracks::{Track, TrackInfo},
+    common::types::AnyResult,
     sources::youtube::{
         cipher::YouTubeCipherManager,
         clients::common::{extract_thumbnail, is_duration, parse_duration},

@@ -83,7 +83,7 @@ impl PlayableTrack for YoutubeTrack {
                 let custom_reader = if url.starts_with("sabr://") {
                     let data_str = url.strip_prefix("sabr://").unwrap_or("");
                     if let Ok(data_bytes) =
-                        base64::engine::general_purpose::STANDARD.decode(data_str.as_bytes())
+                        base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(data_str.as_bytes())
                     {
                         if let Ok(data) = serde_json::from_slice::<serde_json::Value>(&data_bytes) {
                             let streaming_url = data
@@ -109,6 +109,11 @@ impl PlayableTrack for YoutubeTrack {
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("")
                                     .to_string();
+                                let video_id = data
+                                    .get("videoId")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or(&identifier)
+                                    .to_string();
                                 let formats: Vec<FormatId> = data
                                     .get("formats")
                                     .and_then(|v| v.as_array())
@@ -125,6 +130,7 @@ impl PlayableTrack for YoutubeTrack {
                                     client_name,
                                     client_version,
                                     visitor_data,
+                                    video_id,
                                     formats,
                                 );
                                 Some(Box::new(reader) as Box<dyn symphonia::core::io::MediaSource>)

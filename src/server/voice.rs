@@ -1,10 +1,8 @@
-
-use crate::common::types::{Shared};
 use tracing::error;
 
 use crate::{
-    audio::filters::FilterChain, gateway::VoiceGateway, playback::VoiceConnectionState,
-    server::UserId,
+    audio::filters::FilterChain, common::types::Shared, gateway::VoiceGateway,
+    playback::VoiceConnectionState, server::UserId,
 };
 
 pub async fn connect_voice(

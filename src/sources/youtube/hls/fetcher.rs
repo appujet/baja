@@ -1,6 +1,5 @@
-
-use crate::common::types::{AnyResult};
 use super::types::Resource;
+use crate::common::types::AnyResult;
 
 pub fn fetch_segment_into(
     client: &reqwest::blocking::Client,

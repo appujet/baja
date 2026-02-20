@@ -1,10 +1,10 @@
-
-use crate::common::types::{SharedRw};
 use std::sync::Arc;
 
 use regex::Regex;
 use tokio::sync::RwLock;
 use tracing::{debug, error};
+
+use crate::common::types::SharedRw;
 
 const EMBED_URL: &str = "https://open.spotify.com/embed/track/4cOdK2wGLETKBW3PvgPWqT";
 

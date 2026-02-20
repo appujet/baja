@@ -1,5 +1,6 @@
-use dashmap::DashMap;
 use std::sync::Arc;
+
+use dashmap::DashMap;
 
 use crate::{
     common::types::SessionId, routeplanner::RoutePlanner, server::session_manager::Session,

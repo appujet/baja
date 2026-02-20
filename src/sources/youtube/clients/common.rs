@@ -1,12 +1,11 @@
-
-use crate::common::types::{AnyResult};
 use std::sync::{Arc, OnceLock};
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL_SAFE_NO_PAD};
 use regex::Regex;
 use serde_json::{Value, json};
 
 use super::YouTubeCipherManager;
+use crate::common::types::AnyResult;
 
 pub const INNERTUBE_API: &str = "https://youtubei.googleapis.com";
 
@@ -247,6 +246,7 @@ pub fn extract_sabr_payload(
     streaming_data: &Value,
     client_id: i64,
     client_version: &str,
+    video_id: &str,
 ) -> Option<String> {
     let server_abr_url = streaming_data.get("serverAbrStreamingUrl")?.as_str()?;
     let ustreamer_config = body
@@ -289,9 +289,10 @@ pub fn extract_sabr_payload(
         "clientName":    client_id,
         "clientVersion": client_version,
         "visitorData":   visitor_data,
+        "videoId":       video_id,
         "formats":       formats,
     });
 
-    let encoded = BASE64_STANDARD.encode(serde_json::to_string(&sabr_payload).ok()?);
+    let encoded = BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_string(&sabr_payload).ok()?);
     Some(format!("sabr://{}", encoded))
 }

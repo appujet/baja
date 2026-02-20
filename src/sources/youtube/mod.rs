@@ -1,4 +1,3 @@
-use crate::common::types::SharedRw;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -8,6 +7,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track},
+    common::types::SharedRw,
     configs::sources::YouTubeConfig,
     sources::{SourcePlugin, plugin::BoxedTrack},
 };

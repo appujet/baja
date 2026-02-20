@@ -1,9 +1,8 @@
-use rustalink::common::types::AnyResult;
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{Router, routing::get};
 use dashmap::DashMap;
-use rustalink::{server::AppState, transport};
+use rustalink::{common::types::AnyResult, server::AppState, transport};
 use tracing::info;
 
 #[cfg(not(target_env = "msvc"))]

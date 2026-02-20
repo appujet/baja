@@ -1,5 +1,4 @@
-
-use crate::common::types::{AnyResult};
+use crate::common::types::AnyResult;
 pub mod fetcher;
 pub mod parser;
 pub mod resolver;

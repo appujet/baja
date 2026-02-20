@@ -90,6 +90,25 @@ pub struct SabrContext {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct SabrContextUpdate {
+    pub context_type: i32,
+    pub value: Vec<u8>,
+    pub send_by_default: bool,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct SabrContextSendingPolicy {
+    pub start_policy: Vec<i32>,
+    pub stop_policy: Vec<i32>,
+    pub discard_policy: Vec<i32>,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct StreamProtectionStatus {
+    pub status: i32,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct StreamerContext {
     pub client_info: Option<ClientInfo>,
     pub po_token: Option<Vec<u8>>,

@@ -1,5 +1,3 @@
-
-use crate::common::types::{Shared};
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
@@ -7,6 +5,7 @@ use tokio::sync::Mutex;
 use crate::{
     api::tracks::Track,
     audio::{filters::FilterChain, playback::TrackHandle},
+    common::types::Shared,
     playback::{Filters, Player, PlayerState, VoiceConnectionState, VoiceState},
 };
 

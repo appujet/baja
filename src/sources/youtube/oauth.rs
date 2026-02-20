@@ -1,10 +1,10 @@
-
-use crate::common::types::{AnyResult};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+use crate::common::types::AnyResult;
 
 const CLIENT_ID: &str = "861556708454-d6dlm3lh05idd8npek18k6be8ba3oc68.apps.googleusercontent.com";
 const CLIENT_SECRET: &str = "SboVhoG9s0rNafixCSGGKXAT";
@@ -178,10 +178,7 @@ impl YouTubeOAuth {
         }
     }
 
-    async fn fetch_refresh_token_from_device_code(
-        &self,
-        device_code: &str,
-    ) -> AnyResult<Value> {
+    async fn fetch_refresh_token_from_device_code(&self, device_code: &str) -> AnyResult<Value> {
         let res = self
             .client
             .post("https://www.youtube.com/o/oauth2/token")
@@ -245,10 +242,7 @@ impl YouTubeOAuth {
         }
     }
 
-    async fn refresh_token_request(
-        &self,
-        refresh_token: &str,
-    ) -> AnyResult<(String, u64)> {
+    async fn refresh_token_request(&self, refresh_token: &str) -> AnyResult<(String, u64)> {
         let res = self
             .client
             .post("https://www.youtube.com/o/oauth2/token")

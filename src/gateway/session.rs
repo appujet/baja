@@ -1,5 +1,3 @@
-
-use crate::common::types::{AnyError, AnyResult, Shared};
 use std::{
     collections::HashSet,
     net::{SocketAddr, UdpSocket},
@@ -17,7 +15,11 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use crate::{audio::playback::Mixer, gateway::DaveHandler};
+use crate::{
+    audio::playback::Mixer,
+    common::types::{AnyError, AnyResult, Shared},
+    gateway::DaveHandler,
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VoiceGatewayMessage {

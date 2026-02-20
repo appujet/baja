@@ -1,5 +1,3 @@
-
-use crate::common::types::{AnyResult};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -16,6 +14,7 @@ use tracing::{debug, error, warn};
 use crate::{
     api::tracks::{LoadError, LoadResult, Track, TrackInfo},
     audio::processor::{AudioProcessor, DecoderCommand},
+    common::types::AnyResult,
     sources::{SourcePlugin, plugin::PlayableTrack},
 };
 
@@ -30,10 +29,7 @@ impl HttpSource {
         }
     }
 
-    fn probe_metadata(
-        url: String,
-        local_addr: Option<std::net::IpAddr>,
-    ) -> AnyResult<TrackInfo> {
+    fn probe_metadata(url: String, local_addr: Option<std::net::IpAddr>) -> AnyResult<TrackInfo> {
         let source = crate::audio::RemoteReader::new(&url, local_addr, None)?;
         let mut hint = Hint::new();
 
