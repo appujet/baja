@@ -1,6 +1,6 @@
-use crate::audio::pipeline::decoder::DecoderCommand;
-use std::sync::atomic::{AtomicU64, Ordering};
+use crate::audio::processor::DecoderCommand;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Mutex;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -70,7 +70,11 @@ impl TrackHandle {
     }
 
     pub async fn get_state(&self) -> PlaybackState {
-        *self.state.lock().await
+        let mut state = self.state.lock().await;
+        if *state != PlaybackState::Stopped && self.command_tx.is_disconnected() {
+            *state = PlaybackState::Stopped;
+        }
+        *state
     }
 
     pub fn get_position(&self) -> u64 {

@@ -10,8 +10,10 @@ use tokio::sync::RwLock;
 pub mod cipher;
 pub mod clients;
 pub mod extractor;
+pub mod hls;
 pub mod oauth;
 pub mod sabr;
+pub mod track;
 
 use cipher::YouTubeCipherManager;
 use clients::YouTubeClient;
@@ -29,8 +31,8 @@ pub struct YouTubeSource {
     search_prefix: String,
     url_regex: Regex,
     // Store clients separated by function
-    search_clients: Vec<Box<dyn YouTubeClient>>,
-    playback_clients: Vec<Box<dyn YouTubeClient>>,
+    search_clients: Vec<Arc<dyn YouTubeClient>>,
+    playback_clients: Vec<Arc<dyn YouTubeClient>>,
     oauth: Arc<YouTubeOAuth>,
     cipher_manager: Arc<YouTubeCipherManager>,
     visitor_data: Arc<RwLock<Option<String>>>,
@@ -73,16 +75,16 @@ impl YouTubeSource {
             }
         });
 
-        let create_client = |name: &str| -> Option<Box<dyn YouTubeClient>> {
+        let create_client = |name: &str| -> Option<Arc<dyn YouTubeClient>> {
             match name.to_uppercase().as_str() {
-                "WEB" => Some(Box::new(WebClient::new())),
-                "ANDROID" => Some(Box::new(AndroidClient::new())),
-                "IOS" => Some(Box::new(IosClient::new())),
-                "TV" => Some(Box::new(TvClient::new())),
-                "MUSIC" | "MUSIC_ANDROID" => Some(Box::new(MusicAndroidClient::new())),
-                "WEB_REMIX" | "MUSIC_WEB" => Some(Box::new(WebRemixClient::new())),
-                "ANDROID_VR" | "ANDROIDVR" => Some(Box::new(AndroidVrClient::new())),
-                "WEB_EMBEDDED" | "WEBEMBEDDED" => Some(Box::new(WebEmbeddedClient::new())),
+                "WEB" => Some(Arc::new(WebClient::new())),
+                "ANDROID" => Some(Arc::new(AndroidClient::new())),
+                "IOS" => Some(Arc::new(IosClient::new())),
+                "TV" => Some(Arc::new(TvClient::new())),
+                "MUSIC" | "MUSIC_ANDROID" => Some(Arc::new(MusicAndroidClient::new())),
+                "WEB_REMIX" | "MUSIC_WEB" => Some(Arc::new(WebRemixClient::new())),
+                "ANDROID_VR" | "ANDROIDVR" => Some(Arc::new(AndroidVrClient::new())),
+                "WEB_EMBEDDED" | "WEBEMBEDDED" => Some(Arc::new(WebEmbeddedClient::new())),
                 _ => {
                     tracing::warn!("Unknown YouTube client: {}", name);
                     None
@@ -98,7 +100,7 @@ impl YouTubeSource {
         }
         if search_clients.is_empty() {
             tracing::warn!("No valid YouTube search clients configured! Fallback to Web.");
-            search_clients.push(Box::new(WebClient::new()));
+            search_clients.push(Arc::new(WebClient::new()));
         }
 
         let mut playback_clients = Vec::new();
@@ -109,7 +111,7 @@ impl YouTubeSource {
         }
         if playback_clients.is_empty() {
             tracing::warn!("No valid YouTube playback clients configured! Fallback to Web.");
-            playback_clients.push(Box::new(WebClient::new()));
+            playback_clients.push(Arc::new(WebClient::new()));
         }
 
         Self {
@@ -224,9 +226,9 @@ impl YouTubeSource {
 
     fn prioritize_clients<'a>(
         &'a self,
-        clients: &'a [Box<dyn YouTubeClient>],
+        clients: &'a [Arc<dyn YouTubeClient>],
         prefer_music: bool,
-    ) -> Vec<&'a Box<dyn YouTubeClient>> {
+    ) -> Vec<&'a Arc<dyn YouTubeClient>> {
         let mut ordered = Vec::with_capacity(clients.len());
         if prefer_music {
             ordered.extend(clients.iter().filter(|c| c.name().starts_with("Music")));
@@ -396,43 +398,26 @@ impl SourcePlugin for YouTubeSource {
         LoadResult::Empty {}
     }
 
-    async fn get_playback_url(
+    async fn get_track(
         &self,
         identifier: &str,
-        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<String> {
+        routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+    ) -> Option<Box<dyn crate::sources::plugin::PlayableTrack>> {
         let visitor_data = self.visitor_data.read().await.clone();
-        let context = if let Some(vd) = visitor_data {
-            json!({ "visitorData": vd })
-        } else {
-            json!({})
-        };
         let id = self.extract_id(identifier);
         let is_music_url = identifier.contains("music.youtube.com");
 
         let clients_to_try = self.prioritize_clients(&self.playback_clients, is_music_url);
+        let clients = clients_to_try.into_iter().cloned().collect();
 
-        for client in clients_to_try {
-            tracing::debug!("Loading track '{}' using {}", id, client.name());
-            match client
-                .get_track_url(
-                    &id,
-                    &context,
-                    self.cipher_manager.clone(),
-                    self.oauth.clone(),
-                )
-                .await
-            {
-                Ok(Some(url)) => {
-                    tracing::debug!("Resolved playback URL with {}", client.name());
-                    return Some(url);
-                }
-                Ok(None) => continue,
-                Err(e) => {
-                    tracing::error!("Playback URL error with {}: {}", client.name(), e);
-                }
-            }
-        }
-        None
+        Some(Box::new(track::YoutubeTrack {
+            identifier: id,
+            clients,
+            oauth: self.oauth.clone(),
+            cipher_manager: self.cipher_manager.clone(),
+            visitor_data,
+            local_addr: routeplanner.and_then(|rp| rp.get_address()),
+            proxy: None, // YoutubeSource doesn't seem to use proxy the same way yet
+        }))
     }
 }

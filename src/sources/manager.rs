@@ -1,16 +1,18 @@
-use super::applemusic::AppleMusicSource;
+use crate::audio::processor::DecoderCommand;
+
+use super::applemusic::manager::AppleMusicSource;
 use super::deezer::DeezerSource;
 use super::gaana::GaanaSource;
 use super::http::HttpSource;
 use super::jiosaavn::JioSaavnSource;
-use super::plugin::SourcePlugin;
-use super::spotify::SpotifySource;
+use super::plugin::{PlayableTrack, SourcePlugin};
+use super::spotify::manager::SpotifySource;
 use super::youtube::YouTubeSource;
 use super::youtube::cipher::YouTubeCipherManager;
 use std::sync::Arc;
 use tracing::info;
 
-/// Source Manager 
+/// Source Manager
 pub struct SourceManager {
     sources: Vec<Box<dyn SourcePlugin>>,
     mirrors: Option<crate::configs::MirrorsConfig>,
@@ -83,26 +85,23 @@ impl SourceManager {
         crate::api::tracks::LoadResult::Empty {}
     }
 
-    pub async fn get_playback_url(
+    pub async fn get_track(
         &self,
         track_info: &crate::api::tracks::TrackInfo,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<String> {
+    ) -> Option<Box<dyn crate::sources::plugin::PlayableTrack>> {
         let identifier = track_info.uri.as_deref().unwrap_or(&track_info.identifier);
 
         for source in &self.sources {
             if source.can_handle(identifier) {
                 tracing::debug!(
-                    "Resolving playback URL for '{}' with source: {}",
+                    "Resolving playable track for '{}' with source: {}",
                     identifier,
                     source.name()
                 );
 
-                if let Some(url) = source
-                    .get_playback_url(identifier, routeplanner.clone())
-                    .await
-                {
-                    return Some(url);
+                if let Some(track) = source.get_track(identifier, routeplanner.clone()).await {
+                    return Some(track);
                 }
                 break;
             }
@@ -128,12 +127,16 @@ impl SourceManager {
                 match self.load(&search_query, routeplanner.clone()).await {
                     crate::api::tracks::LoadResult::Track(track) => {
                         let nested_id = track.info.uri.as_deref().unwrap_or(&track.info.identifier);
-                        if let Some(url) = self
-                            .resolve_nested_id(nested_id, routeplanner.clone())
+                        if let Some(playable) = self
+                            .resolve_nested_track(nested_id, routeplanner.clone())
                             .await
                         {
-                            tracing::debug!("Mirror success: {} -> {}", search_query, url);
-                            return Some(url);
+                            tracing::debug!(
+                                "Mirror success: {} -> {}",
+                                search_query,
+                                track.info.identifier
+                            );
+                            return Some(playable);
                         }
                     }
                     crate::api::tracks::LoadResult::Search(tracks) => {
@@ -143,16 +146,16 @@ impl SourceManager {
                                 .uri
                                 .as_deref()
                                 .unwrap_or(&first_track.info.identifier);
-                            if let Some(url) = self
-                                .resolve_nested_id(nested_id, routeplanner.clone())
+                            if let Some(playable) = self
+                                .resolve_nested_track(nested_id, routeplanner.clone())
                                 .await
                             {
                                 tracing::debug!(
                                     "Mirror success (search): {} -> {}",
                                     search_query,
-                                    url
+                                    first_track.info.identifier
                                 );
-                                return Some(url);
+                                return Some(playable);
                             }
                         }
                     }
@@ -161,23 +164,20 @@ impl SourceManager {
             }
         }
 
-        tracing::warn!("Failed to resolve playback URL for: {}", identifier);
+        tracing::warn!("Failed to resolve playable track for: {}", identifier);
         None
     }
 
     /// Helper to resolve a nested ID found via mirror search
-    async fn resolve_nested_id(
+    async fn resolve_nested_track(
         &self,
         identifier: &str,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<String> {
+    ) -> Option<Box<dyn crate::sources::plugin::PlayableTrack>> {
         for source in &self.sources {
             if source.can_handle(identifier) {
-                if let Some(url) = source
-                    .get_playback_url(identifier, routeplanner.clone())
-                    .await
-                {
-                    return Some(url);
+                if let Some(track) = source.get_track(identifier, routeplanner.clone()).await {
+                    return Some(track);
                 }
             }
         }
@@ -193,5 +193,56 @@ impl SourceManager {
             .iter()
             .find(|s| s.name() == source_name)
             .and_then(|s| s.get_proxy_config())
+    }
+}
+
+pub struct MirroredTrack {
+    pub query: String,
+    pub source_manager: Arc<SourceManager>,
+}
+
+impl PlayableTrack for MirroredTrack {
+    fn start_decoding(&self) -> (flume::Receiver<i16>, flume::Sender<DecoderCommand>) {
+        let (tx, rx) = flume::bounded::<i16>(4096 * 4);
+        let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
+
+        let query = self.query.clone();
+        let manager = self.source_manager.clone();
+
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+
+            runtime.block_on(async {
+                if let crate::api::tracks::LoadResult::Search(tracks) =
+                    manager.load(&query, None).await
+                {
+                    if let Some(first) = tracks.first() {
+                        if let Some(playable) = manager.get_track(&first.info, None).await {
+                            let (inner_rx, inner_cmd_tx) = playable.start_decoding();
+
+                            // Proxy commands
+                            let cmd_tx_clone = inner_cmd_tx.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(cmd) = cmd_rx.recv() {
+                                    let _ = cmd_tx_clone.send(cmd);
+                                }
+                            });
+
+                            // Proxy samples
+                            while let Ok(sample) = inner_rx.recv() {
+                                if tx.send(sample).is_err() {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+        (rx, cmd_tx)
     }
 }

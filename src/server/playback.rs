@@ -80,39 +80,23 @@ pub async fn start_playback(
         .clone()
         .unwrap_or_else(|| track_info.identifier.clone());
 
-    let playback_url = match source_manager
-        .get_playback_url(&track_info, routeplanner.clone())
+    let playable_track = match source_manager
+        .get_track(&track_info, routeplanner.clone())
         .await
     {
-        Some(url) => url,
+        Some(t) => t,
         None => {
-            error!("Failed to resolve URL: {}", identifier);
+            error!("Failed to resolve track: {}", identifier);
             return;
         }
     };
 
-    let local_addr = if let Some(rp) = &routeplanner {
-        rp.get_address()
-    } else {
-        None
-    };
-
-    let proxy = source_manager.get_proxy_config(&track_info.source_name);
-
     info!(
-        "Playback: {} -> {} (via {:?}, proxy: {:?})",
-        identifier,
-        playback_url,
-        local_addr,
-        proxy.as_ref().map(|p| &p.url)
+        "Playback starting: {} (source: {})",
+        identifier, track_info.source_name
     );
 
-    let (rx, cmd_tx) = crate::audio::pipeline::decoder::start_decoding(
-        playback_url,
-        local_addr,
-        source_manager.youtube_cipher_manager.clone(),
-        proxy,
-    );
+    let (rx, cmd_tx) = playable_track.start_decoding();
     let (handle, audio_state, vol, pos) = TrackHandle::new(cmd_tx);
 
     {

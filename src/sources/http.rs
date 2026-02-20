@@ -1,5 +1,7 @@
 use crate::api::tracks::{LoadError, LoadResult, Track, TrackInfo};
+use crate::audio::processor::{AudioProcessor, DecoderCommand};
 use crate::sources::SourcePlugin;
+use crate::sources::plugin::PlayableTrack;
 use async_trait::async_trait;
 use regex::Regex;
 use std::sync::Arc;
@@ -163,20 +165,65 @@ impl SourcePlugin for HttpSource {
         }
     }
 
-    async fn get_playback_url(
+    async fn get_track(
         &self,
         identifier: &str,
-        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<String> {
+        routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+    ) -> Option<Box<dyn PlayableTrack>> {
         let clean = identifier
             .trim()
             .trim_start_matches('<')
             .trim_end_matches('>');
 
         if self.can_handle(clean) {
-            Some(clean.to_string())
+            Some(Box::new(HttpTrack {
+                url: clean.to_string(),
+                local_addr: routeplanner.and_then(|rp| rp.get_address()),
+            }))
         } else {
             None
         }
+    }
+}
+
+pub struct HttpTrack {
+    pub url: String,
+    pub local_addr: Option<std::net::IpAddr>,
+}
+
+impl PlayableTrack for HttpTrack {
+    fn start_decoding(&self) -> (flume::Receiver<i16>, flume::Sender<DecoderCommand>) {
+        let (tx, rx) = flume::bounded::<i16>(4096 * 4);
+        let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
+
+        let url = self.url.clone();
+        let local_addr = self.local_addr;
+
+        std::thread::spawn(move || {
+            let reader = match crate::audio::RemoteReader::new(&url, local_addr, None) {
+                Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
+                Err(e) => {
+                    error!("Failed to create RemoteReader for HTTP: {}", e);
+                    return;
+                }
+            };
+
+            let ext_hint = std::path::Path::new(&url)
+                .extension()
+                .and_then(|s| s.to_str());
+
+            match AudioProcessor::new(reader, ext_hint, tx, cmd_rx) {
+                Ok(mut processor) => {
+                    if let Err(e) = processor.run() {
+                        error!("HTTP track audio processor error: {}", e);
+                    }
+                }
+                Err(e) => {
+                    error!("HTTP track failed to initialize processor: {}", e);
+                }
+            }
+        });
+
+        (rx, cmd_tx)
     }
 }

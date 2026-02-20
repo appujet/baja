@@ -1,5 +1,13 @@
 use async_trait::async_trait;
+use flume::{Receiver, Sender};
 use std::sync::Arc;
+
+use crate::audio::processor::DecoderCommand;
+
+/// A track that can start its own decoding and return PCM samples.
+pub trait PlayableTrack: Send + Sync {
+    fn start_decoding(&self) -> (Receiver<i16>, Sender<DecoderCommand>);
+}
 
 /// Trait that all source plugins must implement.
 ///
@@ -27,16 +35,16 @@ pub trait SourcePlugin: Send + Sync {
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> crate::api::tracks::LoadResult;
 
-    /// Get the actual playback URL for a given identifier.
+    /// Get a playable track for the given identifier.
     ///
-    /// This is used to resolve search queries or platform URLs into direct audio streams.
-    ///
-    /// Returns None if the source cannot provide a playback URL.
-    async fn get_playback_url(
+    /// This is the new pattern replacing get_playback_url.
+    async fn get_track(
         &self,
-        identifier: &str,
-        routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<String>;
+        _identifier: &str,
+        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+    ) -> Option<Box<dyn PlayableTrack>> {
+        None
+    }
 
     /// Get the proxy configuration for this source, if any.
     fn get_proxy_config(&self) -> Option<crate::configs::HttpProxyConfig> {

@@ -1,10 +1,7 @@
+use super::track::JioSaavnTrack;
 use crate::api::tracks::{LoadError, LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
-use crate::sources::SourcePlugin;
+use crate::sources::plugin::{PlayableTrack, SourcePlugin};
 use async_trait::async_trait;
-use base64::prelude::*;
-use des::Des;
-use des::cipher::generic_array::GenericArray;
-use des::cipher::{BlockDecrypt, KeyInit};
 use regex::Regex;
 use reqwest::header::HeaderMap;
 use serde_json::Value;
@@ -43,7 +40,7 @@ impl JioSaavnSource {
         headers.insert("Accept-Language", "en-US,en;q=0.9".parse().unwrap());
         headers.insert("Referer", "https://www.jiosaavn.com/".parse().unwrap());
         headers.insert("Origin", "https://www.jiosaavn.com".parse().unwrap());
-        
+
         let (
             secret_key,
             search_limit,
@@ -68,15 +65,16 @@ impl JioSaavnSource {
             ("38346591".to_string(), 10, 10, 50, 50, 20, None)
         };
 
-        let mut client_builder = reqwest::Client::builder()
-            .default_headers(headers);
+        let mut client_builder = reqwest::Client::builder().default_headers(headers);
 
         if let Some(proxy_config) = &proxy {
             if let Some(url) = &proxy_config.url {
                 tracing::debug!("Configuring proxy for JioSaavnSource: {}", url);
                 if let Ok(proxy_obj) = reqwest::Proxy::all(url) {
                     let mut proxy_obj = proxy_obj;
-                    if let (Some(username), Some(password)) = (&proxy_config.username, &proxy_config.password) {
+                    if let (Some(username), Some(password)) =
+                        (&proxy_config.username, &proxy_config.password)
+                    {
                         proxy_obj = proxy_obj.basic_auth(username, password);
                     }
                     client_builder = client_builder.proxy(proxy_obj);
@@ -84,9 +82,7 @@ impl JioSaavnSource {
             }
         }
 
-        let client = client_builder
-            .build()
-            .unwrap();
+        let client = client_builder.build().unwrap();
 
         Self {
             client,
@@ -127,45 +123,6 @@ impl JioSaavnSource {
         serde_json::from_str(&text).ok()
     }
 
-    fn decrypt_url(&self, encrypted: &str) -> Option<String> {
-        if self.secret_key.len() != 8 {
-            warn!(
-                "Secret key length is not 8 bytes: {}",
-                self.secret_key.len()
-            );
-            return None;
-        }
-
-        let cipher = Des::new_from_slice(&self.secret_key).ok()?;
-        let mut data = match BASE64_STANDARD.decode(encrypted) {
-            Ok(d) => d,
-            Err(e) => {
-                warn!("Failed to decode base64 url: {}", e);
-                return None;
-            }
-        };
-
-        // DES ECB decrypt
-        for chunk in data.chunks_mut(8) {
-            if chunk.len() == 8 {
-                cipher.decrypt_block(GenericArray::from_mut_slice(chunk));
-            }
-        }
-
-        // Remove PKCS5/7 padding
-        if let Some(last_byte) = data.last() {
-            let padding = *last_byte as usize;
-            if padding > 0 && padding <= 8 {
-                let len = data.len();
-                if len >= padding {
-                    data.truncate(len - padding);
-                }
-            }
-        }
-
-        String::from_utf8(data).ok()
-    }
-
     fn clean_string(&self, s: &str) -> String {
         s.replace("&quot;", "\"").replace("&amp;", "&")
     }
@@ -193,7 +150,6 @@ impl JioSaavnSource {
             .unwrap_or("0");
         let duration = duration_str.parse::<u64>().unwrap_or(0) * 1000;
 
-        // Author parsing
         let primary_artists = json
             .get("more_info")
             .and_then(|m| m.get("artistMap"))
@@ -263,11 +219,9 @@ impl JioSaavnSource {
         ];
 
         self.get_json(&params).await.and_then(|json| {
-            // Usually returns { "songs": [ ... ] }
             json.get("songs")
                 .and_then(|s| s.get(0))
                 .cloned()
-                // Or sometimes the object itself if the API varies
                 .or_else(|| {
                     if json.get("id").is_some() {
                         Some(json)
@@ -355,7 +309,6 @@ impl JioSaavnSource {
                 ("_format", "json"),
                 ("_marker", "0"),
                 ("ctx", "android"),
-                ("stationid", &sid),
                 ("stationid", &sid),
                 ("k", &k_limit),
             ];
@@ -534,7 +487,6 @@ impl SourcePlugin for JioSaavnSource {
             }
 
             if type_ == "song" {
-                // Use fetch_metadata for resolving (gets song info)
                 if let Some(track_data) = self.fetch_metadata(id).await {
                     if let Some(track) = self.parse_track(&track_data) {
                         return LoadResult::Track(track);
@@ -549,11 +501,11 @@ impl SourcePlugin for JioSaavnSource {
         LoadResult::Empty {}
     }
 
-    async fn get_playback_url(
+    async fn get_track(
         &self,
         identifier: &str,
-        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<String> {
+        routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+    ) -> Option<Box<dyn PlayableTrack>> {
         let id = if let Some(caps) = self.url_regex.captures(identifier) {
             caps.name("id").map(|m| m.as_str()).unwrap_or(identifier)
         } else {
@@ -564,9 +516,8 @@ impl SourcePlugin for JioSaavnSource {
         let encrypted_url = track_data
             .get("more_info")
             .and_then(|m| m.get("encrypted_media_url"))
-            .and_then(|v| v.as_str())?;
-
-        let mut playback_url = self.decrypt_url(encrypted_url)?;
+            .and_then(|v| v.as_str())?
+            .to_string();
 
         let is_320 = track_data
             .get("more_info")
@@ -574,11 +525,19 @@ impl SourcePlugin for JioSaavnSource {
             .map(|v| v.as_str() == Some("true") || v.as_bool() == Some(true))
             .unwrap_or(false);
 
-        if is_320 {
-            playback_url = playback_url.replace("_96.mp4", "_320.mp4");
-        }
+        let local_addr = if let Some(rp) = routeplanner {
+            rp.get_address()
+        } else {
+            None
+        };
 
-        Some(playback_url)
+        Some(Box::new(JioSaavnTrack {
+            encrypted_url,
+            secret_key: self.secret_key.clone(),
+            is_320,
+            local_addr,
+            proxy: self.proxy.clone(),
+        }))
     }
 
     fn get_proxy_config(&self) -> Option<crate::configs::HttpProxyConfig> {

@@ -1,3 +1,4 @@
+use super::token::SpotifyTokenTracker;
 use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
 use crate::sources::SourcePlugin;
 use async_trait::async_trait;
@@ -6,17 +7,10 @@ use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tokio::sync::{RwLock, Semaphore};
-use tracing::{debug, error, warn};
+use tokio::sync::Semaphore;
+use tracing::{debug, warn};
 
-const EMBED_URL: &str = "https://open.spotify.com/embed/track/4cOdK2wGLETKBW3PvgPWqT";
 const PARTNER_API_URL: &str = "https://api-partner.spotify.com/pathfinder/v2/query";
-
-#[derive(Clone, Debug)]
-struct SpotifyToken {
-    access_token: String,
-    expiry_ms: u64,
-}
 
 pub struct SpotifySource {
     client: reqwest::Client,
@@ -27,14 +21,14 @@ pub struct SpotifySource {
     album_regex: Regex,
     playlist_regex: Regex,
     artist_regex: Regex,
-    token_regex: Regex,
-    expiry_regex: Regex,
     isrc_binary_regex: Regex,
-    token: Arc<RwLock<Option<SpotifyToken>>>,
+    token_tracker: Arc<SpotifyTokenTracker>,
     // Limits
     playlist_load_limit: usize,
     album_load_limit: usize,
     search_limit: usize,
+    // Unused
+    #[allow(dead_code)]
     recommendations_limit: usize,
 
     playlist_page_load_concurrency: usize,
@@ -59,7 +53,6 @@ impl SpotifySource {
             .build()
             .unwrap();
 
-
         let (
             playlist_load_limit,
             album_load_limit,
@@ -81,6 +74,10 @@ impl SpotifySource {
         } else {
             (6, 6, 10, 10, 10, 5, 50)
         };
+
+        let token_tracker = Arc::new(crate::sources::spotify::token::SpotifyTokenTracker::new(
+            client.clone(),
+        ));
 
         Self {
             client,
@@ -106,11 +103,10 @@ impl SpotifySource {
                 r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?artist/([a-zA-Z0-9]+)",
             )
             .unwrap(),
-            // Pre-compiled — were previously recreated on every token refresh / metadata fetch
-            token_regex: Regex::new(r#""accessToken":"([^"]+)""#).unwrap(),
-            expiry_regex: Regex::new(r#""accessTokenExpirationTimestampMs":(\d+)"#).unwrap(),
+            // Pre-compiled
             isrc_binary_regex: Regex::new(r"[A-Z0-9]{12}").unwrap(),
-            token: Arc::new(RwLock::new(None)),
+            token_tracker,
+            // Limits
             playlist_load_limit,
             album_load_limit,
             search_limit,
@@ -119,97 +115,6 @@ impl SpotifySource {
             album_page_load_concurrency,
             track_resolve_concurrency,
         }
-    }
-
-    // -------------------------------------------------------------------------
-    // Token management
-    // -------------------------------------------------------------------------
-
-    async fn get_token(&self) -> Option<String> {
-        {
-            let token_lock = self.token.read().await;
-            if let Some(token) = &*token_lock {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as u64;
-                // Keep 5-second margin before expiry to account for request time
-                if token.expiry_ms > now + 5_000 {
-                    return Some(token.access_token.clone());
-                }
-            }
-        }
-        self.refresh_token().await
-    }
-
-    async fn refresh_token(&self) -> Option<String> {
-        debug!("Refreshing Spotify token from embed...");
-        let request = self
-            .client
-            .get(EMBED_URL)
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .header("Sec-Fetch-Dest", "iframe")
-            .header("Sec-Fetch-Mode", "navigate")
-            .header("Sec-Fetch-Site", "cross-site");
-
-        // Removed sp_dc logic to strictly enforce anonymous token usage
-
-        let resp = match request.send().await {
-            Ok(r) => r,
-            Err(e) => {
-                error!("Failed to fetch Spotify embed page: {}", e);
-                return None;
-            }
-        };
-
-        if !resp.status().is_success() {
-            error!("Embed page returned status {}", resp.status());
-            return None;
-        }
-
-        let html = match resp.text().await {
-            Ok(t) => t,
-            Err(e) => {
-                error!("Failed to read Spotify embed HTML: {}", e);
-                return None;
-            }
-        };
-
-        // Use pre-compiled regexes instead of creating new ones every call
-        let token_caps = self.token_regex.captures(&html);
-        let expiry_caps = self.expiry_regex.captures(&html);
-
-        if token_caps.is_none() || expiry_caps.is_none() {
-            error!("Token or expiry not found in embed page");
-            return None;
-        }
-
-        let token = match token_caps.and_then(|c| c.get(1)) {
-            Some(m) => m.as_str().to_string(),
-            None => {
-                error!("Successfully found token caps but group 1 was missing or caps were None");
-                return None;
-            }
-        };
-        let expiry_ms = match expiry_caps.and_then(|c| c.get(1)) {
-            Some(m) => m.as_str().parse::<u64>().ok()?,
-            None => {
-                error!("Successfully found expiry caps but group 1 was missing or caps were None");
-                return None;
-            }
-        };
-
-        let mut token_lock = self.token.write().await;
-        *token_lock = Some(SpotifyToken {
-            access_token: token.clone(),
-            expiry_ms,
-        });
-
-        debug!(
-            "Successfully refreshed Spotify token. Expiry: {}",
-            expiry_ms
-        );
-        Some(token)
     }
 
     // -------------------------------------------------------------------------
@@ -228,7 +133,7 @@ impl SpotifySource {
     }
 
     async fn fetch_metadata_isrc(&self, id: &str) -> Option<String> {
-        let token = self.get_token().await?;
+        let token = self.token_tracker.get_token().await?;
         let hex_id = self.base62_to_hex(id);
         let url = format!(
             "https://spclient.wg.spotify.com/metadata/4/track/{}?market=from_token",
@@ -290,7 +195,7 @@ impl SpotifySource {
         variables: Value,
         sha256_hash: &str,
     ) -> Option<Value> {
-        let token = self.get_token().await?;
+        let token = self.token_tracker.get_token().await?;
 
         let body = json!({
             "variables": variables,
@@ -340,7 +245,7 @@ impl SpotifySource {
         // Build one variables blob per remaining page
         let offsets: Vec<u64> = (1..=((total_count - 1) / page_limit)).collect();
         let semaphore = Arc::new(Semaphore::new(concurrency));
-        
+
         let futs: Vec<_> = offsets
             .into_iter()
             .map(|page_idx| {
@@ -351,10 +256,10 @@ impl SpotifySource {
                     obj.insert("offset".to_string(), json!(page_idx * page_limit));
                     obj.insert("limit".to_string(), json!(page_limit));
                 }
-                
+
                 let op = operation.to_string();
                 let h = sha256_hash.to_string();
-                
+
                 async move {
                     let _permit = semaphore.acquire().await.unwrap();
                     self.partner_api_request(&op, vars, &h).await
@@ -363,12 +268,15 @@ impl SpotifySource {
             .collect();
 
         let results = join_all(futs).await;
-        
+
         results
             .into_iter()
             .flatten()
             .filter_map(|result| {
-                result.pointer(items_pointer).and_then(|v| v.as_array()).cloned()
+                result
+                    .pointer(items_pointer)
+                    .and_then(|v| v.as_array())
+                    .cloned()
             })
             .flatten()
             .collect()
@@ -707,7 +615,7 @@ impl SpotifySource {
             .into_iter()
             .take(if self.album_load_limit > 0 {
                 // If limit is set, only take what we need
-                 (PAGE_LIMIT * self.album_load_limit as u64) as usize
+                (PAGE_LIMIT * self.album_load_limit as u64) as usize
             } else {
                 usize::MAX
             })
@@ -724,11 +632,7 @@ impl SpotifySource {
             .collect();
 
         let results = join_all(futs).await;
-        let tracks: Vec<Track> = results
-            .into_iter()
-            .flatten()
-            .map(Track::new)
-            .collect();
+        let tracks: Vec<Track> = results.into_iter().flatten().map(Track::new).collect();
 
         if tracks.is_empty() {
             LoadResult::Empty {}
@@ -774,21 +678,20 @@ impl SpotifySource {
             .unwrap_or("Unknown Playlist")
             .to_string();
 
-        let artwork_url = playlist
+        let _artwork_url = playlist
             .pointer("/attributes/image/sources")
             .and_then(|s| s.as_array())
             .and_then(|s| s.first())
             .or_else(|| {
                 playlist
-                    .get("images")
-                    .and_then(|i| i.get("items"))
-                    .and_then(|i| i.as_array())
-                    .and_then(|i| i.first())
+                    .pointer("/images/items")
+                    .and_then(|s| s.as_array())
+                    .and_then(|s| s.first())
                     .and_then(|i| i.get("sources"))
                     .and_then(|s| s.as_array())
                     .and_then(|s| s.first())
             })
-            .and_then(|i| i.get("url"))
+            .and_then(|s| s.get("url"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -801,11 +704,8 @@ impl SpotifySource {
         let total_count = playlist
             .pointer("/content/totalCount")
             .and_then(|v| v.as_u64())
-            .unwrap_or(all_items.len() as u64);
+            .unwrap_or(0);
 
-        debug!("Playlist '{}' has {} total tracks", name, total_count);
-
-        // Fetch all remaining pages concurrently in batches of PAGE_CONCURRENCY
         if total_count > PAGE_LIMIT {
             let max_tracks = if self.playlist_load_limit == 0 {
                 u64::MAX
@@ -813,7 +713,7 @@ impl SpotifySource {
                 self.playlist_load_limit as u64 * PAGE_LIMIT
             };
             let effective_total = total_count.min(max_tracks);
-            
+
             if effective_total > PAGE_LIMIT {
                 let extra = self
                     .fetch_paginated_items(
@@ -828,58 +728,28 @@ impl SpotifySource {
                     .await;
                 all_items.extend(extra);
             }
-            debug!(
-                "Fetched {} additional items (total in memory: {})",
-                all_items.len().saturating_sub(PAGE_LIMIT as usize),
-                all_items.len()
-            );
         }
 
-        // Parse tracks concurrently
         let semaphore = Arc::new(Semaphore::new(self.track_resolve_concurrency));
-        
         let futs: Vec<_> = all_items
             .into_iter()
             .take(if self.playlist_load_limit > 0 {
-                // If limit is set, only take what we need. Note: page limit is 100
-                 (PAGE_LIMIT * self.playlist_load_limit as u64) as usize
+                (PAGE_LIMIT * self.playlist_load_limit as u64) as usize
             } else {
                 usize::MAX
             })
-            .enumerate()
-            .filter_map(|(i, item)| {
+            .filter_map(|item| {
+                let track_data = item.pointer("/item/data")?.clone();
                 let semaphore = semaphore.clone();
-                let artwork_url = artwork_url.clone();
-                
-                let item_data = item
-                    .get("itemV2")
-                    .or_else(|| item.get("item"))
-                    .and_then(|v| v.get("data"))?
-                    .clone();
-
-                let typename = item_data.get("__typename").and_then(|v| v.as_str()).map(|s| s.to_string());
-                
-                if typename.as_deref() == Some("Track") || typename.is_none() {
-                    Some(async move {
-                         let _permit = semaphore.acquire().await.unwrap();
-                         self.parse_generic_track(&item_data, artwork_url).await
-                    })
-                } else {
-                    debug!(
-                        "Item at index {} is not a Track (typename: {:?})",
-                        i, typename
-                    );
-                    None
-                }
+                Some(async move {
+                    let _permit = semaphore.acquire().await.unwrap();
+                    self.parse_generic_track(&track_data, None).await
+                })
             })
             .collect();
 
         let results = join_all(futs).await;
-        let tracks: Vec<Track> = results
-            .into_iter()
-            .flatten()
-            .map(Track::new)
-            .collect();
+        let tracks: Vec<Track> = results.into_iter().flatten().map(Track::new).collect();
 
         if tracks.is_empty() {
             LoadResult::Empty {}
@@ -895,18 +765,17 @@ impl SpotifySource {
         }
     }
 
-    async fn fetch_artist_top_tracks(&self, id: &str) -> LoadResult {
+    async fn fetch_artist(&self, id: &str) -> LoadResult {
         let variables = json!({
             "uri": format!("spotify:artist:{}", id),
             "locale": "en",
-            "includePrerelease": true
+            "offset": 0,
+            "limit": 10
         });
 
-        let hash = "35648a112beb1794e39ab931365f6ae4a8d45e65396d641eeda94e4003d41497";
-        let data = match self
-            .partner_api_request("queryArtistOverview", variables, hash)
-            .await
-        {
+        let hash = "5f231e3271775196f7c8ec179069695696d55239a5c889a74477813a378af3ec";
+
+        let data = match self.partner_api_request("getArtist", variables, hash).await {
             Some(d) => d,
             None => return LoadResult::Empty {},
         };
@@ -916,37 +785,25 @@ impl SpotifySource {
             None => return LoadResult::Empty {},
         };
 
-        let name = format!(
-            "{} Top Tracks",
-            artist
-                .get("profile")
-                .and_then(|p| p.get("name"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown Artist")
-        );
+        let name = artist
+            .get("profile")
+            .and_then(|p| p.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown Artist")
+            .to_string();
 
         let mut tracks = Vec::new();
-        if let Some(top_tracks) = artist
+
+        if let Some(items) = artist
             .pointer("/discography/topTracks/items")
             .and_then(|i| i.as_array())
         {
-            // Parse tracks concurrently
-            let semaphore = Arc::new(Semaphore::new(self.track_resolve_concurrency));
-            let futs: Vec<_> = top_tracks
-                .iter()
-                .filter_map(|item| {
-                    let track_data = item.get("track")?.clone();
-                    let semaphore = semaphore.clone();
-                    Some(async move {
-                         let _permit = semaphore.acquire().await.unwrap();
-                         self.parse_generic_track(&track_data, None).await
-                    })
-                })
-                .collect();
-
-            let results = join_all(futs).await;
-            for track_info in results.into_iter().flatten() {
-                tracks.push(Track::new(track_info));
+            for item in items {
+                if let Some(track_data) = item.get("track") {
+                    if let Some(track_info) = self.parse_generic_track(track_data, None).await {
+                        tracks.push(Track::new(track_info));
+                    }
+                }
             }
         }
 
@@ -956,161 +813,6 @@ impl SpotifySource {
             LoadResult::Playlist(PlaylistData {
                 info: PlaylistInfo {
                     name,
-                    selected_track: -1,
-                },
-                plugin_info: json!({}),
-                tracks,
-            })
-        }
-    }
-
-    async fn get_recommendations(&self, query: &str) -> LoadResult {
-        // Parse limit if present
-        let (clean_query, limit) = self.parse_limit(query);
-
-        // Handle track seeds via Pathfinder
-        if let Some(track_id) = clean_query.strip_prefix("track:") {
-            return self.get_pathfinder_recommendations(track_id, limit).await;
-        }
-
-        // Handle mix seeds with format mix:seedType:seed
-        if clean_query.starts_with("mix:") {
-            let parts: Vec<&str> = clean_query.split(':').collect();
-            if parts.len() == 3 {
-                let seed_type = parts[1];
-                let mut seed = parts[2].to_string();
-
-                // Resolve ISRC to track ID if needed
-                if seed_type == "isrc" {
-                     if let LoadResult::Search(tracks) = self.search_internal(&format!("isrc:{}", seed)).await {
-                         if let Some(track) = tracks.first() {
-                             seed = track.info.identifier.clone();
-                         } else {
-                             return LoadResult::Empty {};
-                         }
-                     } else {
-                         return LoadResult::Empty {};
-                     }
-                }
-
-                // Fetch mix playlist from InspiredByMix endpoint
-                let url = format!(
-                    "https://spclient.wg.spotify.com/inspiredby-mix/v2/seed_to_playlist/spotify:track:{}?response-format=json",
-                    seed
-                );
-
-                if let Some(token) = self.get_token().await {
-                     let resp = self
-                        .client
-                        .get(&url)
-                        .bearer_auth(token)
-                        .header("App-Platform", "WebPlayer")
-                        .header("Spotify-App-Version", "1.2.81.104.g225ec0e6")
-                        .send()
-                        .await;
-
-                    if let Ok(resp) = resp {
-                        if let Ok(json) = resp.json::<Value>().await {
-                            if let Some(media_items) = json.get("mediaItems").and_then(|v| v.as_array()) {
-                                if let Some(first) = media_items.first() {
-                                    if let Some(uri) = first.get("uri").and_then(|v| v.as_str()) {
-                                        if let Some(id) = uri.split(':').last() {
-                                            let mut result = self.fetch_playlist(id).await;
-                                            // Apply limit to playlist results (Mixes can be large)
-                                            if let LoadResult::Playlist(ref mut data) = result {
-                                                if data.tracks.len() > limit as usize {
-                                                    data.tracks.truncate(limit as usize);
-                                                }
-                                            }
-                                            return result;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        LoadResult::Empty {}
-    }
-
-    fn parse_limit<'a>(&self, query: &'a str) -> (&'a str, u32) {
-        // Default and limits
-        let default_limit: u32 = self.recommendations_limit as u32;
-        const MAX_LIMIT: u32 = 100; // Increased max limit slightly to allow config override if needed, though clamped by u32
-
-        if let Some((base, params)) = query.split_once('?') {
-            for pair in params.split('&') {
-                if let Some((key, value)) = pair.split_once('=') {
-                    if key == "limit" {
-                        if let Ok(val) = value.parse::<u32>() {
-                            let clamped = val.clamp(1, MAX_LIMIT);
-                            return (base, clamped);
-                        }
-                    }
-                }
-            }
-            // Return base if limit parsing failed but split succeeded
-            (base, default_limit)
-        } else {
-            (query, default_limit)
-        }
-    }
-
-    async fn get_pathfinder_recommendations(&self, track_id: &str, limit: u32) -> LoadResult {
-        let variables = json!({
-            "uri": format!("spotify:track:{}", track_id),
-            "limit": limit
-        });
-
-        const HASH: &str = "c77098ee9d6ee8ad3eb844938722db60570d040b49f41f5ec6e7be9160a7c86b";
-
-        // Query Pathfinder API for related tracks
-        let data = match self
-            .partner_api_request("internalLinkRecommenderTrack", variables, HASH)
-            .await
-        {
-            Some(d) => d,
-            None => return LoadResult::Empty {},
-        };
-
-        let items = match data
-            .pointer("/data/internalLinkRecommenderTrack/relatedTracks/items")
-            .and_then(|i| i.as_array())
-        {
-            Some(i) => i,
-            None => return LoadResult::Empty {},
-        };
-
-        if items.is_empty() {
-             return LoadResult::Empty {};
-        }
-
-        // Fetch track metadata parallelly
-        let futs: Vec<_> = items
-            .iter()
-            .map(|item| {
-                // Handle wrapped track objects
-                let track_data = item.get("item").and_then(|v| v.get("data")).unwrap_or(item);
-                self.parse_generic_track(track_data, None)
-            })
-            .collect();
-
-        let results = join_all(futs).await;
-        // Collect tracks
-        let mut tracks = Vec::new();
-        for track_info in results.into_iter().flatten() {
-            tracks.push(Track::new(track_info));
-        }
-
-        if tracks.is_empty() {
-            LoadResult::Empty {}
-        } else {
-             LoadResult::Playlist(PlaylistData {
-                info: PlaylistInfo {
-                    name: format!("Spotify Recommendations: {}", track_id),
                     selected_track: -1,
                 },
                 plugin_info: json!({}),
@@ -1138,13 +840,31 @@ impl SourcePlugin for SpotifySource {
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
         if identifier.starts_with(&self.search_prefix) {
-            let query = identifier.strip_prefix(&self.search_prefix).unwrap();
+            let query = &identifier[self.search_prefix.len()..];
             return self.search_internal(query).await;
         }
 
-        if identifier.starts_with(&self.recommendations_prefix) {
-            let query = identifier.strip_prefix(&self.recommendations_prefix).unwrap();
-            return self.get_recommendations(query).await;
+        if let Some(caps) = self.url_regex.captures(identifier) {
+            let type_str = match caps.get(1) {
+                Some(m) => m.as_str(),
+                None => return LoadResult::Empty {},
+            };
+            let id = match caps.get(2) {
+                Some(m) => m.as_str(),
+                None => return LoadResult::Empty {},
+            };
+
+            match type_str {
+                "track" => {
+                    if let Some(track_info) = self.fetch_track(id).await {
+                        return LoadResult::Track(Track::new(track_info));
+                    }
+                }
+                "album" => return self.fetch_album(id).await,
+                "playlist" => return self.fetch_playlist(id).await,
+                "artist" => return self.fetch_artist(id).await,
+                _ => {}
+            }
         }
 
         if let Some(caps) = self.track_regex.captures(identifier) {
@@ -1178,17 +898,9 @@ impl SourcePlugin for SpotifySource {
                 Some(m) => m.as_str(),
                 None => return LoadResult::Empty {},
             };
-            return self.fetch_artist_top_tracks(id).await;
+            return self.fetch_artist(id).await;
         }
 
         LoadResult::Empty {}
-    }
-
-    async fn get_playback_url(
-        &self,
-        _identifier: &str,
-        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<String> {
-        None
     }
 }

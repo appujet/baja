@@ -65,24 +65,6 @@ master_decryption_key = "your_master_key_here"
 # url = "http://proxy.example.com:8080"
 # username = "myuser"
 # password = "mypassword"
-
-[filters]
-volume = true
-equalizer = true
-karaoke = true
-timescale = true
-tremolo = true
-vibrato = true
-distortion = true
-rotation = true
-channel_mix = true
-low_pass = true
-
-[logging]
-level = "info"
-# Optional: detailed module overrides. Example: "rustalink=debug,tokio=warn"
-filters = "rustalink=debug"
-
 [spotify]
 playlist_load_limit = 6 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
 album_load_limit = 6 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
@@ -112,3 +94,21 @@ artist_load_limit = 20
 # url = "http://proxy.example.com:8080"
 # username = "myuser"
 # password = "mypassword"
+
+[filters]
+volume = true
+equalizer = true
+karaoke = true
+timescale = true
+tremolo = true
+vibrato = true
+distortion = true
+rotation = true
+channel_mix = true
+low_pass = true
+
+[logging]
+level = "info"
+# Optional: detailed module overrides. Example: "rustalink=debug,tokio=warn"
+filters = "rustalink=debug"
+

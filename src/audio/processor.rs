@@ -8,8 +8,13 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use tracing::{Level, debug, span, warn};
 
-use super::DecoderCommand;
 use crate::audio::pipeline::resampler::Resampler;
+
+#[derive(Debug, Clone)]
+pub enum DecoderCommand {
+    Seek(u64), // Position in milliseconds
+    Stop,
+}
 
 /// High-performance audio processor that handles decoding and resampling.
 pub struct AudioProcessor {
@@ -30,21 +35,15 @@ pub struct AudioProcessor {
 impl AudioProcessor {
     /// Initializes the processor by probing the source and setting up the codec.
     pub fn new(
-        url: &str,
         source: Box<dyn MediaSource>,
+        extension_hint: Option<&str>,
         tx: Sender<i16>,
         cmd_rx: Receiver<DecoderCommand>,
     ) -> Result<Self, Error> {
         let mss = MediaSourceStream::new(source, Default::default());
         let mut hint = Hint::new();
 
-        // For HLS streams, the segments contain ADTS (AAC) after TS demuxing
-        if url.contains(".m3u8") || url.contains("/api/manifest/hls_") {
-            hint.with_extension("aac");
-        } else if let Some(ext) = std::path::Path::new(url)
-            .extension()
-            .and_then(|s| s.to_str())
-        {
+        if let Some(ext) = extension_hint {
             hint.with_extension(ext);
         }
 
@@ -163,7 +162,7 @@ impl AudioProcessor {
             Ok(DecoderCommand::Seek(ms)) => {
                 let time = symphonia::core::units::Time::from(ms as f64 / 1000.0);
                 if let Ok(_) = self.format.seek(
-                    symphonia::core::formats::SeekMode::Accurate,
+                    symphonia::core::formats::SeekMode::Coarse,
                     symphonia::core::formats::SeekTo::Time {
                         time,
                         track_id: Some(self.track_id),
