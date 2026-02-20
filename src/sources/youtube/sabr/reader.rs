@@ -3,7 +3,7 @@ use std::io::{Read, Seek, SeekFrom};
 use base64::Engine;
 use flume::{Receiver, Sender};
 use symphonia::core::io::MediaSource;
-use tracing::{debug, error};
+use tracing::{debug, error, info, warn};
 
 use crate::sources::youtube::sabr::{
     parser::{ProtoReader, UmpReader, decoders::*},
@@ -315,6 +315,10 @@ async fn run_sabr_loop(
 
     let mut last_recovery_at = std::time::Instant::now() - std::time::Duration::from_secs(10);
     let mut recovery_attempted = false;
+    // Maps header_id -> (duration_ms, is_skipped).
+    // Populated on MediaHeader, consumed on MediaEnd to advance player_time_ms.
+    let mut pending_header_info: std::collections::HashMap<i32, (i64, bool)> =
+        std::collections::HashMap::new();
 
     loop {
         // Add rn parameter to URL
@@ -445,19 +449,41 @@ async fn run_sabr_loop(
             .await?;
 
         if !res.status().is_success() {
-            error!("SABR request failed with status: {}", res.status());
+            error!("SABR request failed: {}", res.status());
             break;
-        } else {
-            debug!("SABR request success! headers: {:?}", res.headers());
         }
+
+        // Key diagnostic: what are we telling YouTube our player position is?
+        debug!(
+            "SABR RN={} → playerTimeMs={} poToken={} bufferedRanges={}",
+            session.request_number,
+            session.player_time_ms,
+            if session.po_token.is_some() {
+                "yes"
+            } else {
+                "NO"
+            },
+            session
+                .cached_buffered_ranges
+                .as_ref()
+                .map(|r| r.len())
+                .unwrap_or(0)
+        );
 
         let mut ump_reader = UmpReader::new();
         let mut media_received_in_this_batch = false;
         let mut parts_received = 0;
         let mut stall_detected = false;
         let mut backoff_time_ms = 0;
+        // Reset per-request dedup state. `skipped_header_ids` must be fresh for each
+        // SABR request-response cycle; otherwise header IDs from previous responses
+        // (which start back at 0) suppress real new media data and cause the loop.
+        // `initialized_formats` and `last_forwarded_sequence` intentionally persist.
         let mut skipped_header_ids: std::collections::HashSet<i32> =
             std::collections::HashSet::new();
+        pending_header_info.clear();
+        let mut last_protection_status: Option<i32> = None;
+        let mut segments_forwarded: Vec<(i32, i32)> = Vec::new(); // (itag, seq)
 
         loop {
             match res.chunk().await {
@@ -466,19 +492,13 @@ async fn run_sabr_loop(
 
                     while let Some(part) = ump_reader.next_part() {
                         parts_received += 1;
-                        debug!("Received UMP Part Type: {}", part.part_type);
                         match part.part_type {
                             21 => {
                                 // Media data — first byte is headerId
                                 if part.data.len() > 1 {
                                     let header_id = part.data[0] as i32;
 
-                                    // Skip ALL Part 21 chunks for skipped header_ids
                                     if skipped_header_ids.contains(&header_id) {
-                                        debug!(
-                                            "Skipping duplicate media for header_id={}",
-                                            header_id
-                                        );
                                         continue;
                                     }
 
@@ -497,14 +517,10 @@ async fn run_sabr_loop(
                                     // Init segment dedup: only forward the FIRST init per itag
                                     let fmt_key = header.itag;
                                     if initialized_formats.contains(&fmt_key) {
-                                        debug!(
-                                            "Skipping duplicate init for itag={} (header_id={})",
-                                            fmt_key, header.header_id
-                                        );
                                         skipped_header_ids.insert(header.header_id);
                                     } else {
                                         debug!(
-                                            "First init segment for itag={} (header_id={})",
+                                            "First init segment: itag={} header_id={}",
                                             fmt_key, header.header_id
                                         );
                                         initialized_formats.insert(fmt_key);
@@ -519,30 +535,34 @@ async fn run_sabr_loop(
 
                                     if seq > 0 && seq <= last_seq {
                                         debug!(
-                                            "Skipping duplicate data segment: itag={} seq={} (last_forwarded={})",
+                                            "Skipping duplicate: itag={} seq={} (last_forwarded={})",
                                             itag, seq, last_seq
                                         );
                                         skipped_header_ids.insert(header.header_id);
                                     } else {
-                                        // Forward this segment and update tracker
+                                        // New segment — log it
+                                        debug!(
+                                            "Forwarding new segment: itag={} seq={} dur={}ms header_id={}",
+                                            itag, seq, header.duration_ms, header.header_id
+                                        );
                                         if seq > 0 {
                                             last_forwarded_sequence.insert(itag, seq);
+                                            segments_forwarded.push((itag, seq));
                                         }
                                         skipped_header_ids.remove(&header.header_id);
                                     }
                                 }
 
-                                // Track playback time from non-skipped segments
-                                if !skipped_header_ids.contains(&header.header_id)
-                                    && !header.duration_ms.is_empty()
-                                {
-                                    if let Ok(dur) = header.duration_ms.parse::<i64>() {
-                                        session.player_time_ms += dur;
-                                    }
-                                }
+                                // Record duration so we can advance player_time_ms
+                                // in MediaEnd (after data is fully received), matching
+                                // NodeLink's totalDownloadedMs += segmentDuration in handleMediaEnd.
+                                let is_skipped = skipped_header_ids.contains(&header.header_id);
+                                let duration_ms = header.duration_ms.parse::<i64>().unwrap_or(0);
+                                pending_header_info
+                                    .insert(header.header_id, (duration_ms, is_skipped));
 
                                 // Save header to acknowledge it in the next bufferedRanges SABR payload
-                                if !header.is_init_seg {
+                                if !header.is_init_seg && !is_skipped {
                                     session
                                         .pending_ranges_headers
                                         .entry(header.itag)
@@ -594,17 +614,29 @@ async fn run_sabr_loop(
                                 }
                             }
                             58 => {
-                                // StreamProtectionStatus - continue processing like NodeLink
+                                // StreamProtectionStatus
                                 let mut reader = ProtoReader::new(&part.data);
                                 let status =
                                     decode_stream_protection_status(&mut reader, part.data.len());
-                                if status.status == 2 {
-                                    tracing::warn!(
-                                        "SABR: StreamProtectionStatus 2 (Limited Playback). Will refresh after response."
-                                    );
+                                let new_status = status.status;
+                                // Only log when status changes to avoid repeat spam
+                                if last_protection_status != Some(new_status) {
+                                    match new_status {
+                                        1 => {
+                                            info!("SABR: StreamProtectionStatus 1 (OK — attested)")
+                                        }
+                                        2 => warn!(
+                                            "SABR: StreamProtectionStatus 2 (Limited Playback — PO token required or invalid)"
+                                        ),
+                                        3 => info!(
+                                            "SABR: StreamProtectionStatus 3 (Attestation pending)"
+                                        ),
+                                        s => warn!("SABR: StreamProtectionStatus {}", s),
+                                    }
+                                    last_protection_status = Some(new_status);
+                                }
+                                if new_status == 2 {
                                     stall_detected = true;
-                                } else {
-                                    debug!("SABR StreamProtectionStatus: {}", status.status);
                                 }
                             }
                             59 => {
@@ -624,27 +656,53 @@ async fn run_sabr_loop(
                                     session.sabr_contexts.remove(&t);
                                 }
                             }
+                            22 => {
+                                // MediaEnd — first byte is header_id.
+                                // This is the signal that the complete segment has been sent.
+                                // Advance player_time_ms here (not at MediaHeader) to match
+                                // NodeLink's totalDownloadedMs += segmentDuration in handleMediaEnd.
+                                if !part.data.is_empty() {
+                                    let header_id = part.data[0] as i32;
+                                    if let Some((dur_ms, is_skipped)) =
+                                        pending_header_info.remove(&header_id)
+                                    {
+                                        if !is_skipped && dur_ms > 0 {
+                                            session.player_time_ms += dur_ms;
+                                            debug!(
+                                                "MediaEnd: header_id={} dur={}ms player_time_ms={}",
+                                                header_id, dur_ms, session.player_time_ms
+                                            );
+                                        }
+                                    }
+                                }
+                            }
                             _ => {
-                                debug!("Unhandled UMP Part Type: {}", part.part_type);
+                                // Intentionally silent for unknown types to reduce log noise
                             }
                         }
                     }
                 }
 
                 Ok(None) => {
-                    debug!("res.chunk() reached EOF smoothly.");
-                    break;
+                    break; // EOF
                 }
                 Err(e) => {
-                    error!("res.chunk() error: {}", e);
+                    error!("SABR chunk read error: {}", e);
                     break;
                 }
             } // match res.chunk().await
         } // inner loop
 
+        // Batch summary — key diagnostic
         debug!(
-            "SABR batch ended. parts: {}, media: {}, stall: {}, backoff_ms: {}",
-            parts_received, media_received_in_this_batch, stall_detected, backoff_time_ms
+            "SABR batch RN={}: parts={} media={} stall={} protection={:?} forwarded={:?} playerTimeMs={}",
+            session.request_number - 1,
+            parts_received,
+            media_received_in_this_batch,
+            stall_detected,
+            last_protection_status,
+            segments_forwarded,
+            session.player_time_ms
         );
 
         if media_received_in_this_batch {
@@ -732,9 +790,9 @@ async fn run_sabr_loop(
                 }
             }
         } else if stall_detected {
-            // Already tried recovery, just continue with incremented RN
+            // Recovery already attempted once; keep going but log periodically
             debug!(
-                "SABR stall detected but recovery already attempted. Continuing with RN={}.",
+                "SABR stall persists (RN={}) — waiting for recovery or PO token refresh",
                 session.request_number + 1
             );
         }

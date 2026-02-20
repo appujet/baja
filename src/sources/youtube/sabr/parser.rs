@@ -1,4 +1,3 @@
-
 pub struct ProtoReader<'a> {
     pub buffer: &'a [u8],
     pub pos: usize,
@@ -239,12 +238,56 @@ pub mod decoders {
                 12 => msg.duration_ms = reader.read_varint().unwrap_or(0).to_string(),
                 13 => {
                     let sub_len = reader.read_varint().unwrap_or(0) as usize;
-                    msg.format_id = Some(decode_format_id(reader, sub_len));
+                    let fid = decode_format_id(reader, sub_len);
+                    if fid.itag != 0 {
+                        msg.itag = fid.itag;
+                    }
+                    if fid.xtags.is_some() {
+                        msg.xtags = fid.xtags.clone();
+                    }
+                    msg.format_id = Some(fid);
                 }
                 14 => msg.content_length = Some(reader.read_varint().unwrap_or(0).to_string()),
+                15 => {
+                    // timeRange submessage: field 1=startTicks, 2=durationTicks, 3=timescale
+                    let sub_len = reader.read_varint().unwrap_or(0) as usize;
+                    let sub_end = reader.pos + sub_len;
+                    let mut start_ticks: i64 = 0;
+                    let mut duration_ticks: i64 = 0;
+                    let mut timescale: i32 = 0;
+                    while reader.pos < sub_end {
+                        let sub_tag = reader.read_varint().unwrap_or(0);
+                        let sub_field = sub_tag >> 3;
+                        let sub_wire = (sub_tag & 7) as u8;
+                        match sub_field {
+                            1 => start_ticks = reader.read_varint().unwrap_or(0) as i64,
+                            2 => duration_ticks = reader.read_varint().unwrap_or(0) as i64,
+                            3 => timescale = reader.read_varint().unwrap_or(0) as i32,
+                            _ => reader.skip(sub_wire),
+                        }
+                    }
+                    msg.time_range = Some(crate::sources::youtube::sabr::structs::TimeRange {
+                        start_ticks,
+                        duration_ticks,
+                        timescale,
+                    });
+                }
                 _ => reader.skip(wire_type),
             }
         }
+
+        // If field 12 (duration_ms) was absent or zero, derive it from timeRange
+        // (matches NodeLink's handleMediaHeader fallback: ceil(durationTicks/timescale*1000))
+        if msg.duration_ms.is_empty() || msg.duration_ms == "0" {
+            if let Some(tr) = &msg.time_range {
+                if tr.timescale > 0 && tr.duration_ticks > 0 {
+                    let derived =
+                        ((tr.duration_ticks as f64 / tr.timescale as f64) * 1000.0).ceil() as i64;
+                    msg.duration_ms = derived.to_string();
+                }
+            }
+        }
+
         msg
     }
 
