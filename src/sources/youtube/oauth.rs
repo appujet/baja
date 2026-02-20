@@ -278,15 +278,17 @@ impl YouTubeOAuth {
         if tokens.is_empty() {
             return None;
         }
+        let num_tokens = tokens.len();
 
         let idx = {
             let mut current_idx = self.current_token_index.write().await;
             let val = *current_idx;
-            *current_idx = (val + 1) % tokens.len();
+            *current_idx = (val + 1) % num_tokens;
             val
         };
 
-        drop(tokens); // Release read lock before calling get_access_token which might acquire it
+        drop(tokens); // Release read lock before calling get_access_token which may acquire it
+
         self.get_access_token(idx)
             .await
             .map(|t| format!("Bearer {}", t))

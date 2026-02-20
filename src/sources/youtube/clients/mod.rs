@@ -31,6 +31,7 @@ pub trait YouTubeClient: Send + Sync {
     async fn get_track_info(
         &self,
         track_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>>;
     async fn resolve_url(
@@ -49,6 +50,7 @@ pub trait YouTubeClient: Send + Sync {
     async fn get_playlist(
         &self,
         playlist_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>>;
 }

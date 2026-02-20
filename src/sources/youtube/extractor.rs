@@ -56,6 +56,7 @@ pub fn extract_from_next(body: &Value, source_name: &str) -> Option<(Vec<Track>,
     let contents_root = body.get("contents").and_then(|c| {
         c.get("singleColumnWatchNextResults")
             .or_else(|| c.get("singleColumnMusicWatchNextResultsRenderer"))
+            .or_else(|| c.get("twoColumnWatchNextResults"))
     })?;
 
     let playlist_content = contents_root

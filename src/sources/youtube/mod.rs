@@ -3,7 +3,9 @@ use crate::configs::sources::YouTubeConfig;
 use crate::sources::SourcePlugin;
 use async_trait::async_trait;
 use regex::Regex;
+use serde_json::{Value, json};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub mod cipher;
 pub mod clients;
@@ -31,6 +33,9 @@ pub struct YouTubeSource {
     playback_clients: Vec<Box<dyn YouTubeClient>>,
     oauth: Arc<YouTubeOAuth>,
     cipher_manager: Arc<YouTubeCipherManager>,
+    visitor_data: Arc<RwLock<Option<String>>>,
+    #[allow(dead_code)]
+    http: reqwest::Client,
 }
 
 impl YouTubeSource {
@@ -46,6 +51,27 @@ impl YouTubeSource {
                 oauth_clone.initialize_access_token().await;
             });
         }
+
+        let visitor_data = Arc::new(RwLock::new(None));
+        let http = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+            .build()
+            .unwrap_or_default();
+
+        let vd_clone = visitor_data.clone();
+        let http_clone = http.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Some(vd) = Self::refresh_visitor_data(&http_clone).await {
+                    let mut lock = vd_clone.write().await;
+                    *lock = Some(vd);
+                    tracing::debug!("YouTube visitorData refreshed.");
+                } else {
+                    tracing::warn!("Failed to refresh YouTube visitorData.");
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        });
 
         let create_client = |name: &str| -> Option<Box<dyn YouTubeClient>> {
             match name.to_uppercase().as_str() {
@@ -93,7 +119,49 @@ impl YouTubeSource {
             playback_clients,
             oauth,
             cipher_manager,
+            visitor_data,
+            http,
         }
+    }
+
+    async fn refresh_visitor_data(http: &reqwest::Client) -> Option<String> {
+        let body = json!({
+            "context": {
+                "client": {
+                    "clientName": "WEB",
+                    "clientVersion": "2.20260114.01.00",
+                    "hl": "en",
+                    "gl": "US"
+                }
+            }
+        });
+
+        match http
+            .post("https://www.youtube.com/youtubei/v1/guide")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(res) => {
+                if let Ok(json) = res.json::<Value>().await {
+                    if let Some(vd) = json
+                        .get("responseContext")
+                        .and_then(|rc| rc.get("visitorData"))
+                        .and_then(|vd| vd.as_str())
+                    {
+                        // Always URL-decode to ensure clean base64 is stored (no %3D%3D etc.)
+                        let decoded = urlencoding::decode(vd)
+                            .map(|s| s.into_owned())
+                            .unwrap_or_else(|_| vd.to_string());
+                        return Some(decoded);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to fetch visitor data: {}", e);
+            }
+        }
+        None
     }
 
     fn extract_playlist_id(&self, identifier: &str) -> Option<String> {
@@ -193,7 +261,12 @@ impl SourcePlugin for YouTubeSource {
         identifier: &str,
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
-        let context = serde_json::json!({});
+        let visitor_data = self.visitor_data.read().await.clone();
+        let context = if let Some(vd) = visitor_data {
+            json!({ "visitorData": vd })
+        } else {
+            json!({})
+        };
 
         if identifier.starts_with(&self.search_prefix) || identifier.starts_with("ytmsearch:") {
             let (query, search_type) = if identifier.starts_with("ytmsearch:") {
@@ -202,17 +275,14 @@ impl SourcePlugin for YouTubeSource {
                 (&identifier["ytsearch:".len()..], "video")
             };
 
-            tracing::debug!("Searching for: {} (type: {})", query, search_type);
-
             let clients_to_try =
                 self.prioritize_clients(&self.search_clients, search_type == "music");
 
             for client in clients_to_try {
-                tracing::debug!("Trying search client: {}", client.name());
+                tracing::debug!("Searching for: {} using {}", query, client.name());
                 match client.search(query, &context, self.oauth.clone()).await {
                     Ok(tracks) => {
                         if !tracks.is_empty() {
-                            tracing::debug!("Found {} tracks with {}", tracks.len(), client.name());
                             return LoadResult::Search(tracks);
                         }
                     }
@@ -232,7 +302,10 @@ impl SourcePlugin for YouTubeSource {
             let clients_to_try = self.prioritize_clients(&self.search_clients, true);
 
             for client in clients_to_try {
-                match client.get_playlist(&playlist_id, self.oauth.clone()).await {
+                match client
+                    .get_playlist(&playlist_id, &context, self.oauth.clone())
+                    .await
+                {
                     Ok(Some((tracks, title))) => {
                         let filtered_tracks: Vec<Track> = tracks
                             .into_iter()
@@ -265,8 +338,11 @@ impl SourcePlugin for YouTubeSource {
                 let clients_to_try = self.prioritize_clients(&self.search_clients, is_music_url);
 
                 for client in clients_to_try {
-                    tracing::debug!("Trying playlist client: {}", client.name());
-                    match client.get_playlist(&playlist_id, self.oauth.clone()).await {
+                    tracing::debug!("Loading playlist '{}' using {}", playlist_id, client.name());
+                    match client
+                        .get_playlist(&playlist_id, &context, self.oauth.clone())
+                        .await
+                    {
                         Ok(Some((tracks, title))) => {
                             tracing::debug!(
                                 "Successfully loaded playlist '{}' with {}",
@@ -297,12 +373,14 @@ impl SourcePlugin for YouTubeSource {
                 }
             }
 
-            // Fallback to track loading if playlist failed or was skipped
             let clients_to_try = self.prioritize_clients(&self.playback_clients, is_music_url);
 
             for client in clients_to_try {
-                tracing::debug!("Trying track info client: {}", client.name());
-                match client.get_track_info(&id, self.oauth.clone()).await {
+                tracing::debug!("Loading track '{}' using {}", id, client.name());
+                match client
+                    .get_track_info(&id, &context, self.oauth.clone())
+                    .await
+                {
                     Ok(Some(track)) => {
                         tracing::debug!("Successfully loaded track {} with {}", id, client.name());
                         return LoadResult::Track(track);
@@ -323,14 +401,19 @@ impl SourcePlugin for YouTubeSource {
         identifier: &str,
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> Option<String> {
-        let context = serde_json::json!({});
+        let visitor_data = self.visitor_data.read().await.clone();
+        let context = if let Some(vd) = visitor_data {
+            json!({ "visitorData": vd })
+        } else {
+            json!({})
+        };
         let id = self.extract_id(identifier);
         let is_music_url = identifier.contains("music.youtube.com");
 
         let clients_to_try = self.prioritize_clients(&self.playback_clients, is_music_url);
 
         for client in clients_to_try {
-            tracing::debug!("Trying playback URL client: {}", client.name());
+            tracing::debug!("Loading track '{}' using {}", id, client.name());
             match client
                 .get_track_url(
                     &id,

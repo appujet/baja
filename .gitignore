@@ -1,4 +1,9 @@
 /target
+
+# EDITOR
+.vscode
+.idea
+
 voice-main
 lavaplayer-main
 Lavalink-master

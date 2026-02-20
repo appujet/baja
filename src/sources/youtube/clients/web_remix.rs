@@ -33,15 +33,23 @@ impl WebRemixClient {
         Self { http }
     }
 
-    fn build_context(&self) -> Value {
+    fn build_context(&self, visitor_data: Option<&str>) -> Value {
+        let mut client = json!({
+            "clientName": CLIENT_NAME,
+            "clientVersion": CLIENT_VERSION,
+            "userAgent": USER_AGENT,
+            "hl": "en",
+            "gl": "US"
+        });
+
+        if let Some(vd) = visitor_data {
+            if let Some(obj) = client.as_object_mut() {
+                obj.insert("visitorData".to_string(), vd.into());
+            }
+        }
+
         json!({
-            "client": {
-                "clientName": CLIENT_NAME,
-                "clientVersion": CLIENT_VERSION,
-                "userAgent": USER_AGENT,
-                "hl": "en",
-                "gl": "US"
-            },
+            "client": client,
             "user": { "lockedSafetyMode": false },
             "request": { "useSsl": true }
         })
@@ -50,10 +58,11 @@ impl WebRemixClient {
     async fn player_request(
         &self,
         video_id: &str,
+        visitor_data: Option<&str>,
         oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "videoId": video_id,
             "contentCheckOk": true,
             "racyCheckOk": true
@@ -66,8 +75,13 @@ impl WebRemixClient {
             .post(&url)
             .header("X-YouTube-Client-Name", CLIENT_NAME)
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .header("Origin", MUSIC_API)
-            .json(&body);
+            .header("Origin", MUSIC_API);
+
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
+        }
+
+        let mut req = req.json(&body);
 
         if let Some(auth) = oauth.get_auth_header().await {
             req = req.header("Authorization", auth);
@@ -101,11 +115,17 @@ impl YouTubeClient for WebRemixClient {
     async fn search(
         &self,
         query: &str,
-        _context: &Value,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Vec<Track>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "query": query,
             "params": "EgWKAQIIAWoQEAMQBBAFEBAQCRAKEBUQEQ%3D%3D"
         });
@@ -118,8 +138,13 @@ impl YouTubeClient for WebRemixClient {
             .header("X-YouTube-Client-Name", CLIENT_NAME)
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
             .header("X-Goog-Api-Format-Version", "2")
-            .header("Origin", MUSIC_API)
-            .json(&body);
+            .header("Origin", MUSIC_API);
+
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
+        }
+
+        let mut req = req.json(&body);
 
         if let Some(auth) = oauth.get_auth_header().await {
             req = req.header("Authorization", auth);
@@ -283,9 +308,16 @@ impl YouTubeClient for WebRemixClient {
     async fn get_track_info(
         &self,
         track_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
-        let body = self.player_request(track_id, &oauth).await?;
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
 
         let playability = body
             .get("playabilityStatus")
@@ -332,11 +364,18 @@ impl YouTubeClient for WebRemixClient {
     async fn get_playlist(
         &self,
         playlist_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         // Resolve a playlist/album via 'next' endpoint (common for YT Music)
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "playlistId": playlist_id,
             "isAudioOnly": true
         });
@@ -347,8 +386,13 @@ impl YouTubeClient for WebRemixClient {
             .http
             .post(&url)
             .header("X-YouTube-Client-Name", CLIENT_NAME)
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .json(&body);
+            .header("X-YouTube-Client-Version", CLIENT_VERSION);
+
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
+        }
+
+        let mut req = req.json(&body);
 
         if let Some(auth) = oauth.get_auth_header().await {
             req = req.header("Authorization", auth);
@@ -361,70 +405,9 @@ impl YouTubeClient for WebRemixClient {
 
         let response: Value = res.json().await?;
 
-        // Extraction logic for Music playlists
-        // This is simplified but follows the general 'next' response structure
-        let mut tracks = Vec::new();
-        let title = response
-            .get("contents")
-            .and_then(|c| c.get("singleColumnMusicWatchNextResultsRenderer"))
-            .and_then(|s| s.get("playlist"))
-            .and_then(|p| p.get("playlist"))
-            .and_then(|p| p.get("title"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("Unknown Playlist")
-            .to_string();
-
-        let entries = response
-            .get("contents")
-            .and_then(|c| c.get("singleColumnMusicWatchNextResultsRenderer"))
-            .and_then(|s| s.get("playlist"))
-            .and_then(|p| p.get("playlist"))
-            .and_then(|p| p.get("contents"))
-            .and_then(|c| c.as_array());
-
-        if let Some(entries) = entries {
-            for entry in entries {
-                if let Some(renderer) = entry.get("playlistPanelVideoRenderer") {
-                    let id = renderer.get("videoId").and_then(|v| v.as_str());
-                    let title = renderer
-                        .get("title")
-                        .and_then(|t| t.get("runs"))
-                        .and_then(|r| r.get(0))
-                        .and_then(|r| r.get("text"))
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("Unknown Title");
-                    let author = renderer
-                        .get("longBylineText")
-                        .and_then(|t| t.get("runs"))
-                        .and_then(|r| r.get(0))
-                        .and_then(|r| r.get("text"))
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("Unknown Artist");
-
-                    if let Some(id) = id {
-                        tracks.push(Track::new(TrackInfo {
-                            identifier: id.to_string(),
-                            is_seekable: true,
-                            title: title.to_string(),
-                            author: author.to_string(),
-                            length: 0,
-                            is_stream: false,
-                            uri: Some(format!("https://music.youtube.com/watch?v={}", id)),
-                            source_name: "youtube".to_string(),
-                            isrc: None,
-                            artwork_url: extract_thumbnail(renderer, Some(id)),
-                            position: 0,
-                        }));
-                    }
-                }
-            }
-        }
-
-        if tracks.is_empty() {
-            return Ok(None);
-        }
-
-        Ok(Some((tracks, title)))
+        Ok(crate::sources::youtube::extractor::extract_from_next(
+            &response, "youtube",
+        ))
     }
 
     async fn resolve_url(
@@ -433,17 +416,24 @@ impl YouTubeClient for WebRemixClient {
         _context: &Value,
         _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
+        tracing::debug!("{} client does not support resolve_url", self.name());
         Ok(None)
     }
 
     async fn get_track_url(
         &self,
         track_id: &str,
-        _context: &Value,
+        context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let body = self.player_request(track_id, &oauth).await?;
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
 
         let playability = body
             .get("playabilityStatus")

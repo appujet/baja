@@ -34,20 +34,28 @@ impl MusicAndroidClient {
         Self { http }
     }
 
-    fn build_context(&self) -> Value {
+    fn build_context(&self, visitor_data: Option<&str>) -> Value {
+        let mut client = json!({
+            "clientName": CLIENT_NAME,
+            "clientVersion": CLIENT_VERSION,
+            "userAgent": USER_AGENT,
+            "deviceMake": "Google",
+            "deviceModel": "Pixel 6",
+            "osName": "Android",
+            "osVersion": "14",
+            "androidSdkVersion": 30,
+            "hl": "en",
+            "gl": "US"
+        });
+
+        if let Some(vd) = visitor_data {
+            if let Some(obj) = client.as_object_mut() {
+                obj.insert("visitorData".to_string(), vd.into());
+            }
+        }
+
         json!({
-            "client": {
-                "clientName": CLIENT_NAME,
-                "clientVersion": CLIENT_VERSION,
-                "userAgent": USER_AGENT,
-                "deviceMake": "Google",
-                "deviceModel": "Pixel 6",
-                "osName": "Android",
-                "osVersion": "14",
-                "androidSdkVersion": "30",
-                "hl": "en",
-                "gl": "US"
-            },
+            "client": client,
             "user": { "lockedSafetyMode": false },
             "request": { "useSsl": true }
         })
@@ -56,10 +64,11 @@ impl MusicAndroidClient {
     async fn player_request(
         &self,
         video_id: &str,
+        visitor_data: Option<&str>,
         oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "videoId": video_id,
             "contentCheckOk": true,
             "racyCheckOk": true
@@ -72,12 +81,15 @@ impl MusicAndroidClient {
             .post(&url)
             .header("X-YouTube-Client-Name", "67") // 67 is for ANDROID_MUSIC
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .header("Origin", INNERTUBE_API)
-            .json(&body);
+            .header("Origin", INNERTUBE_API);
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        let _ = oauth;
 
         let res = req.send().await?;
         let status = res.status();
@@ -107,11 +119,17 @@ impl YouTubeClient for MusicAndroidClient {
     async fn search(
         &self,
         query: &str,
-        _context: &Value,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Vec<Track>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "query": query,
             "params": "EgWKAQIIAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D" // NodeLink Track params
         });
@@ -121,22 +139,24 @@ impl YouTubeClient for MusicAndroidClient {
         let mut req = self
             .http
             .post(&url)
-            .header("X-YouTube-Client-Name", "67")
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .header("X-Goog-Api-Format-Version", "2")
-            .header("Origin", INNERTUBE_API)
-            .json(&body);
+            .header("X-Goog-Api-Format-Version", "2");
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        let _ = oauth;
 
         let res = req.send().await?;
         if !res.status().is_success() {
-            return Err(format!("Music Android search failed: {}", res.status()).into());
+            let status = res.status();
+            let err_body = res.text().await.unwrap_or_default();
+            return Err(format!("Music Android search failed: {} - {}", status, err_body).into());
         }
 
-        let response: Value = res.json().await?;
+        let response: Value = serde_json::from_str(&res.text().await?).unwrap_or_default();
         let mut tracks = Vec::new();
 
         let tab_content = response
@@ -263,9 +283,16 @@ impl YouTubeClient for MusicAndroidClient {
     async fn get_track_info(
         &self,
         track_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
-        let body = self.player_request(track_id, &oauth).await?;
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
 
         let playability = body
             .get("playabilityStatus")
@@ -311,10 +338,17 @@ impl YouTubeClient for MusicAndroidClient {
     async fn get_playlist(
         &self,
         playlist_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "playlistId": playlist_id,
             "enablePersistentPlaylistPanel": true,
             "isAudioOnly": true
@@ -326,12 +360,15 @@ impl YouTubeClient for MusicAndroidClient {
             .http
             .post(&url)
             .header("X-YouTube-Client-Name", "67")
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .json(&body);
+            .header("X-YouTube-Client-Version", CLIENT_VERSION);
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        let _ = oauth;
 
         let res = req.send().await?;
         if !res.status().is_success() {
@@ -376,11 +413,17 @@ impl YouTubeClient for MusicAndroidClient {
     async fn get_track_url(
         &self,
         track_id: &str,
-        _context: &Value,
+        context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let body = self.player_request(track_id, &oauth).await?;
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
 
         let playability = body
             .get("playabilityStatus")

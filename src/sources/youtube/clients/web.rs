@@ -2,9 +2,7 @@ use super::YouTubeClient;
 use super::common::{INNERTUBE_API, resolve_format_url, select_best_audio_format};
 use crate::api::tracks::Track;
 use crate::sources::youtube::cipher::YouTubeCipherManager;
-use crate::sources::youtube::extractor::{
-    extract_from_browse, extract_from_player, extract_track, find_section_list,
-};
+use crate::sources::youtube::extractor::{extract_from_player, extract_track, find_section_list};
 use crate::sources::youtube::oauth::YouTubeOAuth;
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -31,16 +29,24 @@ impl WebClient {
         Self { http }
     }
 
-    fn build_context(&self) -> Value {
+    fn build_context(&self, visitor_data: Option<&str>) -> Value {
+        let mut client = json!({
+            "clientName": CLIENT_NAME,
+            "clientVersion": CLIENT_VERSION,
+            "userAgent": USER_AGENT,
+            "platform": "DESKTOP",
+            "hl": "en",
+            "gl": "US"
+        });
+
+        if let Some(vd) = visitor_data {
+            if let Some(obj) = client.as_object_mut() {
+                obj.insert("visitorData".to_string(), vd.into());
+            }
+        }
+
         json!({
-            "client": {
-                "clientName": CLIENT_NAME,
-                "clientVersion": CLIENT_VERSION,
-                "userAgent": USER_AGENT,
-                "platform": "DESKTOP",
-                "hl": "en",
-                "gl": "US"
-            },
+            "client": client,
             "user": { "lockedSafetyMode": false }
         })
     }
@@ -48,10 +54,11 @@ impl WebClient {
     async fn player_request(
         &self,
         video_id: &str,
+        visitor_data: Option<&str>,
         oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "videoId": video_id,
             "contentCheckOk": true,
             "racyCheckOk": true
@@ -63,12 +70,15 @@ impl WebClient {
             .http
             .post(&url)
             .header("X-YouTube-Client-Name", CLIENT_ID)
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .json(&body);
+            .header("X-YouTube-Client-Version", CLIENT_VERSION);
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        let _ = oauth;
 
         let res = req.send().await?;
         let status = res.status();
@@ -98,11 +108,17 @@ impl YouTubeClient for WebClient {
     async fn search(
         &self,
         query: &str,
-        _context: &Value,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Vec<Track>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "query": query,
             "params": "EgIQAQ%3D%3D"
         });
@@ -114,12 +130,15 @@ impl YouTubeClient for WebClient {
             .post(&url)
             .header("X-YouTube-Client-Name", CLIENT_ID)
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .header("X-Goog-Api-Format-Version", "2")
-            .json(&body);
+            .header("X-Goog-Api-Format-Version", "2");
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        let _ = oauth;
 
         let res = req.send().await?;
         if !res.status().is_success() {
@@ -157,20 +176,36 @@ impl YouTubeClient for WebClient {
     async fn get_track_info(
         &self,
         track_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
-        let body = self.player_request(track_id, &oauth).await?;
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
         Ok(extract_from_player(&body, "youtube"))
     }
 
     async fn get_playlist(
         &self,
         playlist_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         let body = json!({
-            "context": self.build_context(),
-            "playlistId": playlist_id
+            "context": self.build_context(visitor_data),
+            "playlistId": playlist_id,
+            "contentCheckOk": true,
+            "racyCheckOk": true
         });
 
         let url = format!("{}/youtubei/v1/next?prettyPrint=false", INNERTUBE_API);
@@ -179,12 +214,15 @@ impl YouTubeClient for WebClient {
             .http
             .post(&url)
             .header("X-YouTube-Client-Name", CLIENT_ID)
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .json(&body);
+            .header("X-YouTube-Client-Version", CLIENT_VERSION);
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        let _ = oauth;
 
         let res = req.send().await?;
         if !res.status().is_success() {
@@ -209,12 +247,18 @@ impl YouTubeClient for WebClient {
     async fn get_track_url(
         &self,
         track_id: &str,
-        _context: &Value,
+        context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         // Web client requires cipher resolution (signatureTimestamp / n-param).
-        let body = self.player_request(track_id, &oauth).await?;
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
 
         let playability = body
             .get("playabilityStatus")

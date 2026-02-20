@@ -2,7 +2,7 @@ use super::YouTubeClient;
 use super::common::{INNERTUBE_API, resolve_format_url, select_best_audio_format};
 use crate::api::tracks::Track;
 use crate::sources::youtube::cipher::YouTubeCipherManager;
-use crate::sources::youtube::extractor::{extract_from_browse, extract_from_player, extract_track};
+use crate::sources::youtube::extractor::{extract_from_player, extract_track};
 use crate::sources::youtube::oauth::YouTubeOAuth;
 use async_trait::async_trait;
 use base64::Engine as _;
@@ -30,20 +30,30 @@ impl AndroidClient {
         Self { http }
     }
 
-    fn build_context(&self) -> Value {
+    /// Build the InnerTube context for Android.
+    /// Mirrors NodeLink's Android.js `getClient()` — passes visitorData when available.
+    fn build_context(&self, visitor_data: Option<&str>) -> Value {
+        let mut client = json!({
+            "clientName": CLIENT_NAME,
+            "clientVersion": CLIENT_VERSION,
+            "userAgent": USER_AGENT,
+            "deviceMake": "Google",
+            "deviceModel": "Pixel 6",
+            "osName": "Android",
+            "osVersion": "14",
+            "androidSdkVersion": "34",
+            "hl": "en",
+            "gl": "US"
+        });
+
+        if let Some(vd) = visitor_data {
+            if let Some(obj) = client.as_object_mut() {
+                obj.insert("visitorData".to_string(), vd.into());
+            }
+        }
+
         json!({
-            "client": {
-                "clientName": CLIENT_NAME,
-                "clientVersion": CLIENT_VERSION,
-                "userAgent": USER_AGENT,
-                "deviceMake": "Google",
-                "deviceModel": "Pixel 6",
-                "osName": "Android",
-                "osVersion": "14",
-                "androidSdkVersion": "34",
-                "hl": "en",
-                "gl": "US"
-            },
+            "client": client,
             "user": { "lockedSafetyMode": false },
             "request": { "useSsl": true }
         })
@@ -52,10 +62,11 @@ impl AndroidClient {
     async fn player_request(
         &self,
         video_id: &str,
-        oauth: &Arc<YouTubeOAuth>,
+        visitor_data: Option<&str>,
+        _oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "videoId": video_id,
             "contentCheckOk": true,
             "racyCheckOk": true
@@ -67,20 +78,32 @@ impl AndroidClient {
             .http
             .post(&url)
             .header("X-YouTube-Client-Name", CLIENT_ID)
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .json(&body);
+            .header("X-YouTube-Client-Version", CLIENT_VERSION);
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        tracing::debug!("Android player request URL: {}", url);
+        tracing::debug!(
+            "Android player request body: {}",
+            serde_json::to_string_pretty(&body).unwrap_or_default()
+        );
 
         let res = req.send().await?;
         let status = res.status();
+        let body_text = res.text().await?;
+
+        tracing::debug!("Android player response status: {}", status);
+        tracing::debug!("Android player response body: {}", body_text);
+
         if !status.is_success() {
-            return Err(format!("Android player request returned {status}").into());
+            return Err(format!("Android player request returned {status}: {body_text}").into());
         }
 
-        Ok(res.json().await?)
+        Ok(serde_json::from_str(&body_text)?)
     }
 }
 
@@ -102,35 +125,42 @@ impl YouTubeClient for AndroidClient {
     async fn search(
         &self,
         query: &str,
-        _context: &Value,
-        oauth: Arc<YouTubeOAuth>,
+        context: &Value,
+        _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Vec<Track>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "query": query,
             "params": "EgIQAQ%3D%3D"
         });
 
-        let url = format!("{}/youtubei/v1/search?prettyPrint=false", INNERTUBE_API);
+        let url = format!("{}/youtubei/v1/search", INNERTUBE_API);
 
-        let mut req = self
+        let req = self
             .http
             .post(&url)
-            .header("X-YouTube-Client-Name", CLIENT_ID)
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
             .header("X-Goog-Api-Format-Version", "2")
-            .json(&body);
+            .header("X-Goog-Visitor-Id", visitor_data.unwrap_or(""))
+            .header("X-YouTube-Client-Name", CLIENT_ID)
+            .header("X-YouTube-Client-Version", CLIENT_VERSION);
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
-        }
+        let req = req.json(&body);
 
         let res = req.send().await?;
-        if !res.status().is_success() {
-            return Err(format!("Android search failed: {}", res.status()).into());
+        let status = res.status();
+        let body_text = res.text().await?;
+
+        if !status.is_success() {
+            return Err(format!("Android search failed: {} - {}", status, body_text).into());
         }
 
-        let response: Value = res.json().await?;
+        let response: Value = serde_json::from_str(&body_text).unwrap_or_default();
         let mut tracks = Vec::new();
 
         if let Some(sections) = response
@@ -140,13 +170,44 @@ impl YouTubeClient for AndroidClient {
             .and_then(|c| c.as_array())
         {
             for section in sections {
-                if let Some(items) = section
+                // Try itemSectionRenderer first
+                let items_opt = section
                     .get("itemSectionRenderer")
                     .and_then(|i| i.get("contents"))
-                    .and_then(|c| c.as_array())
-                {
+                    .and_then(|c| c.as_array());
+
+                // Also try shelfRenderer / richShelfRenderer
+                let shelf_items_opt = items_opt
+                    .is_none()
+                    .then(|| {
+                        let shelf = section
+                            .get("shelfRenderer")
+                            .or_else(|| section.get("richShelfRenderer"));
+                        shelf.and_then(|s| {
+                            s.get("content")
+                                .and_then(|c| c.get("verticalListRenderer"))
+                                .and_then(|v| v.get("items"))
+                                .or_else(|| {
+                                    s.get("content")
+                                        .and_then(|c| c.get("richGridRenderer"))
+                                        .and_then(|r| r.get("contents"))
+                                })
+                                .and_then(|c| c.as_array())
+                        })
+                    })
+                    .flatten();
+
+                let items = items_opt.or(shelf_items_opt);
+
+                if let Some(items) = items {
                     for item in items {
-                        if let Some(track) = extract_track(item, "youtube") {
+                        // Unwrap richItemRenderer wrapper if present
+                        let inner = item
+                            .get("richItemRenderer")
+                            .and_then(|r| r.get("content"))
+                            .unwrap_or(item);
+
+                        if let Some(track) = extract_track(inner, "youtube") {
                             tracks.push(track);
                         }
                     }
@@ -160,20 +221,36 @@ impl YouTubeClient for AndroidClient {
     async fn get_track_info(
         &self,
         track_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
-        let body = self.player_request(track_id, &oauth).await?;
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
         Ok(extract_from_player(&body, "youtube"))
     }
 
     async fn get_playlist(
         &self,
         playlist_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         let body = json!({
-            "context": self.build_context(),
-            "playlistId": playlist_id
+            "context": self.build_context(visitor_data),
+            "playlistId": playlist_id,
+            "contentCheckOk": true,
+            "racyCheckOk": true
         });
 
         let url = format!("{}/youtubei/v1/next?prettyPrint=false", INNERTUBE_API);
@@ -182,12 +259,15 @@ impl YouTubeClient for AndroidClient {
             .http
             .post(&url)
             .header("X-YouTube-Client-Name", CLIENT_ID)
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .json(&body);
+            .header("X-YouTube-Client-Version", CLIENT_VERSION);
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        let _ = oauth;
 
         let res = req.send().await?;
         if !res.status().is_success() {
@@ -212,11 +292,17 @@ impl YouTubeClient for AndroidClient {
     async fn get_track_url(
         &self,
         track_id: &str,
-        _context: &Value,
+        context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let body = self.player_request(track_id, &oauth).await?;
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
 
         let playability = body
             .get("playabilityStatus")
@@ -261,13 +347,13 @@ impl YouTubeClient for AndroidClient {
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
 
-            let visitor_data = body
+            // Use visitorData from the response itself
+            let response_visitor_data = body
                 .get("responseContext")
                 .and_then(|r| r.get("visitorData"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
 
-            // Collect adaptive format metadata needed by the SABR writer.
             let formats: Vec<Value> = streaming_data
                 .get("adaptiveFormats")
                 .and_then(|f| f.as_array())
@@ -293,7 +379,7 @@ impl YouTubeClient for AndroidClient {
                 "config":        ustreamer_config,
                 "clientName":    3,  // ANDROID
                 "clientVersion": CLIENT_VERSION,
-                "visitorData":   visitor_data,
+                "visitorData":   response_visitor_data,
                 "formats":       formats,
             });
 

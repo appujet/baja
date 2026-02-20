@@ -29,15 +29,23 @@ impl TvClient {
         Self { http }
     }
 
-    fn build_context(&self) -> Value {
+    fn build_context(&self, visitor_data: Option<&str>) -> Value {
+        let mut client = json!({
+            "clientName": CLIENT_NAME,
+            "clientVersion": CLIENT_VERSION,
+            "userAgent": USER_AGENT,
+            "hl": "en",
+            "gl": "US"
+        });
+
+        if let Some(vd) = visitor_data {
+            if let Some(obj) = client.as_object_mut() {
+                obj.insert("visitorData".to_string(), vd.into());
+            }
+        }
+
         json!({
-            "client": {
-                "clientName": CLIENT_NAME,
-                "clientVersion": CLIENT_VERSION,
-                "userAgent": USER_AGENT,
-                "hl": "en",
-                "gl": "US"
-            },
+            "client": client,
             "user": { "lockedSafetyMode": false },
             "request": { "useSsl": true }
         })
@@ -46,10 +54,11 @@ impl TvClient {
     async fn player_request(
         &self,
         video_id: &str,
+        visitor_data: Option<&str>,
         oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "videoId": video_id,
             "contentCheckOk": true,
             "racyCheckOk": true
@@ -61,8 +70,13 @@ impl TvClient {
             .http
             .post(&url)
             .header("X-YouTube-Client-Name", CLIENT_ID)
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .json(&body);
+            .header("X-YouTube-Client-Version", CLIENT_VERSION);
+
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
+        }
+
+        let mut req = req.json(&body);
 
         if let Some(auth) = oauth.get_auth_header().await {
             req = req.header("Authorization", auth);
@@ -97,11 +111,17 @@ impl YouTubeClient for TvClient {
     async fn search(
         &self,
         query: &str,
-        _context: &Value,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Vec<Track>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "query": query
         });
 
@@ -112,12 +132,15 @@ impl YouTubeClient for TvClient {
             .post(&url)
             .header("X-YouTube-Client-Name", CLIENT_ID)
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .header("X-Goog-Api-Format-Version", "2")
-            .json(&body);
+            .header("X-Goog-Api-Format-Version", "2");
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        let _ = oauth;
 
         let res = req.send().await?;
         if !res.status().is_success() {
@@ -154,16 +177,20 @@ impl YouTubeClient for TvClient {
     async fn get_track_info(
         &self,
         _track_id: &str,
+        _context: &Value,
         _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
+        tracing::debug!("{} client does not support get_track_info", self.name());
         Ok(None)
     }
 
     async fn get_playlist(
         &self,
         _playlist_id: &str,
+        _context: &Value,
         _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>> {
+        tracing::debug!("{} client does not support get_playlist", self.name());
         Ok(None)
     }
 
@@ -173,17 +200,24 @@ impl YouTubeClient for TvClient {
         _context: &Value,
         _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
+        tracing::debug!("{} client does not support resolve_url", self.name());
         Ok(None)
     }
 
     async fn get_track_url(
         &self,
         track_id: &str,
-        _context: &Value,
+        context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let body = self.player_request(track_id, &oauth).await?;
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
 
         let playability = body
             .get("playabilityStatus")

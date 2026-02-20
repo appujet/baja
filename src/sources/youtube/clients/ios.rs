@@ -29,20 +29,28 @@ impl IosClient {
     }
 
     /// Build the InnerTube context block mirroring NodeLink's IOS getClient().
-    fn build_context(&self) -> Value {
+    fn build_context(&self, visitor_data: Option<&str>) -> Value {
+        let mut client = json!({
+            "clientName": CLIENT_NAME,
+            "clientVersion": CLIENT_VERSION,
+            "userAgent": USER_AGENT,
+            "deviceMake": "Apple",
+            "deviceModel": "iPhone16,2",
+            "osName": "iPhone",
+            "osVersion": "18.2.22C152",
+            "hl": "en",
+            "gl": "US",
+            "utcOffsetMinutes": 0
+        });
+
+        if let Some(vd) = visitor_data {
+            if let Some(obj) = client.as_object_mut() {
+                obj.insert("visitorData".to_string(), vd.into());
+            }
+        }
+
         json!({
-            "client": {
-                "clientName": CLIENT_NAME,
-                "clientVersion": CLIENT_VERSION,
-                "userAgent": USER_AGENT,
-                "deviceMake": "Apple",
-                "deviceModel": "iPhone16,2",
-                "osName": "iPhone",
-                "osVersion": "18.2.22C152",
-                "hl": "en",
-                "gl": "US",
-                "utcOffsetMinutes": 0
-            },
+            "client": client,
             "user": { "lockedSafetyMode": false },
             "request": { "useSsl": true }
         })
@@ -51,10 +59,11 @@ impl IosClient {
     async fn player_request(
         &self,
         video_id: &str,
+        visitor_data: Option<&str>,
         oauth: &Arc<YouTubeOAuth>,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "videoId": video_id,
             "contentCheckOk": true,
             "racyCheckOk": true
@@ -66,12 +75,15 @@ impl IosClient {
             .http
             .post(&url)
             .header("X-YouTube-Client-Name", "5") // IOS client_id = 5
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .json(&body);
+            .header("X-YouTube-Client-Version", CLIENT_VERSION);
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        let _ = oauth;
 
         let res = req.send().await?;
         let status = res.status();
@@ -105,8 +117,14 @@ impl YouTubeClient for IosClient {
         context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Vec<Track>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         let body = json!({
-            "context": self.build_context(),
+            "context": self.build_context(visitor_data),
             "query": query,
             "params": "EgIQAQ%3D%3D"
         });
@@ -118,12 +136,15 @@ impl YouTubeClient for IosClient {
             .post(&url)
             .header("X-YouTube-Client-Name", "5")
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
-            .header("X-Goog-Api-Format-Version", "2")
-            .json(&body);
+            .header("X-Goog-Api-Format-Version", "2");
 
-        if let Some(auth) = oauth.get_auth_header().await {
-            req = req.header("Authorization", auth);
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
+
+        let req = req.json(&body);
+
+        let _ = oauth;
 
         let res = req.send().await?;
         if !res.status().is_success() {
@@ -161,9 +182,16 @@ impl YouTubeClient for IosClient {
     async fn get_track_info(
         &self,
         track_id: &str,
+        context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<Track>, Box<dyn std::error::Error + Send + Sync>> {
-        let body = self.player_request(track_id, &oauth).await?;
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
         Ok(extract_from_player(&body, "youtube"))
     }
 
@@ -171,6 +199,7 @@ impl YouTubeClient for IosClient {
     async fn get_playlist(
         &self,
         _playlist_id: &str,
+        _context: &Value,
         _oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<(Vec<Track>, String)>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(None)
@@ -188,12 +217,18 @@ impl YouTubeClient for IosClient {
     async fn get_track_url(
         &self,
         track_id: &str,
-        _context: &Value,
+        context: &Value,
         cipher_manager: Arc<YouTubeCipherManager>,
         oauth: Arc<YouTubeOAuth>,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
         // IOS does NOT require a player script for cipher – URLs come pre-signed.
-        let body = self.player_request(track_id, &oauth).await?;
+        let body = self.player_request(track_id, visitor_data, &oauth).await?;
 
         let playability = body
             .get("playabilityStatus")
