@@ -5,11 +5,7 @@ pub fn fetch_segment_into(
     resource: &Resource,
     out: &mut Vec<u8>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    tracing::debug!(
-        "HLS: fetching {} (range={:?})",
-        resource.url,
-        resource.range
-    );
+
     let mut req = client.get(&resource.url).header("Accept", "*/*");
 
     if let Some(range) = &resource.range {
@@ -23,7 +19,7 @@ pub fn fetch_segment_into(
         return Err(format!("HLS fetch failed {}: {}", res.status(), resource.url).into());
     }
 
-    let n = res.copy_to(out)?;
-    tracing::debug!("HLS: fetched {} bytes", n);
+    let _n = res.copy_to(out)?;
+
     Ok(())
 }

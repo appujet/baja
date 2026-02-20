@@ -10,6 +10,8 @@ pub struct ByteRange {
 pub struct Resource {
     pub url: String,
     pub range: Option<ByteRange>,
+    /// Segment duration in seconds (from #EXTINF). None for map segments.
+    pub duration: Option<f64>,
 }
 
 pub struct Variant {

@@ -16,6 +16,7 @@ local = false
 jiosaavn = true
 deezer = true
 applemusic = true
+gaana = true
 
 [mirrors]
 providers = [
@@ -99,3 +100,15 @@ playlist_load_limit = 0
 album_load_limit = 0
 playlist_page_load_concurrency = 5
 album_page_load_concurrency = 5
+
+[gaana]
+# stream_quality = "high" # "low", "medium", "high"
+search_limit = 10
+playlist_load_limit = 50
+album_load_limit = 50
+artist_load_limit = 20
+
+[gaana.proxy]
+# url = "http://proxy.example.com:8080"
+# username = "myuser"
+# password = "mypassword"

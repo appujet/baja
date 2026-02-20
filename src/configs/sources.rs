@@ -12,6 +12,8 @@ pub struct SourcesConfig {
     pub deezer: bool,
     #[serde(default)]
     pub applemusic: bool,
+    #[serde(default)]
+    pub gaana: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -252,4 +254,44 @@ impl Default for AppleMusicConfig {
 pub struct MirrorsConfig {
     #[serde(default)]
     pub providers: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GaanaConfig {
+    pub proxy: Option<HttpProxyConfig>,
+    pub stream_quality: Option<String>,
+    #[serde(default = "default_gn_search_limit")]
+    pub search_limit: usize,
+    #[serde(default = "default_gn_playlist_load_limit")]
+    pub playlist_load_limit: usize,
+    #[serde(default = "default_gn_album_load_limit")]
+    pub album_load_limit: usize,
+    #[serde(default = "default_gn_artist_load_limit")]
+    pub artist_load_limit: usize,
+}
+
+fn default_gn_search_limit() -> usize {
+    10
+}
+fn default_gn_playlist_load_limit() -> usize {
+    50
+}
+fn default_gn_album_load_limit() -> usize {
+    50
+}
+fn default_gn_artist_load_limit() -> usize {
+    20
+}
+
+impl Default for GaanaConfig {
+    fn default() -> Self {
+        Self {
+            proxy: None,
+            stream_quality: None,
+            search_limit: default_gn_search_limit(),
+            playlist_load_limit: default_gn_playlist_load_limit(),
+            album_load_limit: default_gn_album_load_limit(),
+            artist_load_limit: default_gn_artist_load_limit(),
+        }
+    }
 }

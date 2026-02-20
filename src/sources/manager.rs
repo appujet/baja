@@ -1,5 +1,6 @@
 use super::applemusic::AppleMusicSource;
 use super::deezer::DeezerSource;
+use super::gaana::GaanaSource;
 use super::http::HttpSource;
 use super::jiosaavn::JioSaavnSource;
 use super::plugin::SourcePlugin;
@@ -47,6 +48,10 @@ impl SourceManager {
         if config.sources.applemusic {
             info!("Registering Apple Music source");
             sources.push(Box::new(AppleMusicSource::new(config.applemusic.clone())));
+        }
+        if config.sources.gaana {
+            info!("Registering Gaana source");
+            sources.push(Box::new(GaanaSource::new(config.gaana.clone())));
         }
         if config.sources.http {
             info!("Registering HTTP source");

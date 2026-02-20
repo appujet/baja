@@ -89,13 +89,19 @@ pub fn parse_m3u8(text: &str, base_url: &str) -> M3u8Playlist {
         if line.starts_with("#EXT-X-MAP") {
             if let Some(url) = extract_attr_str(line, "URI").map(|u| resolve_url(base_url, &u)) {
                 let range = extract_attr_str(line, "BYTERANGE").map(|r| parse_byte_range(&r, 0));
-                map = Some(Resource { url, range });
+                map = Some(Resource { url, range, duration: None });
             }
         } else if line.starts_with("#EXT-X-BYTERANGE:") {
             let r = parse_byte_range(&line[17..], next_offset);
             next_offset = r.offset + r.length;
             pending_range = Some(r);
         } else if line.starts_with("#EXTINF:") {
+            // Parse duration from #EXTINF:<duration>,
+            let seg_duration = line
+                .strip_prefix("#EXTINF:")
+                .and_then(|rest| rest.split(',').next())
+                .and_then(|d| d.trim().parse::<f64>().ok());
+
             let mut j = i + 1;
             while j < lines.len() && lines[j].starts_with('#') {
                 if lines[j].starts_with("#EXT-X-BYTERANGE:") {
@@ -109,6 +115,7 @@ pub fn parse_m3u8(text: &str, base_url: &str) -> M3u8Playlist {
                 segments.push(Resource {
                     url: resolve_url(base_url, lines[j]),
                     range: pending_range.take(),
+                    duration: seg_duration,
                 });
             }
         }
