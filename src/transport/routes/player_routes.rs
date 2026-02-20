@@ -1,15 +1,19 @@
-use crate::api;
-use crate::api::tracks::{Track, TrackInfo};
-use crate::playback::{Filters, Player, PlayerState, PlayerUpdate, VoiceState};
-use crate::playback::{PlayerContext, VoiceConnectionState};
-use crate::server::AppState;
-use crate::server::now_ms;
+use std::sync::Arc;
+
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use std::sync::Arc;
+
+use crate::{
+    api,
+    api::tracks::{Track, TrackInfo},
+    playback::{
+        Filters, Player, PlayerContext, PlayerState, PlayerUpdate, VoiceConnectionState, VoiceState,
+    },
+    server::{AppState, now_ms},
+};
 
 /// GET /v4/sessions/{sessionId}/players
 pub async fn get_players(
@@ -165,11 +169,11 @@ pub async fn update_player(
     if let Some(pos) = body.position {
         player.position = pos;
         if let Some(handle) = &player.track_handle {
-             let h = handle.clone();
-             tokio::spawn(async move {
-                 // Convert ms to samples if needed by handle, but handle.seek takes ms
-                 h.seek(pos).await;
-             });
+            let h = handle.clone();
+            tokio::spawn(async move {
+                // Convert ms to samples if needed by handle, but handle.seek takes ms
+                h.seek(pos).await;
+            });
         }
     }
 

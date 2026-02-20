@@ -5,7 +5,6 @@ pub fn fetch_segment_into(
     resource: &Resource,
     out: &mut Vec<u8>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-
     let mut req = client.get(&resource.url).header("Accept", "*/*");
 
     if let Some(range) = &resource.range {

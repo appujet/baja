@@ -1,16 +1,19 @@
-use crate::server::AppState;
-use crate::transport::routes::{player_routes, stats_routes};
+use std::sync::Arc;
+
 use axum::{
     Router,
     extract::{Request, State},
-    http::HeaderValue,
-    http::StatusCode,
+    http::{HeaderValue, StatusCode},
     middleware::{self, Next},
     response::Response,
     routing::get,
 };
-use std::sync::Arc;
 use tracing::warn;
+
+use crate::{
+    server::AppState,
+    transport::routes::{player_routes, stats_routes},
+};
 
 async fn check_auth(
     State(state): State<Arc<AppState>>,

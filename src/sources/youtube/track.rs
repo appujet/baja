@@ -1,17 +1,23 @@
-use crate::audio::processor::{AudioProcessor, DecoderCommand};
-use crate::configs::HttpProxyConfig;
-use crate::sources::plugin::PlayableTrack;
-use crate::sources::youtube::cipher::YouTubeCipherManager;
-use crate::sources::youtube::clients::YouTubeClient;
-use crate::sources::youtube::hls::HlsReader;
-use crate::sources::youtube::oauth::YouTubeOAuth;
-use crate::sources::youtube::sabr::reader::SabrReader;
-use crate::sources::youtube::sabr::structs::FormatId;
+use std::{net::IpAddr, sync::Arc};
+
 use base64::Engine;
 use flume::{Receiver, Sender};
-use std::net::IpAddr;
-use std::sync::Arc;
 use tracing::{debug, error};
+
+use crate::{
+    audio::processor::{AudioProcessor, DecoderCommand},
+    configs::HttpProxyConfig,
+    sources::{
+        plugin::PlayableTrack,
+        youtube::{
+            cipher::YouTubeCipherManager,
+            clients::YouTubeClient,
+            hls::HlsReader,
+            oauth::YouTubeOAuth,
+            sabr::{reader::SabrReader, structs::FormatId},
+        },
+    },
+};
 
 pub struct YoutubeTrack {
     pub identifier: String,

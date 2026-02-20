@@ -1,5 +1,6 @@
-use regex::Regex;
 use std::sync::Arc;
+
+use regex::Regex;
 use tokio::sync::RwLock;
 use tracing::{debug, error};
 

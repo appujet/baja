@@ -1,5 +1,6 @@
-use base64::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use base64::prelude::*;
 
 pub struct PoTokenManager;
 

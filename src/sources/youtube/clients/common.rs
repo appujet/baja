@@ -1,9 +1,10 @@
-use super::YouTubeCipherManager;
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use std::sync::{Arc, OnceLock};
+
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use regex::Regex;
 use serde_json::{Value, json};
-use std::sync::{Arc, OnceLock};
+
+use super::YouTubeCipherManager;
 
 pub const INNERTUBE_API: &str = "https://youtubei.googleapis.com";
 

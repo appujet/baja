@@ -1,5 +1,4 @@
-use super::AudioFilter;
-use super::lfo::Lfo;
+use super::{AudioFilter, lfo::Lfo};
 
 /// Rotation (8D audio) filter — LFO-driven stereo panning.
 pub struct RotationFilter {

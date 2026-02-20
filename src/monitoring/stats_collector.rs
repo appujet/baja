@@ -1,5 +1,4 @@
-use crate::api;
-use crate::server::AppState;
+use crate::{api, server::AppState};
 
 pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
     let mut total_players = 0i32;

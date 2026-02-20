@@ -1,5 +1,6 @@
-use crate::api::tracks::{Track, TrackInfo};
 use serde_json::Value;
+
+use crate::api::tracks::{Track, TrackInfo};
 
 pub fn extract_from_player(body: &Value, source_name: &str) -> Option<Track> {
     let details = body

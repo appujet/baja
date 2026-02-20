@@ -1,8 +1,10 @@
-use super::parser::parse_m3u8;
-use super::types::{M3u8Playlist, Resource};
+use std::{io::Read, sync::Arc};
+
+use super::{
+    parser::parse_m3u8,
+    types::{M3u8Playlist, Resource},
+};
 use crate::sources::youtube::cipher::YouTubeCipherManager;
-use std::io::Read;
-use std::sync::Arc;
 
 pub fn resolve_playlist(
     client: &reqwest::blocking::Client,

@@ -1,7 +1,11 @@
-use crate::audio::playback::handle::PlaybackState;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
+
 use tokio::sync::Mutex;
+
+use crate::audio::playback::handle::PlaybackState;
 
 pub struct Mixer {
     tracks: Vec<MixerTrack>,

@@ -1,10 +1,13 @@
-use crate::audio::processor::{AudioProcessor, DecoderCommand};
-use crate::configs::HttpProxyConfig;
-use crate::sources::gaana::crypto::decrypt_stream_path;
-use crate::sources::plugin::PlayableTrack;
-use flume::{Receiver, Sender};
 use std::net::IpAddr;
+
+use flume::{Receiver, Sender};
 use tracing::warn;
+
+use crate::{
+    audio::processor::{AudioProcessor, DecoderCommand},
+    configs::HttpProxyConfig,
+    sources::{gaana::crypto::decrypt_stream_path, plugin::PlayableTrack},
+};
 
 pub struct GaanaTrack {
     pub client: reqwest::Client,

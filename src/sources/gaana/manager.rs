@@ -1,13 +1,16 @@
-use super::track::GaanaTrack;
-use crate::api::tracks::{LoadError, LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
-use crate::sources::SourcePlugin;
-use crate::sources::plugin::PlayableTrack;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use regex::Regex;
 use reqwest::header::HeaderMap;
 use serde_json::Value;
-use std::sync::Arc;
 use tracing::{debug, warn};
+
+use super::track::GaanaTrack;
+use crate::{
+    api::tracks::{LoadError, LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    sources::{SourcePlugin, plugin::PlayableTrack},
+};
 
 const API_URL: &str = "https://gaana.com/apiv2";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";

@@ -37,8 +37,7 @@ impl AudioFilter for ChannelMixFilter {
             let new_right = left * self.left_to_right as f64 + right * self.right_to_right as f64;
 
             samples[offset] = (new_left as i32).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
-            samples[offset + 1] =
-                (new_right as i32).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+            samples[offset + 1] = (new_right as i32).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
         }
     }
 

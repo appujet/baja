@@ -1,14 +1,20 @@
-use crate::api;
-use crate::api::models::*;
-use crate::api::tracks::{LoadResult, Track};
-use crate::playback::Filters;
-use crate::server::AppState;
+use std::sync::Arc;
+
 use axum::{
     extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use std::sync::Arc;
+
+use crate::{
+    api,
+    api::{
+        models::*,
+        tracks::{LoadResult, Track},
+    },
+    playback::Filters,
+    server::AppState,
+};
 
 /// GET /v4/loadtracks?identifier=...
 pub async fn load_tracks(

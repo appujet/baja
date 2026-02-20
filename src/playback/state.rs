@@ -1,5 +1,6 @@
-use crate::api::tracks::Track;
 use serde::{Deserialize, Serialize};
+
+use crate::api::tracks::Track;
 
 /// Full player state as returned by REST endpoints.
 #[derive(Debug, Clone, Serialize)]

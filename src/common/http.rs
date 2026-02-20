@@ -1,5 +1,6 @@
-use reqwest::{Client, Error, blocking};
 use std::time::Duration;
+
+use reqwest::{Client, Error, blocking};
 
 pub struct HttpClient;
 

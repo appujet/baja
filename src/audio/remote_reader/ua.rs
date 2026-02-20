@@ -1,4 +1,3 @@
-
 pub mod yt_ua {
     pub const IOS: &str =
         "com.google.ios.youtube/21.02.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)";

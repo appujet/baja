@@ -1,5 +1,6 @@
-use crate::configs::Config;
 use tracing_subscriber::EnvFilter;
+
+use crate::configs::Config;
 
 pub fn init(config: &Config) {
     // Determine the base log level

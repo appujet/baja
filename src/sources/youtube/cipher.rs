@@ -1,6 +1,7 @@
-use crate::configs::sources::YouTubeCipherConfig;
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
+
+use crate::configs::sources::YouTubeCipherConfig;
 
 pub struct YouTubeCipherManager {
     config: YouTubeCipherConfig,

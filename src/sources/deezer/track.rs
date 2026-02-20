@@ -1,11 +1,13 @@
-use crate::audio::processor::{AudioProcessor, DecoderCommand};
-use crate::configs::HttpProxyConfig;
-use crate::sources::deezer::reader::DeezerReader;
-use crate::sources::plugin::PlayableTrack;
+use std::{net::IpAddr, sync::Arc};
+
 use flume::{Receiver, Sender};
-use std::net::IpAddr;
-use std::sync::Arc;
 use tracing::{debug, error};
+
+use crate::{
+    audio::processor::{AudioProcessor, DecoderCommand},
+    configs::HttpProxyConfig,
+    sources::{deezer::reader::DeezerReader, plugin::PlayableTrack},
+};
 
 pub struct DeezerTrack {
     pub client: reqwest::Client,

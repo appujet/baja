@@ -1,10 +1,12 @@
 use std::sync::Arc;
+
 use tokio::sync::Mutex;
 use tracing::error;
-use crate::audio::filters::FilterChain;
-use crate::server::UserId;
-use crate::playback::VoiceConnectionState;
-use crate::gateway::VoiceGateway;
+
+use crate::{
+    audio::filters::FilterChain, gateway::VoiceGateway, playback::VoiceConnectionState,
+    server::UserId,
+};
 
 pub async fn connect_voice(
     engine: Arc<Mutex<crate::gateway::VoiceEngine>>,

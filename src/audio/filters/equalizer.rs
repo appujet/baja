@@ -12,21 +12,81 @@ struct Coefficients {
 // Hardcoded coefficients from LavaPlayer for 48kHz
 // Order: beta, alpha, gamma
 const COEFFICIENTS_48000: [Coefficients; BAND_COUNT] = [
-    Coefficients { beta: 9.9847546664e-01, alpha: 7.6226668143e-04, gamma: 1.9984647656e+00 },
-    Coefficients { beta: 9.9756184654e-01, alpha: 1.2190767289e-03, gamma: 1.9975344645e+00 },
-    Coefficients { beta: 9.9616261379e-01, alpha: 1.9186931041e-03, gamma: 1.9960947369e+00 },
-    Coefficients { beta: 9.9391578543e-01, alpha: 3.0421072865e-03, gamma: 1.9937449618e+00 },
-    Coefficients { beta: 9.9028307215e-01, alpha: 4.8584639242e-03, gamma: 1.9898465702e+00 },
-    Coefficients { beta: 9.8485897264e-01, alpha: 7.5705136795e-03, gamma: 1.9837962543e+00 },
-    Coefficients { beta: 9.7588512657e-01, alpha: 1.2057436715e-02, gamma: 1.9731772447e+00 },
-    Coefficients { beta: 9.6228521814e-01, alpha: 1.8857390928e-02, gamma: 1.9556164694e+00 },
-    Coefficients { beta: 9.4080933132e-01, alpha: 2.9595334338e-02, gamma: 1.9242054384e+00 },
-    Coefficients { beta: 9.0702059196e-01, alpha: 4.6489704022e-02, gamma: 1.8653476166e+00 },
-    Coefficients { beta: 8.5868004289e-01, alpha: 7.0659978553e-02, gamma: 1.7600401337e+00 },
-    Coefficients { beta: 7.8409610788e-01, alpha: 1.0795194606e-01, gamma: 1.5450725522e+00 },
-    Coefficients { beta: 6.8332861002e-01, alpha: 1.5833569499e-01, gamma: 1.1426447155e+00 },
-    Coefficients { beta: 5.5267518228e-01, alpha: 2.2366240886e-01, gamma: 4.0186190803e-01 },
-    Coefficients { beta: 4.1811888447e-01, alpha: 2.9094055777e-01, gamma: -7.0905944223e-01 },
+    Coefficients {
+        beta: 9.9847546664e-01,
+        alpha: 7.6226668143e-04,
+        gamma: 1.9984647656e+00,
+    },
+    Coefficients {
+        beta: 9.9756184654e-01,
+        alpha: 1.2190767289e-03,
+        gamma: 1.9975344645e+00,
+    },
+    Coefficients {
+        beta: 9.9616261379e-01,
+        alpha: 1.9186931041e-03,
+        gamma: 1.9960947369e+00,
+    },
+    Coefficients {
+        beta: 9.9391578543e-01,
+        alpha: 3.0421072865e-03,
+        gamma: 1.9937449618e+00,
+    },
+    Coefficients {
+        beta: 9.9028307215e-01,
+        alpha: 4.8584639242e-03,
+        gamma: 1.9898465702e+00,
+    },
+    Coefficients {
+        beta: 9.8485897264e-01,
+        alpha: 7.5705136795e-03,
+        gamma: 1.9837962543e+00,
+    },
+    Coefficients {
+        beta: 9.7588512657e-01,
+        alpha: 1.2057436715e-02,
+        gamma: 1.9731772447e+00,
+    },
+    Coefficients {
+        beta: 9.6228521814e-01,
+        alpha: 1.8857390928e-02,
+        gamma: 1.9556164694e+00,
+    },
+    Coefficients {
+        beta: 9.4080933132e-01,
+        alpha: 2.9595334338e-02,
+        gamma: 1.9242054384e+00,
+    },
+    Coefficients {
+        beta: 9.0702059196e-01,
+        alpha: 4.6489704022e-02,
+        gamma: 1.8653476166e+00,
+    },
+    Coefficients {
+        beta: 8.5868004289e-01,
+        alpha: 7.0659978553e-02,
+        gamma: 1.7600401337e+00,
+    },
+    Coefficients {
+        beta: 7.8409610788e-01,
+        alpha: 1.0795194606e-01,
+        gamma: 1.5450725522e+00,
+    },
+    Coefficients {
+        beta: 6.8332861002e-01,
+        alpha: 1.5833569499e-01,
+        gamma: 1.1426447155e+00,
+    },
+    Coefficients {
+        beta: 5.5267518228e-01,
+        alpha: 2.2366240886e-01,
+        gamma: 4.0186190803e-01,
+    },
+    Coefficients {
+        beta: 4.1811888447e-01,
+        alpha: 2.9094055777e-01,
+        gamma: -7.0905944223e-01,
+    },
 ];
 
 #[derive(Clone, Default)]
@@ -42,25 +102,24 @@ impl EqBandState {
         // LavaPlayer logic:
         // result = alpha * (sample - history[x-2]) + gamma * history[y-1] - beta * history[y-2]
         // history[x-2] corresponds to x2
-        let result = coeffs.alpha * (sample - self.x2)
-            + coeffs.gamma * self.y1
-            - coeffs.beta * self.y2;
-        
+        let result =
+            coeffs.alpha * (sample - self.x2) + coeffs.gamma * self.y1 - coeffs.beta * self.y2;
+
         // Update history
         self.x2 = self.x1;
         self.x1 = sample;
         self.y2 = self.y1;
-        
+
         // Check for NaN/Inf
         if !result.is_finite() {
             self.y1 = 0.0;
             return 0.0;
         }
-        
+
         self.y1 = result;
         result
     }
-    
+
     fn reset(&mut self) {
         self.x1 = 0.0;
         self.x2 = 0.0;

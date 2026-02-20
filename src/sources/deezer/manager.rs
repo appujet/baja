@@ -1,16 +1,22 @@
-use super::track::DeezerTrack;
-use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
-use crate::sources::SourcePlugin;
-use crate::sources::plugin::PlayableTrack;
+use std::{
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
+};
+
 use async_trait::async_trait;
 use regex::Regex;
 use reqwest::header::HeaderMap;
 use serde_json::Value;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
 use tracing::{debug, error};
+
+use super::track::DeezerTrack;
+use crate::{
+    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    sources::{SourcePlugin, plugin::PlayableTrack},
+};
 
 const PUBLIC_API_BASE: &str = "https://api.deezer.com/2.0";
 const PRIVATE_API_BASE: &str = "https://www.deezer.com/ajax/gw-light.php";

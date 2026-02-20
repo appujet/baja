@@ -1,8 +1,12 @@
-use crate::playback::PlayerContext;
-use crate::server::{AppState, Session};
+use std::sync::Arc;
+
 use serde::Deserialize;
 use serde_json::Value;
-use std::sync::Arc;
+
+use crate::{
+    playback::PlayerContext,
+    server::{AppState, Session},
+};
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "op")]
@@ -98,7 +102,8 @@ pub async fn handle_op(
 
                     drop(player);
                     let new_task =
-                        crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain).await;
+                        crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain)
+                            .await;
 
                     if let Some(mut player) = session.players.get_mut(&guild_id) {
                         player.gateway_task = Some(new_task);

@@ -1,8 +1,8 @@
-use crate::api;
-use crate::monitoring::collect_stats;
-use crate::playback::PlayerState;
-use crate::server::now_ms;
-use crate::server::{AppState, Session, UserId};
+use std::{
+    num::NonZeroU64,
+    sync::{Arc, atomic::Ordering::Relaxed},
+};
+
 use axum::{
     extract::{
         State,
@@ -11,11 +11,15 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use std::num::NonZeroU64;
-use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
-use std::sync::atomic::Ordering::Relaxed;
+
+use crate::{
+    api,
+    monitoring::collect_stats,
+    playback::PlayerState,
+    server::{AppState, Session, UserId, now_ms},
+};
 
 pub async fn websocket_handler(
     headers: HeaderMap,
@@ -232,9 +236,7 @@ pub async fn handle_socket(
 
     // Cleanup or pause for resume
     if session.resumable.load(Relaxed) {
-        session
-            .paused
-            .store(true, Relaxed);
+        session.paused.store(true, Relaxed);
 
         // Race condition check: Ensure we haven't been replaced by a new connection
         {
@@ -263,9 +265,7 @@ pub async fn handle_socket(
             .resumable_sessions
             .insert(session_id.clone(), session.clone());
 
-        let timeout_secs = session
-            .resume_timeout
-            .load(Relaxed);
+        let timeout_secs = session.resume_timeout.load(Relaxed);
 
         info!(
             "Connection closed (resumable). Session {} can be resumed within {} seconds.",

@@ -1,17 +1,21 @@
-use crate::audio::playback::Mixer;
-use crate::gateway::DaveHandler;
+use std::{
+    collections::HashSet,
+    net::{SocketAddr, UdpSocket},
+    sync::{
+        Arc,
+        atomic::{AtomicI64, Ordering},
+    },
+};
+
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashSet;
-use std::net::{SocketAddr, UdpSocket};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, Ordering};
-use tokio::net::UdpSocket as TokioUdpSocket;
-use tokio::sync::Mutex;
+use tokio::{net::UdpSocket as TokioUdpSocket, sync::Mutex};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
+
+use crate::{audio::playback::Mixer, gateway::DaveHandler};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct VoiceGatewayMessage {
@@ -725,8 +729,7 @@ async fn speak_loop(
     filter_chain: Arc<Mutex<crate::audio::filters::FilterChain>>,
     cancel_token: CancellationToken,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use crate::audio::pipeline::encoder::Encoder;
-    use crate::gateway::UdpBackend;
+    use crate::{audio::pipeline::encoder::Encoder, gateway::UdpBackend};
     let mut encoder = Encoder::new().map_err(map_boxed_err)?;
     let mut udp = UdpBackend::new(socket, addr, ssrc, key, &mode).map_err(map_boxed_err)?;
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(20));

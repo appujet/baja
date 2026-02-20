@@ -1,14 +1,18 @@
-use super::token::SpotifyTokenTracker;
-use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
-use crate::sources::SourcePlugin;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use futures::future::join_all;
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::{Value, json};
-use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tracing::{debug, warn};
+
+use super::token::SpotifyTokenTracker;
+use crate::{
+    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    sources::SourcePlugin,
+};
 
 const PARTNER_API_URL: &str = "https://api-partner.spotify.com/pathfinder/v2/query";
 

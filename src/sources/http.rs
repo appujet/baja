@@ -1,16 +1,21 @@
-use crate::api::tracks::{LoadError, LoadResult, Track, TrackInfo};
-use crate::audio::processor::{AudioProcessor, DecoderCommand};
-use crate::sources::SourcePlugin;
-use crate::sources::plugin::PlayableTrack;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use regex::Regex;
-use std::sync::Arc;
-use symphonia::core::codecs::CODEC_TYPE_NULL;
-use symphonia::core::formats::FormatOptions;
-use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::{MetadataOptions, StandardTagKey};
-use symphonia::core::probe::Hint;
+use symphonia::core::{
+    codecs::CODEC_TYPE_NULL,
+    formats::FormatOptions,
+    io::MediaSourceStream,
+    meta::{MetadataOptions, StandardTagKey},
+    probe::Hint,
+};
 use tracing::{debug, error, warn};
+
+use crate::{
+    api::tracks::{LoadError, LoadResult, Track, TrackInfo},
+    audio::processor::{AudioProcessor, DecoderCommand},
+    sources::{SourcePlugin, plugin::PlayableTrack},
+};
 
 pub struct HttpSource {
     url_regex: Regex,

@@ -8,12 +8,13 @@ pub mod web;
 pub mod web_embedded;
 pub mod web_remix;
 
-use super::cipher::YouTubeCipherManager;
-use super::oauth::YouTubeOAuth;
-use crate::api::tracks::Track;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde_json::Value;
-use std::sync::Arc;
+
+use super::{cipher::YouTubeCipherManager, oauth::YouTubeOAuth};
+use crate::api::tracks::Track;
 
 #[async_trait]
 pub trait YouTubeClient: Send + Sync {

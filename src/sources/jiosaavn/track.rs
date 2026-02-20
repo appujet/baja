@@ -1,12 +1,17 @@
-use crate::audio::processor::{AudioProcessor, DecoderCommand};
-use crate::configs::HttpProxyConfig;
-use crate::sources::plugin::PlayableTrack;
-use base64::prelude::*;
-use des::Des;
-use des::cipher::generic_array::GenericArray;
-use des::cipher::{BlockDecrypt, KeyInit};
-use flume::{Receiver, Sender};
 use std::net::IpAddr;
+
+use base64::prelude::*;
+use des::{
+    Des,
+    cipher::{BlockDecrypt, KeyInit, generic_array::GenericArray},
+};
+use flume::{Receiver, Sender};
+
+use crate::{
+    audio::processor::{AudioProcessor, DecoderCommand},
+    configs::HttpProxyConfig,
+    sources::plugin::PlayableTrack,
+};
 
 pub struct JioSaavnTrack {
     pub encrypted_url: String,

@@ -1,6 +1,9 @@
-use super::types::{ByteRange, M3u8Playlist, Media, Resource, Variant};
-use super::utils::{extract_attr_str, extract_attr_u64, parse_byte_range, resolve_url};
 use std::collections::HashMap;
+
+use super::{
+    types::{ByteRange, M3u8Playlist, Media, Resource, Variant},
+    utils::{extract_attr_str, extract_attr_u64, parse_byte_range, resolve_url},
+};
 
 /// Very small M3U8 parser — handles just enough of the spec for YouTube HLS.
 pub fn parse_m3u8(text: &str, base_url: &str) -> M3u8Playlist {
@@ -89,7 +92,11 @@ pub fn parse_m3u8(text: &str, base_url: &str) -> M3u8Playlist {
         if line.starts_with("#EXT-X-MAP") {
             if let Some(url) = extract_attr_str(line, "URI").map(|u| resolve_url(base_url, &u)) {
                 let range = extract_attr_str(line, "BYTERANGE").map(|r| parse_byte_range(&r, 0));
-                map = Some(Resource { url, range, duration: None });
+                map = Some(Resource {
+                    url,
+                    range,
+                    duration: None,
+                });
             }
         } else if line.starts_with("#EXT-X-BYTERANGE:") {
             let r = parse_byte_range(&line[17..], next_offset);

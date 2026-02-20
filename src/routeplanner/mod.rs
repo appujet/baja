@@ -1,11 +1,17 @@
-use crate::api::BalancingIpDetails;
-use crate::api::routeplanner::{FailingAddress, IpBlock, RotatingIpDetails, RoutePlannerStatus};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    str::FromStr,
+    sync::Mutex,
+};
+
 use async_trait::async_trait;
 use ipnet::IpNet;
-use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::str::FromStr;
-use std::sync::Mutex;
+
+use crate::api::{
+    BalancingIpDetails,
+    routeplanner::{FailingAddress, IpBlock, RotatingIpDetails, RoutePlannerStatus},
+};
 
 #[async_trait]
 pub trait RoutePlanner: Send + Sync {

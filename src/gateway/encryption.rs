@@ -1,6 +1,9 @@
+use std::{
+    collections::{HashMap, HashSet},
+    num::NonZeroU16,
+};
+
 use davey::{DaveSession, ProposalsOperationType};
-use std::collections::{HashMap, HashSet};
-use std::num::NonZeroU16;
 use tracing::info;
 
 pub struct DaveHandler {
@@ -86,7 +89,12 @@ impl DaveHandler {
         self.was_ready = false;
         if let Some(session) = &mut self.session {
             // Try to re-init with version 0 (passthrough)
-            let _ = session.reinit(NonZeroU16::new(1).unwrap(), self.user_id, self.channel_id, None);
+            let _ = session.reinit(
+                NonZeroU16::new(1).unwrap(),
+                self.user_id,
+                self.channel_id,
+                None,
+            );
         }
         info!("DAVE session reset to plaintext/passthrough due to error");
     }
@@ -206,7 +214,7 @@ impl DaveHandler {
                 return Err(map_boxed_err(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     format!("Unknown DAVE proposals op type {}", op_type_raw),
-                )))
+                )));
             }
         };
 

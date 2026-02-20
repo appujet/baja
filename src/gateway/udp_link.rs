@@ -1,6 +1,9 @@
+use std::{
+    net::UdpSocket,
+    sync::atomic::{AtomicU16, AtomicU32, Ordering},
+};
+
 use davey::{AeadInPlace as AesAeadInPlace, Aes256Gcm, KeyInit as AesKeyInit};
-use std::net::UdpSocket;
-use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
 use xsalsa20poly1305::XSalsa20Poly1305;
 
 pub enum EncryptionMode {

@@ -1,5 +1,4 @@
-use super::AudioFilter;
-use super::lfo::Lfo;
+use super::{AudioFilter, lfo::Lfo};
 
 /// Tremolo filter — LFO-driven amplitude modulation.
 pub struct TremoloFilter {

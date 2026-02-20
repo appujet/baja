@@ -1,8 +1,11 @@
 pub mod ua;
 
-use std::io::{Read, Seek, SeekFrom};
-use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
+use std::{
+    io::{Read, Seek, SeekFrom},
+    sync::{Arc, Condvar, Mutex},
+    thread,
+};
+
 use symphonia::core::io::MediaSource;
 use tracing::{debug, info, warn};
 
@@ -24,7 +27,7 @@ pub struct RemoteReader {
     pos: u64,
     len: Option<u64>,
     content_type: Option<String>,
-    
+
     buf: Vec<u8>,
     buf_pos: usize,
     shared: Arc<(Mutex<SharedState>, Condvar)>,
@@ -61,7 +64,7 @@ impl RemoteReader {
         }
 
         let client = builder.build()?;
-        
+
         // Blocking initial fetch to extract Content-Length early.
         let response = Self::fetch_stream(&client, url, 0)?;
         let len = response.content_length();
@@ -155,13 +158,18 @@ fn prefetch_loop(
                 }
                 PrefetchCommand::Stop => break,
                 PrefetchCommand::Continue => {
-                    while !state.need_data && !state.done && matches!(state.command, PrefetchCommand::Continue) {
+                    while !state.need_data
+                        && !state.done
+                        && matches!(state.command, PrefetchCommand::Continue)
+                    {
                         state = cvar.wait(state).unwrap();
                     }
                     if matches!(state.command, PrefetchCommand::Stop) {
                         break;
                     }
-                    if let PrefetchCommand::Seek(pos) = std::mem::replace(&mut state.command, PrefetchCommand::Continue) {
+                    if let PrefetchCommand::Seek(pos) =
+                        std::mem::replace(&mut state.command, PrefetchCommand::Continue)
+                    {
                         target_seek = Some(pos);
                         state.done = false;
                         state.next_buf.clear();
@@ -173,15 +181,23 @@ fn prefetch_loop(
 
         // Apply Seek
         if let Some(pos) = target_seek {
-            let forward_jump = if pos > current_pos { pos - current_pos } else { 0 };
+            let forward_jump = if pos > current_pos {
+                pos - current_pos
+            } else {
+                0
+            };
 
             // Optimization: if small forward jump, skip the socket to avoid TCP teardown (~300ms latency)
             if forward_jump > 0 && forward_jump <= 1_000_000 && current_response.is_some() {
-                debug!("RemoteReader prefetch thread socket-skipping {} bytes", forward_jump);
+                debug!(
+                    "RemoteReader prefetch thread socket-skipping {} bytes",
+                    forward_jump
+                );
                 let mut discard = std::io::sink();
                 let mut res = current_response.take().unwrap();
 
-                if let Ok(copied) = std::io::copy(&mut (&mut res).take(forward_jump), &mut discard) {
+                if let Ok(copied) = std::io::copy(&mut (&mut res).take(forward_jump), &mut discard)
+                {
                     if copied == forward_jump {
                         current_pos = pos;
                         current_response = Some(res); // Keep it alive
@@ -242,14 +258,14 @@ fn prefetch_loop(
         if read_bytes > 0 {
             let (lock, cvar) = &*shared;
             let mut state = lock.lock().unwrap();
-            
+
             // If interrupted by a seek, drop this batch
             if !matches!(state.command, PrefetchCommand::Continue) {
                 continue;
             }
 
             state.next_buf.extend_from_slice(&chunk[..read_bytes]);
-            
+
             // Pause fetching if we have 2MB buffered ahead
             if state.next_buf.len() >= 2 * 1024 * 1024 {
                 state.need_data = false;
@@ -312,7 +328,11 @@ impl Seek for RemoteReader {
         };
 
         if new_pos != self.pos {
-            let forward_jump = if new_pos > self.pos { new_pos - self.pos } else { 0 };
+            let forward_jump = if new_pos > self.pos {
+                new_pos - self.pos
+            } else {
+                0
+            };
 
             let (lock, cvar) = &*self.shared;
             let mut state = lock.lock().unwrap();
@@ -322,7 +342,10 @@ impl Seek for RemoteReader {
 
             // Pure in-memory jump if we already downloaded the requested offset!
             if forward_jump > 0 && forward_jump <= (buf_remaining + next_buf_remaining) {
-                debug!("RemoteReader purely in-memory seek forward by {} bytes", forward_jump);
+                debug!(
+                    "RemoteReader purely in-memory seek forward by {} bytes",
+                    forward_jump
+                );
                 if forward_jump <= buf_remaining {
                     self.buf_pos += forward_jump as usize;
                 } else {

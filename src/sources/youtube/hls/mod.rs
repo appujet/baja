@@ -5,15 +5,20 @@ pub mod ts_demux;
 pub mod types;
 pub mod utils;
 
-use crate::configs::HttpProxyConfig;
-use self::fetcher::fetch_segment_into;
-use self::resolver::{resolve_playlist, resolve_url_string};
-use self::ts_demux::extract_adts_from_ts;
-use self::types::Resource;
-use crate::sources::youtube::cipher::YouTubeCipherManager;
-use std::io::{self, Read, Seek, SeekFrom};
-use std::sync::{Arc, Condvar, Mutex};
+use std::{
+    io::{self, Read, Seek, SeekFrom},
+    sync::{Arc, Condvar, Mutex},
+};
+
 use symphonia::core::io::MediaSource;
+
+use self::{
+    fetcher::fetch_segment_into,
+    resolver::{resolve_playlist, resolve_url_string},
+    ts_demux::extract_adts_from_ts,
+    types::Resource,
+};
+use crate::{configs::HttpProxyConfig, sources::youtube::cipher::YouTubeCipherManager};
 
 /// Number of segments fetched into the look-ahead buffer before the reader
 /// swaps it into the active position.  Keep this small so swaps are fast but
@@ -401,8 +406,7 @@ fn prefetch_loop(
 
                 let mut tmp_buf = Vec::with_capacity(256 * 1024);
                 for res in &batch {
-                    if let Ok(resolved) =
-                        resolve_resource_static(res, &cipher_manager, &player_url)
+                    if let Ok(resolved) = resolve_resource_static(res, &cipher_manager, &player_url)
                     {
                         if let Err(e) = fetch_and_demux_into(&client, &resolved, &mut tmp_buf) {
                             tracing::warn!("HLS prefetch: segment fetch error during seek: {}", e);
@@ -458,7 +462,7 @@ fn prefetch_loop(
                 match &s.command {
                     PrefetchCommand::Stop => return,
                     PrefetchCommand::Seek(_) => {
-                        // A seek was requested while we were fetching. 
+                        // A seek was requested while we were fetching.
                         // Re-enter the loop to handle it.
                         let mut s = s;
                         s.need_data = true;

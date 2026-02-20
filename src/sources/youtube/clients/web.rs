@@ -1,12 +1,20 @@
-use super::YouTubeClient;
-use super::common::{INNERTUBE_API, resolve_format_url, select_best_audio_format};
-use crate::api::tracks::Track;
-use crate::sources::youtube::cipher::YouTubeCipherManager;
-use crate::sources::youtube::extractor::{extract_from_player, extract_track, find_section_list};
-use crate::sources::youtube::oauth::YouTubeOAuth;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::sync::Arc;
+
+use super::{
+    YouTubeClient,
+    common::{INNERTUBE_API, resolve_format_url, select_best_audio_format},
+};
+use crate::{
+    api::tracks::Track,
+    sources::youtube::{
+        cipher::YouTubeCipherManager,
+        extractor::{extract_from_player, extract_track, find_section_list},
+        oauth::YouTubeOAuth,
+    },
+};
 
 const CLIENT_NAME: &str = "WEB";
 const CLIENT_ID: &str = "1";

@@ -1,12 +1,16 @@
-use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
-use crate::sources::SourcePlugin;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::Value;
-use std::sync::Arc;
 use tracing::{error, warn};
+
 use super::token::AppleMusicTokenTracker;
+use crate::{
+    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    sources::SourcePlugin,
+};
 
 const API_BASE: &str = "https://api.music.apple.com/v1";
 pub struct AppleMusicSource {

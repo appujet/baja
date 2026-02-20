@@ -1,11 +1,17 @@
-use super::YouTubeClient;
-use crate::api::tracks::{Track, TrackInfo};
-use crate::sources::youtube::cipher::YouTubeCipherManager;
-use crate::sources::youtube::clients::common::{extract_thumbnail, is_duration, parse_duration};
-use crate::sources::youtube::oauth::YouTubeOAuth;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::sync::Arc;
+
+use super::YouTubeClient;
+use crate::{
+    api::tracks::{Track, TrackInfo},
+    sources::youtube::{
+        cipher::YouTubeCipherManager,
+        clients::common::{extract_thumbnail, is_duration, parse_duration},
+        oauth::YouTubeOAuth,
+    },
+};
 
 const CLIENT_NAME: &str = "WEB_REMIX";
 const CLIENT_VERSION: &str = "1.20260121.03.00";
@@ -407,4 +413,3 @@ impl YouTubeClient for WebRemixClient {
         Ok(None)
     }
 }
-

@@ -1,9 +1,13 @@
-use crate::api;
-use crate::audio::playback::{PlaybackState, TrackHandle};
-use crate::playback::{PlayerContext, PlayerState};
-use crate::server::Session;
 use std::sync::Arc;
+
 use tracing::{error, info};
+
+use crate::{
+    api,
+    audio::playback::{PlaybackState, TrackHandle},
+    playback::{PlayerContext, PlayerState},
+    server::Session,
+};
 
 pub async fn start_playback(
     player: &mut PlayerContext,

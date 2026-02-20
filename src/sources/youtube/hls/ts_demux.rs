@@ -12,8 +12,8 @@ const TS_SYNC_BYTE: u8 = 0x47;
 const PAT_PID: u16 = 0x0000;
 
 /// AAC stream types in MPEG-TS PMT
-const STREAM_TYPE_AAC: u8 = 0x0F;         // ISO/IEC 13818-7 (ADTS AAC)
-const STREAM_TYPE_AAC_LATM: u8 = 0x11;    // ISO/IEC 14496-3 (MPEG-4 AAC LATM)
+const STREAM_TYPE_AAC: u8 = 0x0F; // ISO/IEC 13818-7 (ADTS AAC)
+const STREAM_TYPE_AAC_LATM: u8 = 0x11; // ISO/IEC 14496-3 (MPEG-4 AAC LATM)
 
 /// Extract ADTS elementary stream from MPEG-TS data.
 ///
@@ -127,10 +127,7 @@ fn parse_pat(payload: &[u8], payload_start: bool) -> Option<u16> {
 
     // Each program entry: program_number(2) + PMT_PID(2) = 4 bytes
     // Subtract 4 bytes CRC at end
-    let entries_end = std::cmp::min(
-        header_size + section_length.saturating_sub(5),
-        data.len(),
-    );
+    let entries_end = std::cmp::min(header_size + section_length.saturating_sub(5), data.len());
 
     let mut pos = header_size;
     while pos + 4 <= entries_end {

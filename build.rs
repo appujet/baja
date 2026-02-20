@@ -1,7 +1,4 @@
-use std::fs;
-use std::path::Path;
-use std::process::Command;
-use std::time::SystemTime;
+use std::{fs, path::Path, process::Command, time::SystemTime};
 
 fn main() {
     let now = SystemTime::now()

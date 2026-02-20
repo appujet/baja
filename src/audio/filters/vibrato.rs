@@ -1,6 +1,4 @@
-use super::AudioFilter;
-use super::delay_line::DelayLine;
-use super::lfo::Lfo;
+use super::{AudioFilter, delay_line::DelayLine, lfo::Lfo};
 
 const SAMPLE_RATE: f64 = 48000.0;
 const MAX_DELAY_MS: f64 = 20.0;

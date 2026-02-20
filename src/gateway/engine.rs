@@ -1,6 +1,8 @@
-use crate::audio::playback::Mixer;
 use std::sync::Arc;
+
 use tokio::sync::Mutex;
+
+use crate::audio::playback::Mixer;
 
 pub struct VoiceEngine {
     pub mixer: Arc<Mutex<Mixer>>,

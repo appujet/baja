@@ -46,7 +46,10 @@ pub fn resolve_url(base: &str, maybe_relative: &str) -> String {
     }
 
     // Relative path → strip last path component from base and append.
-    let base_dir = base_clean.rfind('/').map(|i| &base_clean[..=i]).unwrap_or(base_clean);
+    let base_dir = base_clean
+        .rfind('/')
+        .map(|i| &base_clean[..=i])
+        .unwrap_or(base_clean);
     format!("{}{}", base_dir, maybe_relative)
 }
 

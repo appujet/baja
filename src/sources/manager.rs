@@ -1,16 +1,18 @@
-use crate::audio::processor::DecoderCommand;
-
-use super::applemusic::manager::AppleMusicSource;
-use super::deezer::DeezerSource;
-use super::gaana::GaanaSource;
-use super::http::HttpSource;
-use super::jiosaavn::JioSaavnSource;
-use super::plugin::{PlayableTrack, SourcePlugin};
-use super::spotify::manager::SpotifySource;
-use super::youtube::YouTubeSource;
-use super::youtube::cipher::YouTubeCipherManager;
 use std::sync::Arc;
+
 use tracing::info;
+
+use super::{
+    applemusic::manager::AppleMusicSource,
+    deezer::DeezerSource,
+    gaana::GaanaSource,
+    http::HttpSource,
+    jiosaavn::JioSaavnSource,
+    plugin::{PlayableTrack, SourcePlugin},
+    spotify::manager::SpotifySource,
+    youtube::{YouTubeSource, cipher::YouTubeCipherManager},
+};
+use crate::audio::processor::DecoderCommand;
 
 /// Source Manager
 pub struct SourceManager {

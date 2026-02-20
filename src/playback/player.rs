@@ -1,9 +1,12 @@
-use crate::api::tracks::Track;
-use crate::audio::filters::FilterChain;
-use crate::audio::playback::TrackHandle;
-use crate::playback::{Filters, Player, PlayerState, VoiceConnectionState, VoiceState};
 use std::sync::Arc;
+
 use tokio::sync::Mutex;
+
+use crate::{
+    api::tracks::Track,
+    audio::{filters::FilterChain, playback::TrackHandle},
+    playback::{Filters, Player, PlayerState, VoiceConnectionState, VoiceState},
+};
 
 /// Internal player state.
 pub struct PlayerContext {

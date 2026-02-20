@@ -1,5 +1,7 @@
-use super::AudioFilter;
-use super::biquad::{BiquadCoeffs, BiquadState};
+use super::{
+    AudioFilter,
+    biquad::{BiquadCoeffs, BiquadState},
+};
 
 const SAMPLE_RATE: f64 = 48000.0;
 const SCALE_16: f64 = 32768.0;
@@ -75,8 +77,7 @@ impl AudioFilter for KaraokeFilter {
             return;
         }
 
-        let do_filter =
-            self.level > 0.0 && self.filter_band > 0.0 && self.filter_width > 0.0;
+        let do_filter = self.level > 0.0 && self.filter_band > 0.0 && self.filter_width > 0.0;
 
         // First pass: compute filtered output + energy
         let mut out_left_buf = vec![0.0f64; num_frames];

@@ -1,8 +1,10 @@
-use crate::common::Severity;
+use std::io::{Cursor, Read, Write};
+
 use base64::prelude::*;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use serde::{Deserialize, Serialize};
-use std::io::{Cursor, Read, Write};
+
+use crate::common::Severity;
 
 /// A single audio track with encoded data and metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]

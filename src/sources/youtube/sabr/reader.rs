@@ -1,11 +1,14 @@
-use crate::sources::youtube::sabr::parser::decoders::*;
-use crate::sources::youtube::sabr::parser::{ProtoReader, UmpReader};
-use crate::sources::youtube::sabr::structs::*;
-use crate::sources::youtube::sabr::writer::*;
-use flume::{Receiver, Sender};
 use std::io::{Read, Seek, SeekFrom};
+
+use flume::{Receiver, Sender};
 use symphonia::core::io::MediaSource;
 use tracing::{debug, error};
+
+use crate::sources::youtube::sabr::{
+    parser::{ProtoReader, UmpReader, decoders::*},
+    structs::*,
+    writer::*,
+};
 
 pub struct SabrReader {
     rx: Receiver<Vec<u8>>,

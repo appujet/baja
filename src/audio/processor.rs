@@ -1,11 +1,13 @@
 use flume::{Receiver, Sender};
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions};
-use symphonia::core::errors::Error;
-use symphonia::core::formats::{FormatOptions, FormatReader};
-use symphonia::core::io::{MediaSource, MediaSourceStream};
-use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
+use symphonia::core::{
+    audio::SampleBuffer,
+    codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions},
+    errors::Error,
+    formats::{FormatOptions, FormatReader},
+    io::{MediaSource, MediaSourceStream},
+    meta::MetadataOptions,
+    probe::Hint,
+};
 use tracing::{Level, debug, span, warn};
 
 use crate::audio::pipeline::resampler::Resampler;

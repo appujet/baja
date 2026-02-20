@@ -62,8 +62,8 @@ impl AudioFilter for DistortionFilter {
                 }
 
                 if self.tan_scale != 0.0 {
-                    let tan_input =
-                        (normalized * self.tan_scale as f64 + self.tan_offset as f64).clamp(
+                    let tan_input = (normalized * self.tan_scale as f64 + self.tan_offset as f64)
+                        .clamp(
                             -std::f64::consts::FRAC_PI_2 + 0.01,
                             std::f64::consts::FRAC_PI_2 - 0.01,
                         );

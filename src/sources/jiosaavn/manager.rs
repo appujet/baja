@@ -1,12 +1,16 @@
-use super::track::JioSaavnTrack;
-use crate::api::tracks::{LoadError, LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
-use crate::sources::plugin::{PlayableTrack, SourcePlugin};
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use regex::Regex;
 use reqwest::header::HeaderMap;
 use serde_json::Value;
-use std::sync::Arc;
 use tracing::{debug, warn};
+
+use super::track::JioSaavnTrack;
+use crate::{
+    api::tracks::{LoadError, LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    sources::plugin::{PlayableTrack, SourcePlugin},
+};
 
 const API_BASE: &str = "https://www.jiosaavn.com/api.php";
 

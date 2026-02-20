@@ -1,14 +1,16 @@
-use super::YouTubeClient;
-use super::common::{
-    extract_thumbnail, is_duration, parse_duration,
-};
-use crate::api::tracks::{Track, TrackInfo};
-use crate::sources::youtube::cipher::YouTubeCipherManager;
-use crate::sources::youtube::oauth::YouTubeOAuth;
-use async_trait::async_trait;
-use serde_json::{Value, json};
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use serde_json::{Value, json};
+
+use super::{
+    YouTubeClient,
+    common::{extract_thumbnail, is_duration, parse_duration},
+};
+use crate::{
+    api::tracks::{Track, TrackInfo},
+    sources::youtube::{cipher::YouTubeCipherManager, oauth::YouTubeOAuth},
+};
 
 const CLIENT_NAME: &str = "ANDROID_MUSIC";
 const CLIENT_VERSION: &str = "8.47.54";

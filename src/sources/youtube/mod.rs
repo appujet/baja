@@ -1,11 +1,15 @@
-use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track};
-use crate::configs::sources::YouTubeConfig;
-use crate::sources::SourcePlugin;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{Value, json};
-use std::sync::Arc;
 use tokio::sync::RwLock;
+
+use crate::{
+    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track},
+    configs::sources::YouTubeConfig,
+    sources::SourcePlugin,
+};
 
 pub mod cipher;
 pub mod clients;
@@ -16,15 +20,11 @@ pub mod sabr;
 pub mod track;
 
 use cipher::YouTubeCipherManager;
-use clients::YouTubeClient;
-use clients::android::AndroidClient;
-use clients::android_vr::AndroidVrClient;
-use clients::ios::IosClient;
-use clients::music_android::MusicAndroidClient;
-use clients::tv::TvClient;
-use clients::web::WebClient;
-use clients::web_embedded::WebEmbeddedClient;
-use clients::web_remix::WebRemixClient;
+use clients::{
+    YouTubeClient, android::AndroidClient, android_vr::AndroidVrClient, ios::IosClient,
+    music_android::MusicAndroidClient, tv::TvClient, web::WebClient,
+    web_embedded::WebEmbeddedClient, web_remix::WebRemixClient,
+};
 use oauth::YouTubeOAuth;
 
 pub struct YouTubeSource {

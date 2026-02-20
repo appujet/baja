@@ -1,7 +1,11 @@
-use crate::audio::processor::DecoderCommand;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
+
 use tokio::sync::Mutex;
+
+use crate::audio::processor::DecoderCommand;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PlaybackState {
