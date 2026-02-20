@@ -57,7 +57,7 @@ impl Config {
             return Err("config.toml or config.default.toml not found".into());
         };
 
-        println!("Loading configuration from: {}", config_path);
+        crate::log_println!("Loading configuration from: {}", config_path);
 
         let config_str = std::fs::read_to_string(config_path)?;
         if config_str.is_empty() {

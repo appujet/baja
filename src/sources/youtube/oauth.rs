@@ -55,8 +55,8 @@ impl YouTubeOAuth {
                 let warning_left = warning_pad / 2;
                 let warning_right = warning_pad - warning_left;
 
-                println!("\n\x1b[1;33m{}\x1b[0m", top_border);
-                println!(
+                crate::log_println!("\n\x1b[1;33m{}\x1b[0m", top_border);
+                crate::log_println!(
                     "\x1b[1;33m  │\x1b[0m{:left$}\x1b[1;31m{}\x1b[0m{:right$}\x1b[1;33m│\x1b[0m",
                     "",
                     warning,
@@ -64,13 +64,13 @@ impl YouTubeOAuth {
                     left = warning_left,
                     right = warning_right
                 );
-                println!("\x1b[1;33m{}\x1b[0m", sep_border);
+                crate::log_println!("\x1b[1;33m{}\x1b[0m", sep_border);
 
                 // Step 1
                 let s1_prefix = " 1. Visit: ";
                 let s1_padding =
                     inner_width.saturating_sub(s1_prefix.len() + verification_url.len());
-                println!(
+                crate::log_println!(
                     "\x1b[1;33m  │\x1b[0m\x1b[1;36m{}\x1b[0m\x1b[4;34m{}\x1b[0m{:pad$}\x1b[1;33m│\x1b[0m",
                     s1_prefix,
                     verification_url,
@@ -82,7 +82,7 @@ impl YouTubeOAuth {
                 let s2_prefix = " 2. Enter code: ";
                 let s2_code = format!(" {} ", user_code);
                 let s2_padding = inner_width.saturating_sub(s2_prefix.len() + s2_code.len());
-                println!(
+                crate::log_println!(
                     "\x1b[1;33m  │\x1b[0m\x1b[1;36m{}\x1b[0m\x1b[1;42;30m{}\x1b[0m{:pad$}\x1b[1;33m│\x1b[0m",
                     s2_prefix,
                     s2_code,
@@ -90,7 +90,7 @@ impl YouTubeOAuth {
                     pad = s2_padding
                 );
 
-                println!("\x1b[1;33m{}\x1b[0m\n", bot_border);
+                crate::log_println!("\x1b[1;33m{}\x1b[0m\n", bot_border);
 
                 let oauth = self.clone();
                 tokio::spawn(async move {
@@ -160,15 +160,15 @@ impl YouTubeOAuth {
                     if let Some(refresh_token) = response["refresh_token"].as_str() {
                         let mut tokens = self.refresh_tokens.write().await;
                         tokens.push(refresh_token.to_string());
-                        println!(
+                        crate::log_println!(
                             "\x1b[1;32mOAUTH INTEGRATION: Token retrieved successfully!\x1b[0m"
                         );
-                        println!("\x1b[1;32mRefresh token:\x1b[0m {}", refresh_token);
+                        crate::log_println!("\x1b[1;32mRefresh token:\x1b[0m {}", refresh_token);
                         break;
                     }
                 }
                 Err(e) => {
-                    println!(
+                    crate::log_println!(
                         "\x1b[1;31mFailed to fetch YouTube OAuth2 token:\x1b[0m {}",
                         e
                     );

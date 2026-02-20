@@ -15,7 +15,7 @@ async fn main() -> AnyResult<()> {
 
     rustalink::common::logger::init(&config);
 
-    println!(
+    rustalink::log_println!(
         r#"
     [32m____            __        ___       __  [0m
    [32m/ __ \__  _______/ /_____ _/ (_)___  / /__[0m

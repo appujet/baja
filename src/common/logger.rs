@@ -8,6 +8,59 @@ use tracing_subscriber::prelude::*;
 
 use crate::configs::Config;
 
+use std::sync::OnceLock;
+
+pub(crate) static GLOBAL_FILE_WRITER: OnceLock<CircularFileWriter> = OnceLock::new();
+
+#[macro_export]
+macro_rules! log_print {
+    ($($arg:tt)*) => {{
+        let msg = format!($($arg)*);
+        std::print!("{}", msg);
+        $crate::common::logger::append_to_file_raw(&msg);
+    }};
+}
+
+#[macro_export]
+macro_rules! log_println {
+    () => {{
+        std::println!();
+        $crate::common::logger::append_to_file_raw("\n");
+    }};
+    ($($arg:tt)*) => {{
+        let msg = format!($($arg)*);
+        std::println!("{}", msg);
+        $crate::common::logger::append_to_file_raw(&format!("{}\n", msg));
+    }};
+}
+
+pub fn append_to_file_raw(msg: &str) {
+    if let Some(mut writer) = GLOBAL_FILE_WRITER.get().cloned() {
+        use std::io::Write;
+        // Strip ANSI escape sequences loosely before writing to file
+        let clean_msg = strip_ansi_escapes(msg);
+        let _ = writer.write_all(clean_msg.as_bytes());
+    }
+}
+
+// Simple ANSI stripper to prevent the log file from being polluted with escape sequences
+fn strip_ansi_escapes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut in_escape = false;
+    for c in s.chars() {
+        if c == '\x1b' {
+            in_escape = true;
+        } else if in_escape {
+            if c.is_ascii_alphabetic() {
+                in_escape = false;
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 pub fn init(config: &Config) {
     // Determine the base log level
     let log_level = config
@@ -52,6 +105,7 @@ pub fn init(config: &Config) {
             }
 
             let writer = CircularFileWriter::new(file_config.path.clone(), file_config.max_lines);
+            let _ = GLOBAL_FILE_WRITER.set(writer.clone());
             Some(
                 fmt::layer()
                     .with_writer(writer)
@@ -79,7 +133,7 @@ pub fn init(config: &Config) {
 /// A simple writer that appends to a file and periodically prunes old lines
 /// to stay under a maximum line count.
 #[derive(Clone)]
-struct CircularFileWriter {
+pub(crate) struct CircularFileWriter {
     path: String,
     max_lines: u32,
     state: Arc<Mutex<WriterState>>,
