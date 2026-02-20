@@ -155,4 +155,11 @@ impl AppleMusicTokenTracker {
 
         Some((origin, exp))
     }
+
+    pub fn init(self: std::sync::Arc<Self>) {
+        let this = self.clone();
+        tokio::spawn(async move {
+            this.get_token().await;
+        });
+    }
 }

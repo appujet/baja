@@ -10,6 +10,7 @@ use super::{
     jiosaavn::JioSaavnSource,
     plugin::{BoxedSource, BoxedTrack, PlayableTrack},
     spotify::manager::SpotifySource,
+    tidal::TidalSource,
     youtube::{YouTubeSource, cipher::YouTubeCipherManager},
 };
 use crate::audio::processor::DecoderCommand;
@@ -56,6 +57,10 @@ impl SourceManager {
         if config.sources.gaana {
             info!("Registering Gaana source");
             sources.push(Box::new(GaanaSource::new(config.gaana.clone())));
+        }
+        if config.sources.tidal {
+            info!("Registering Tidal source");
+            sources.push(Box::new(TidalSource::new(config.tidal.clone())));
         }
         if config.sources.http {
             info!("Registering HTTP source");

@@ -82,6 +82,7 @@ impl SpotifySource {
         let token_tracker = Arc::new(crate::sources::spotify::token::SpotifyTokenTracker::new(
             client.clone(),
         ));
+        token_tracker.clone().init();
 
         Self {
             client,

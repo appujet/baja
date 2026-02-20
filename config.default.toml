@@ -17,12 +17,13 @@ jiosaavn = true
 deezer = true
 applemusic = true
 gaana = true
+tidal = true
 
 [mirrors]
 providers = [
   #"ytsearch:\"%ISRC%\"",
   #"ytsearch:%QUERY%",
-  "dzisrc:%ISRC%",
+  #"dzisrc:%ISRC%",
   "jssearch:%QUERY%"
 ]
 
@@ -95,6 +96,13 @@ artist_load_limit = 20
 # url = "http://proxy.example.com:8080"
 # username = "myuser"
 # password = "mypassword"
+
+[tidal]
+country_code = "US"
+# token = "your_token_here"
+playlist_load_limit = 50
+album_load_limit = 50
+artist_load_limit = 20
 
 [filters]
 volume = true

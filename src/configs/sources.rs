@@ -14,6 +14,8 @@ pub struct SourcesConfig {
     pub applemusic: bool,
     #[serde(default)]
     pub gaana: bool,
+    #[serde(default)]
+    pub tidal: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -302,6 +304,39 @@ impl Default for GaanaConfig {
             playlist_load_limit: default_gn_playlist_load_limit(),
             album_load_limit: default_gn_album_load_limit(),
             artist_load_limit: default_gn_artist_load_limit(),
+        }
+    }
+}
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct TidalConfig {
+    pub country_code: String,
+    pub token: Option<String>,
+    #[serde(default = "default_td_playlist_load_limit")]
+    pub playlist_load_limit: usize,
+    #[serde(default = "default_td_album_load_limit")]
+    pub album_load_limit: usize,
+    #[serde(default = "default_td_artist_load_limit")]
+    pub artist_load_limit: usize,
+}
+
+fn default_td_playlist_load_limit() -> usize {
+    50
+}
+fn default_td_album_load_limit() -> usize {
+    50
+}
+fn default_td_artist_load_limit() -> usize {
+    20
+}
+
+impl Default for TidalConfig {
+    fn default() -> Self {
+        Self {
+            country_code: "US".to_string(),
+            token: None,
+            playlist_load_limit: default_td_playlist_load_limit(),
+            album_load_limit: default_td_album_load_limit(),
+            artist_load_limit: default_td_artist_load_limit(),
         }
     }
 }

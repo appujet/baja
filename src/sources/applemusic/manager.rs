@@ -53,8 +53,11 @@ impl AppleMusicSource {
             ("us".to_string(), 0, 0, 5, 5)
         };
 
+        let token_tracker = Arc::new(crate::sources::applemusic::token::AppleMusicTokenTracker::new(client.clone()));
+        token_tracker.clone().init();
+
         Self {
-            token_tracker: Arc::new(crate::sources::applemusic::token::AppleMusicTokenTracker::new(client.clone())),
+            token_tracker,
             client,
             country_code: country,
             playlist_load_limit: p_limit,

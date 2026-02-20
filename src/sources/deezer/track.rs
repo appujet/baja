@@ -13,7 +13,7 @@ pub struct DeezerTrack {
     pub client: reqwest::Client,
     pub track_id: String,
     pub arl_index: usize,
-    pub token_tracker: Arc<crate::sources::deezer::manager::DeezerTokenTracker>,
+    pub token_tracker: Arc<crate::sources::deezer::token::DeezerTokenTracker>,
     pub master_key: String,
     pub local_addr: Option<IpAddr>,
     pub proxy: Option<HttpProxyConfig>,

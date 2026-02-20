@@ -32,18 +32,18 @@ The following table outlines the current implementation status of various featur
 | Source | Status | Description |
 | :--- | :---: | :--- |
 | **HTTP / HTTPS** | ✅ | Direct streaming from web URLs |
-| **YouTube** | 🚧 | Integration with `rustypipe` / `yt-dlp` |
+| **YouTube** | 🚧 | Integration with `sabr` streaming (under development) |
 | **Spotify** | ✅ | Metadata resolution and full mirror playback support |
 | **JioSaavn** | ✅ | Metadata resolution and full playback support |
 | **Amazon Music** | ❌ | Planned implementation |
-| **Apple Music** | ❌ | Planned implementation |
+| **Apple Music** | ✅ | Implementation |
 | **Anghami** | ❌ | Planned implementation |
 | **Audiomack** | ❌ | Planned implementation |
 | **Audius** | ❌ | Planned implementation |
 | **Bandcamp** | ❌ | Planned implementation |
 | **Bilibili** | ❌ | Planned implementation |
-| **Deezer** | ❌ | Planned implementation |
-| **Gaana** | ❌ | Planned implementation |
+| **Deezer** | ✅ | Implementation |
+| **Gaana** | ✅ | Implementation |
 | **Kwai** | ❌ | Planned implementation |
 | **Last.fm** | ❌ | Planned implementation |
 | **MixCloud** | ❌ | Planned implementation |
@@ -52,7 +52,7 @@ The following table outlines the current implementation status of various featur
 | **Reddit** | ❌ | Planned implementation |
 | **Shazam** | ❌ | Planned implementation |
 | **SoundCloud** | ❌ | Planned implementation |
-| **Tidal** | ❌ | Planned implementation |
+| **Tidal** | ✅ | Implementation |
 | **Twitch** | ❌ | Planned implementation |
 | **Vimeo** | ❌ | Planned implementation |
 | **VK Music** | ❌ | Planned implementation |

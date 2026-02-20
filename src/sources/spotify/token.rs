@@ -114,4 +114,11 @@ impl SpotifyTokenTracker {
         );
         Some(token)
     }
+
+    pub fn init(self: Arc<Self>) {
+        let this = self.clone();
+        tokio::spawn(async move {
+            this.get_token().await;
+        });
+    }
 }

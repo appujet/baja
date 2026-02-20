@@ -7,6 +7,7 @@ pub mod gaana;
 pub mod manager;
 pub mod plugin;
 pub mod spotify;
+pub mod tidal;
 pub mod youtube;
 
 pub use manager::SourceManager;
