@@ -36,14 +36,14 @@ The following table outlines the current implementation status of various featur
 | **Spotify** | ✅ | Metadata resolution and full mirror playback support |
 | **JioSaavn** | ✅ | Metadata resolution and full playback support |
 | **Amazon Music** | ❌ | Planned implementation |
-| **Apple Music** | ❌ | Planned implementation |
+| **Apple Music** | ✅ | Metadata resolution and full mirror playback support |
 | **Anghami** | ❌ | Planned implementation |
 | **Audiomack** | ❌ | Planned implementation |
 | **Audius** | ❌ | Planned implementation |
 | **Bandcamp** | ❌ | Planned implementation |
 | **Bilibili** | ❌ | Planned implementation |
-| **Deezer** | ❌ | Planned implementation |
-| **Gaana** | ❌ | Planned implementation |
+| **Deezer** | ✅ | Metadata resolution and full playback support |
+| **Gaana** | ✅ | Metadata resolution and full playback support |
 | **Kwai** | ❌ | Planned implementation |
 | **Last.fm** | ❌ | Planned implementation |
 | **MixCloud** | ❌ | Planned implementation |

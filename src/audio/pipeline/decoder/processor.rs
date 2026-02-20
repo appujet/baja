@@ -163,7 +163,7 @@ impl AudioProcessor {
             Ok(DecoderCommand::Seek(ms)) => {
                 let time = symphonia::core::units::Time::from(ms as f64 / 1000.0);
                 if let Ok(_) = self.format.seek(
-                    symphonia::core::formats::SeekMode::Accurate,
+                    symphonia::core::formats::SeekMode::Coarse,
                     symphonia::core::formats::SeekTo::Time {
                         time,
                         track_id: Some(self.track_id),
