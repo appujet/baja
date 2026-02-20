@@ -28,20 +28,25 @@ pub fn resolve_url(base: &str, maybe_relative: &str) -> String {
         return maybe_relative.to_string();
     }
 
+    // Strip query string and fragment from base before resolving.
+    // This prevents auth tokens (e.g. ?hdnts=...) from being embedded in the path.
+    let base_clean = base.split('?').next().unwrap_or(base);
+    let base_clean = base_clean.split('#').next().unwrap_or(base_clean);
+
     // Absolute path → replace host + path.
     if maybe_relative.starts_with('/') {
-        if let Some(scheme_end) = base.find("://") {
+        if let Some(scheme_end) = base_clean.find("://") {
             let host_start = scheme_end + 3;
-            let host_end = base[host_start..]
+            let host_end = base_clean[host_start..]
                 .find('/')
                 .map(|p| host_start + p)
-                .unwrap_or(base.len());
-            return format!("{}{}", &base[..host_end], maybe_relative);
+                .unwrap_or(base_clean.len());
+            return format!("{}{}", &base_clean[..host_end], maybe_relative);
         }
     }
 
     // Relative path → strip last path component from base and append.
-    let base_dir = base.rfind('/').map(|i| &base[..=i]).unwrap_or(base);
+    let base_dir = base_clean.rfind('/').map(|i| &base_clean[..=i]).unwrap_or(base_clean);
     format!("{}{}", base_dir, maybe_relative)
 }
 

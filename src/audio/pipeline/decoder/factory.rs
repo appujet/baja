@@ -82,7 +82,7 @@ pub fn create_reader(
             } else {
                 None
             };
-            HlsReader::new(url, ctx.local_addr, ctx.cipher_manager.clone(), player_url)
+            HlsReader::new(url, ctx.local_addr, ctx.cipher_manager.clone(), player_url, ctx.proxy.clone())
                 .map(|r| Box::new(r) as Box<dyn MediaSource>)
         }
 

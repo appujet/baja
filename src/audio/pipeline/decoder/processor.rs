@@ -37,7 +37,11 @@ impl AudioProcessor {
     ) -> Result<Self, Error> {
         let mss = MediaSourceStream::new(source, Default::default());
         let mut hint = Hint::new();
-        if let Some(ext) = std::path::Path::new(url)
+
+        // For HLS streams, the segments contain ADTS (AAC) after TS demuxing
+        if url.contains(".m3u8") || url.contains("/api/manifest/hls_") {
+            hint.with_extension("aac");
+        } else if let Some(ext) = std::path::Path::new(url)
             .extension()
             .and_then(|s| s.to_str())
         {
