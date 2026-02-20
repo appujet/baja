@@ -277,9 +277,8 @@ impl YouTubeClient for AndroidClient {
             .and_then(|v| v.as_str())
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
-        let signature_timestamp = cipher_manager.get_signature_timestamp().await.ok();
         let body = self
-            .player_request(track_id, visitor_data, signature_timestamp, &oauth)
+            .player_request(track_id, visitor_data, None, &oauth)
             .await?;
 
         let playability = body
