@@ -11,6 +11,13 @@ pub struct ServerConfig {
 pub struct LoggingConfig {
     pub level: Option<String>,
     pub filters: Option<String>,
+    pub file: Option<LogFileConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct LogFileConfig {
+    pub path: String,
+    pub max_lines: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

@@ -7,6 +7,8 @@
 # AGENTS
 .agents/
 
+# LOGS
+logs/*
 
 voice-main
 lavaplayer-main

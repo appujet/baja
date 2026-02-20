@@ -18,7 +18,7 @@ pub enum DecoderCommand {
     Stop,
 }
 
-/// High-performance audio processor that handles decoding and resampling.
+/// Audio processor that handles decoding and resampling.
 pub struct AudioProcessor {
     format: Box<dyn FormatReader>,
     decoder: Box<dyn Decoder>,

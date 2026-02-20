@@ -112,3 +112,8 @@ level = "info"
 # Optional: detailed module overrides. Example: "rustalink=debug,tokio=warn"
 filters = "rustalink=debug"
 
+# Optional: Log to file with line-based rotation
+[logging.file]
+path = "logs/rustalink.log"
+max_lines = 1000
+
