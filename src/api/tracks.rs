@@ -157,11 +157,8 @@ pub struct TrackInfo {
     /// Current playback position in milliseconds.
     pub position: u64,
     pub title: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub artwork_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub isrc: Option<String>,
     pub source_name: String,
 }

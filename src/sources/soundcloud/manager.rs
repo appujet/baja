@@ -28,6 +28,8 @@ pub struct SoundCloudSource {
     short_url_re: Regex,
     mobile_url_re: Regex,
     liked_user_urn_re: Regex,
+    user_url_re: Regex,
+    search_url_re: Regex,
 }
 
 impl SoundCloudSource {
@@ -82,6 +84,12 @@ impl SoundCloudSource {
             ).unwrap(),
             liked_user_urn_re: Regex::new(
                 r#""urn":"soundcloud:users:(\d+)","username":"([^"]+)""#
+            ).unwrap(),
+            user_url_re: Regex::new(
+                r"^https?://(?:www\.|m\.)?soundcloud\.com/([a-zA-Z0-9_-]+)(?:/(tracks|popular-tracks|albums|sets|reposts|spotlight))?/?(?:\?.*)?$"
+            ).unwrap(),
+            search_url_re: Regex::new(
+                r"^https?://(?:www\.|m\.)?soundcloud\.com/search(?:/(?:sounds|people|albums|sets))?/?(?:\?.*)?$"
             ).unwrap(),
         }
     }
@@ -171,7 +179,7 @@ impl SoundCloudSource {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        Ok(Track::new(TrackInfo {
+        let mut track = Track::new(TrackInfo {
             identifier: id,
             is_seekable: true,
             author,
@@ -179,11 +187,13 @@ impl SoundCloudSource {
             is_stream: false,
             position: 0,
             title,
-            uri,
+            uri: uri.clone(),
             artwork_url,
             isrc,
             source_name: "soundcloud".to_string(),
-        }))
+        });
+
+        Ok(track)
     }
 
     /// Select the best transcoding format and return (stream_kind, lookup_url).
@@ -580,6 +590,124 @@ impl SoundCloudSource {
             tracks,
         })
     }
+
+    async fn load_user(&self, url: &str) -> LoadResult {
+        let client_id = match self.token_tracker.get_client_id().await {
+            Some(id) => id,
+            None => return LoadResult::Empty {},
+        };
+
+        let caps = match self.user_url_re.captures(url) {
+            Some(c) => c,
+            None => return LoadResult::Empty {},
+        };
+        let username = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let sub_path = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+        
+        let clean_url = format!("https://soundcloud.com/{}", username);
+
+        let json = match self.api_resolve(&clean_url, &client_id).await {
+            Some(v) => v,
+            None => return LoadResult::Empty {},
+        };
+
+        if json.get("kind").and_then(|v| v.as_str()) != Some("user") {
+            return LoadResult::Empty {};
+        }
+
+        let user_id = match json.get("id").and_then(|v| v.as_u64()) {
+            Some(id) => id,
+            None => return LoadResult::Empty {},
+        };
+
+        let user_name = json
+            .get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown User")
+            .to_string();
+
+        debug!("SoundCloud: Loading user '{}' (id={}) with sub-path '{}'", user_name, user_id, sub_path);
+
+        match sub_path {
+            "popular-tracks" => self.load_collection_tracks(user_id, &user_name, "toptracks", "Popular tracks from", &client_id).await,
+            "albums" => self.load_collection_tracks(user_id, &user_name, "albums", "Albums from", &client_id).await,
+            "sets" => self.load_collection_tracks(user_id, &user_name, "playlists", "Sets from", &client_id).await,
+            "reposts" => self.load_collection_tracks(user_id, &user_name, "reposts", "Reposts from", &client_id).await,
+            "tracks" => self.load_collection_tracks(user_id, &user_name, "tracks", "Tracks from", &client_id).await,
+            "" | "spotlight" => {
+                // For root URL or /spotlight, try spotlight first
+                let result = self.load_collection_tracks(user_id, &user_name, "spotlight", "Spotlight tracks from", &client_id).await;
+                if matches!(result, LoadResult::Empty {}) && sub_path == "" {
+                    // If root URL and spotlight is empty, fall back to tracks
+                    self.load_collection_tracks(user_id, &user_name, "tracks", "Tracks from", &client_id).await
+                } else {
+                    result
+                }
+            }
+            _ => LoadResult::Empty {},
+        }
+    }
+
+    async fn load_collection_tracks(&self, user_id: u64, user_name: &str, endpoint: &str, playlist_prefix: &str, client_id: &str) -> LoadResult {
+        let req_url = format!(
+            "{}/users/{}/{}?client_id={}&limit=200&offset=0&linked_partitioning=1",
+            BASE_URL, user_id, endpoint, client_id
+        );
+
+        let resp = match self.client.get(&req_url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("SoundCloud: Request for {} failed: {}", endpoint, e);
+                return LoadResult::Empty {};
+            }
+        };
+
+        if !resp.status().is_success() {
+            warn!("SoundCloud: Request for {} returned status {}", endpoint, resp.status());
+            return LoadResult::Empty {};
+        }
+
+        let mut tracks: Vec<Track> = Vec::new();
+
+        if let Ok(json) = resp.json::<Value>().await {
+            let collection = json.get("collection").and_then(|v| v.as_array());
+            if let Some(items) = collection {
+                for item in items {
+                    // Handle wrapped objects (like in spotlight or reposts)
+                    let track_json = if item.get("track").is_some() {
+                        item.get("track")
+                    } else if item.get("kind").and_then(|v| v.as_str()) == Some("track") {
+                        Some(item)
+                    } else if item.get("playlist").is_some() {
+                        // We skip playlists inside track collections for now to keep it simple
+                        // and match expected behavior of returning a flat list of tracks
+                        None
+                    } else {
+                        Some(item)
+                    };
+
+                    if let Some(tj) = track_json {
+                        if let Ok(track) = self.parse_track(tj) {
+                            tracks.push(track);
+                        }
+                    }
+                }
+            }
+        }
+
+        if tracks.is_empty() {
+            return LoadResult::Empty {};
+        }
+
+        LoadResult::Playlist(PlaylistData {
+            info: PlaylistInfo {
+                name: format!("{} {}", playlist_prefix, user_name),
+                selected_track: -1,
+            },
+            plugin_info: Value::Null,
+            tracks,
+        })
+    }
 }
 
 #[async_trait]
@@ -602,6 +730,8 @@ impl SourcePlugin for SoundCloudSource {
             || self.mobile_url_re.is_match(identifier)
             || self.liked_url_re.is_match(&url)
             || self.playlist_url_re.is_match(&url)
+            || self.user_url_re.is_match(&url)
+            || self.search_url_re.is_match(&url)
             || self.track_url_re.is_match(&url)
     }
 
@@ -634,13 +764,26 @@ impl SourcePlugin for SoundCloudSource {
                 .unwrap_or_else(|| identifier.to_string())
         };
 
-        // 3. Dispatch
+        // 3. Search URL
+        if self.search_url_re.is_match(&url) {
+            if let Ok(uri) = reqwest::Url::parse(&url) {
+                if let Some((_, query)) = uri.query_pairs().find(|(k, _)| k == "q") {
+                    return self.search_tracks(&query).await;
+                }
+            }
+        }
+
+        // 4. Dispatch
         if self.liked_url_re.is_match(&url) {
             return self.load_liked_tracks(&url).await;
         }
 
         if self.playlist_url_re.is_match(&url) {
             return self.load_playlist(&url).await;
+        }
+
+        if self.user_url_re.is_match(&url) {
+            return self.load_user(&url).await;
         }
 
         if self.track_url_re.is_match(&url) {
