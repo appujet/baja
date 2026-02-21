@@ -2,7 +2,7 @@ use tracing::error;
 
 use crate::{
     audio::filters::FilterChain, common::types::Shared, gateway::VoiceGateway,
-    playback::VoiceConnectionState, server::UserId,
+    player::VoiceConnectionState, server::UserId,
 };
 
 pub async fn connect_voice(

@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::{api::tracks::Track, playback::PlayerState};
+use crate::{api::tracks::Track, player::PlayerState};
 
 /// Messages sent from server to client over WebSocket.
 #[derive(Debug, Serialize)]
