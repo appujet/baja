@@ -120,10 +120,6 @@ impl SpotifySource {
         }
   }
 
-  // -------------------------------------------------------------------------
-  // Utilities
-  // -------------------------------------------------------------------------
-
   fn base62_to_hex(&self, id: &str) -> String {
     const ALPHABET: &str = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let mut bn = 0u128;

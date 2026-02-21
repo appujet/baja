@@ -31,6 +31,36 @@ pub async fn load_tracks(
   )
 }
 
+/// GET /v4/loadsearch?query=...&types=...
+pub async fn load_search(
+  Query(params): Query<LoadSearchQuery>,
+  State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+  let query = params.query;
+  let types_str = params.types.unwrap_or_default();
+
+  tracing::info!(
+    "GET /v4/loadsearch: query='{}', types='{}'",
+    query,
+    types_str
+  );
+
+  let types: Vec<String> = types_str
+    .split(',')
+    .filter(|s| !s.trim().is_empty())
+    .map(|s| s.trim().to_string())
+    .collect();
+
+  match state
+    .source_manager
+    .load_search(&query, &types, state.routeplanner.clone())
+    .await
+  {
+    Some(result) => (StatusCode::OK, Json(result)).into_response(),
+    None => StatusCode::NO_CONTENT.into_response(),
+  }
+}
+
 /// GET /v4/decodetrack?encodedTrack=...
 pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoResponse {
   tracing::info!("GET /v4/decodetrack");

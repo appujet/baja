@@ -6,7 +6,7 @@ use axum::{
   http::{HeaderValue, StatusCode},
   middleware::{self, Next},
   response::Response,
-  routing::{get, post, patch},
+  routing::{get, patch, post},
 };
 use tracing::warn;
 
@@ -50,14 +50,12 @@ async fn add_response_headers(req: Request, next: Next) -> Response {
 pub fn router(state: Arc<AppState>) -> Router {
   let api_routes = Router::new()
     .route("/v4/loadtracks", get(stats::load_tracks))
+    .route("/v4/loadsearch", get(stats::load_search))
     .route("/v4/info", get(stats::get_info))
     .route("/v4/stats", get(stats::get_stats))
     .route("/version", get(stats::get_version))
     .route("/v4/decodetrack", get(stats::decode_track))
-    .route(
-      "/v4/decodetracks",
-      post(stats::decode_tracks),
-    )
+    .route("/v4/decodetracks", post(stats::decode_tracks))
     .route(
       "/v4/sessions/{session_id}/players",
       get(player::get_players),
@@ -68,10 +66,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .patch(player::update_player)
         .delete(player::destroy_player),
     )
-    .route(
-      "/v4/sessions/{session_id}",
-      patch(player::update_session),
-    )
+    .route("/v4/sessions/{session_id}", patch(player::update_session))
     .route("/v4/routeplanner/status", get(stats::routeplanner_status))
     .route(
       "/v4/routeplanner/free/address",
