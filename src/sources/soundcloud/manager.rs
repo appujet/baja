@@ -179,7 +179,7 @@ impl SoundCloudSource {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let mut track = Track::new(TrackInfo {
+        let track = Track::new(TrackInfo {
             identifier: id,
             is_seekable: true,
             author,
