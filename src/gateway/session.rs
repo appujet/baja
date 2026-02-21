@@ -131,7 +131,7 @@ impl VoiceGateway {
             return Ok(());
           }
           let backoff = std::time::Duration::from_millis(1000 * 2u64.pow((attempt - 1).min(3)));
-          info!(
+          tracing::debug!(
             "Voice gateway reconnecting (attempt {}/{}) in {:?} for guild {}",
             attempt, MAX_RECONNECT_ATTEMPTS, backoff, self.guild_id
           );
@@ -186,7 +186,7 @@ impl VoiceGateway {
             "seq_ack": seq_ack.load(Ordering::Relaxed),
         }),
       };
-      tracing::debug!("Sending voice Resume (Op 7) for guild {}", self.guild_id);
+      tracing::trace!("Sending voice Resume (Op 7) for guild {}", self.guild_id);
       write
         .send(Message::Text(
           serde_json::to_string(&resume)
@@ -297,7 +297,7 @@ impl VoiceGateway {
           match msg.op {
             8 => {
               let heartbeat_interval = msg.d["heartbeat_interval"].as_u64().unwrap_or(30000);
-              tracing::debug!("Voice Hello (Op 8). Interval: {}", heartbeat_interval);
+              tracing::trace!("Voice Hello (Op 8). Interval: {}", heartbeat_interval);
 
               // Cancel previous heartbeat if any (e.g. on resume)
               if let Some(h) = heartbeat_handle.take() {
@@ -349,7 +349,7 @@ impl VoiceGateway {
                   }
                 }
               }
-              info!(
+              tracing::debug!(
                 "Voice Ready (Op 2). SSRC: {}, UDP: {:?}, Mode: {}",
                 ssrc, udp_addr, selected_mode
               );
@@ -382,7 +382,7 @@ impl VoiceGateway {
               }
             }
             4 => {
-              tracing::debug!("Session Description received (Op 4): {:?}", msg.d);
+              tracing::trace!("Session Description received (Op 4): {:?}", msg.d);
               if let Some(m) = msg.d["mode"].as_str() {
                 selected_mode = m.to_string();
               }
@@ -448,7 +448,7 @@ impl VoiceGateway {
                 let mut dave_lock = dave.lock().await;
                 match dave_lock.setup_session(1) {
                   Ok(kp) => {
-                    tracing::debug!("Sending DAVE Key Package (Op 26)");
+                    tracing::trace!("Sending DAVE Key Package (Op 26)");
                     let mut bin = vec![26];
                     bin.extend_from_slice(&kp);
                     let _ = tx.send(Message::Binary(bin.into()));
@@ -467,7 +467,7 @@ impl VoiceGateway {
                   .as_millis() as i64;
                 let latency = now - sent;
                 self.ping.store(latency, Ordering::Relaxed);
-                tracing::debug!("Voice heartbeat ACK. Ping: {}ms", latency);
+                tracing::trace!("Voice heartbeat ACK. Ping: {}ms", latency);
               }
             }
             9 => {
