@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use regex::Regex;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::common::types::SharedRw;
 
@@ -73,7 +73,8 @@ impl SoundCloudTokenTracker {
     }
 
     pub async fn refresh_client_id(&self) -> Option<String> {
-        info!("SoundCloud: Fetching client_id from soundcloud.com...");
+        debug!("Refreshing SoundCloud client_id...");
+        trace!("SoundCloud: Fetching client_id from soundcloud.com...");
 
         let html = match self.client.get(SOUNDCLOUD_URL).send().await {
             Ok(r) => match r.text().await {
@@ -93,8 +94,9 @@ impl SoundCloudTokenTracker {
         if let Some(caps) = self.client_id_re.captures(&html) {
             if let Some(m) = caps.get(1) {
                 let id = m.as_str().to_string();
-                info!("SoundCloud: Found client_id in main page: {}", id);
+                trace!("SoundCloud: Found client_id in main page: {}", id);
                 self.store_client_id(id.clone()).await;
+                info!("Successfully refreshed SoundCloud client_id");
                 return Some(id);
             }
         }
@@ -111,7 +113,7 @@ impl SoundCloudTokenTracker {
             return None;
         }
 
-        debug!("SoundCloud: Found {} asset URLs, probing for client_id", asset_urls.len());
+        trace!("SoundCloud: Found {} asset URLs, probing for client_id", asset_urls.len());
 
         // Try the last few asset scripts (the relevant one is usually one of the last)
         for url in asset_urls.iter().rev().take(9) {
@@ -126,8 +128,9 @@ impl SoundCloudTokenTracker {
             if let Some(caps) = self.client_id_re.captures(&js) {
                 if let Some(m) = caps.get(1) {
                     let id = m.as_str().to_string();
-                    info!("SoundCloud: Found client_id in asset {}: {}", url, id);
+                    trace!("SoundCloud: Found client_id in asset {}: {}", url, id);
                     self.store_client_id(id.clone()).await;
+                    info!("Successfully refreshed SoundCloud client_id");
                     return Some(id);
                 }
             }
