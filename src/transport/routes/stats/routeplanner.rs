@@ -26,17 +26,31 @@ pub async fn routeplanner_free_address(
     "POST /v4/routeplanner/free/address: address='{}'",
     body.address
   );
-  if let Some(rp) = &state.routeplanner {
-    rp.free_address(&body.address);
+  match &state.routeplanner {
+    Some(rp) => {
+      rp.free_address(&body.address);
+      StatusCode::NO_CONTENT.into_response()
+    }
+    None => (
+      StatusCode::INTERNAL_SERVER_ERROR,
+      Json(serde_json::json!({ "message": "Can't access disabled route planner", "status": 500 })),
+    )
+      .into_response(),
   }
-  StatusCode::NO_CONTENT
 }
 
 /// POST /v4/routeplanner/free/all
 pub async fn routeplanner_free_all(State(state): State<Arc<AppState>>) -> impl IntoResponse {
   tracing::info!("POST /v4/routeplanner/free/all");
-  if let Some(rp) = &state.routeplanner {
-    rp.free_all_addresses();
+  match &state.routeplanner {
+    Some(rp) => {
+      rp.free_all_addresses();
+      StatusCode::NO_CONTENT.into_response()
+    }
+    None => (
+      StatusCode::INTERNAL_SERVER_ERROR,
+      Json(serde_json::json!({ "message": "Can't access disabled route planner", "status": 500 })),
+    )
+      .into_response(),
   }
-  StatusCode::NO_CONTENT
 }

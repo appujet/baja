@@ -81,18 +81,35 @@ pub async fn update_player(
     }
   }
 
-  // Apply position (seek)
+  // Apply position (seek) — also send playerUpdate immediately (Lavalink behaviour)
   if let Some(pos) = body.position {
+    // Only apply mid-play seek when no new track is being started (checked later)
+    // We capture the values now; the actual send happens below after track logic.
     player.position = pos;
-    if let Some(handle) = &player.track_handle {
-      handle.seek(pos);
+    if player.track.is_some() {
+      if let Some(handle) = &player.track_handle {
+        handle.seek(pos);
+      }
+      // Send playerUpdate immediately after seek (matches Lavalink SocketServer.sendPlayerUpdate)
+      let seek_update = api::OutgoingMessage::PlayerUpdate {
+        guild_id: guild_id.clone(),
+        state: crate::player::PlayerState {
+          time: crate::server::now_ms(),
+          position: pos,
+          connected: !player.voice.token.is_empty(),
+          ping: player.ping.load(std::sync::atomic::Ordering::Relaxed),
+        },
+      };
+      let session_seek = session.clone();
+      tokio::spawn(async move {
+        session_seek.send_message(&seek_update).await;
+      });
     }
   }
 
-  // Apply end time
-  if let Some(end_time) = body.end_time {
-    player.end_time = end_time;
-  }
+  // end_time is passed into start_playback below; mid-play update handled separately
+  let requested_end_time: Option<u64> = body.end_time.flatten();
+  // Also update end_time on existing player if no track change incoming (handled after track logic)
 
   // Apply filters
   if let Some(filters) = body.filters {
@@ -176,6 +193,10 @@ pub async fn update_player(
   }
 
   // 1. Resolve which track update to use (standard 'track' object or deprecated top-level fields)
+  // Capture this before body fields are moved.
+  let no_track_change =
+    body.track.is_none() && body.encoded_track.is_none() && body.identifier.is_none();
+
   let track_to_apply = if let Some(t) = body.track {
     if body.encoded_track.is_some() || body.identifier.is_some() {
       return (
@@ -272,6 +293,7 @@ pub async fn update_player(
               state.routeplanner.clone(),
               state.config.server.player_update_interval,
               track_update.user_data.clone(),
+              requested_end_time,
             )
             .await;
           }
@@ -293,9 +315,17 @@ pub async fn update_player(
           state.routeplanner.clone(),
           state.config.server.player_update_interval,
           track_update.user_data.clone(),
+          requested_end_time,
         )
         .await;
       }
+    }
+  }
+
+  // If no track was changed but endTime was provided, update it on the active player
+  if no_track_change {
+    if let Some(et) = requested_end_time {
+      player.end_time = Some(et);
     }
   }
 

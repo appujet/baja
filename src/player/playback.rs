@@ -17,6 +17,7 @@ pub async fn start_playback(
   routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
   update_interval_secs: u64,
   user_data: Option<serde_json::Value>,
+  end_time: Option<u64>,
 ) {
   if player.track.is_some() {
     let is_playing = if let Some(handle) = &player.track_handle {
@@ -55,6 +56,7 @@ pub async fn start_playback(
   player.track = Some(track.clone());
   player.position = 0;
   player.paused = false;
+  player.end_time = end_time; // set from request; None if not provided
   player.user_data = user_data.unwrap_or_else(|| serde_json::json!({}));
   player.stop_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
 

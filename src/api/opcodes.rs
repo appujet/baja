@@ -148,6 +148,7 @@ pub async fn handle_op(
         state.routeplanner.clone(),
         state.config.server.player_update_interval,
         None,
+        None, // end_time: not supplied via legacy opcode
       )
       .await;
     }

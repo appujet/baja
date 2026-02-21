@@ -96,10 +96,26 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
 /// POST /v4/decodetracks
 pub async fn decode_tracks(Json(body): Json<api::EncodedTracks>) -> impl IntoResponse {
   tracing::info!("POST /v4/decodetracks: count={}", body.tracks.len());
-  let tracks: Vec<Track> = body
-    .tracks
-    .into_iter()
-    .filter_map(|e| Track::decode(&e))
-    .collect();
+
+  let mut tracks = Vec::with_capacity(body.tracks.len());
+  for encoded in &body.tracks {
+    match Track::decode(encoded) {
+      Some(t) => tracks.push(t),
+      None => {
+        return (
+          StatusCode::BAD_REQUEST,
+          Json(
+            serde_json::to_value(crate::common::LavalinkError::bad_request(
+              format!("Invalid track encoding: {}", encoded),
+              "/v4/decodetracks",
+            ))
+            .unwrap(),
+          ),
+        )
+          .into_response();
+      }
+    }
+  }
+
   (StatusCode::OK, Json(tracks)).into_response()
 }
