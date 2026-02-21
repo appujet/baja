@@ -30,6 +30,7 @@ pub struct SoundCloudTrack {
   /// - HLS: M3U8 manifest URL
   pub stream_url: String,
   pub kind: SoundCloudStreamKind,
+  pub bitrate_bps: u64,
   pub local_addr: Option<IpAddr>,
   pub proxy: Option<HttpProxyConfig>,
 }
@@ -41,12 +42,12 @@ impl PlayableTrack for SoundCloudTrack {
 
     let stream_url = self.stream_url.clone();
     let kind = self.kind.clone();
+    let bitrate_bps = self.bitrate_bps;
     let local_addr = self.local_addr;
     let proxy = self.proxy.clone();
 
     std::thread::spawn(move || {
       match kind {
-        // ── Progressive MP3 ────────────────────────────────────────
         SoundCloudStreamKind::ProgressiveMp3 => {
           let reader = match super::reader::SoundCloudReader::new(&stream_url, local_addr, proxy) {
             Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
@@ -58,7 +59,6 @@ impl PlayableTrack for SoundCloudTrack {
           run_processor(reader, Some("mp3"), tx, cmd_rx);
         }
 
-        // ── Progressive AAC ────────────────────────────────────────
         SoundCloudStreamKind::ProgressiveAac => {
           let reader = match super::reader::SoundCloudReader::new(&stream_url, local_addr, proxy) {
             Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
@@ -70,57 +70,33 @@ impl PlayableTrack for SoundCloudTrack {
           run_processor(reader, Some("m4a"), tx, cmd_rx);
         }
 
-        // ── HLS Opus (OGG container) ───────────────────────────────
         SoundCloudStreamKind::HlsOpus => {
-          // Use HlsReader: double-buffered prefetch, segment-level
-          // seeking, no TS demux needed (OGG is raw in segments).
-          let reader = match crate::sources::youtube::hls::HlsReader::new(
-            &stream_url,
-            local_addr,
-            None, // no YouTube cipher
-            None, // no player URL
-            proxy,
-          ) {
+          let reader = match super::reader::SoundCloudHlsReader::new(&stream_url, bitrate_bps, local_addr, proxy) {
             Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
             Err(e) => {
-              error!("SoundCloud HLS Opus: failed to init HlsReader: {}", e);
+              error!("SoundCloud HLS Opus: failed to init SoundCloudHlsReader: {}", e);
               return;
             }
           };
           run_processor(reader, Some("ogg"), tx, cmd_rx);
         }
 
-        // ── HLS MP3 ────────────────────────────────────────────────
         SoundCloudStreamKind::HlsMp3 => {
-          let reader = match crate::sources::youtube::hls::HlsReader::new(
-            &stream_url,
-            local_addr,
-            None,
-            None,
-            proxy,
-          ) {
+          let reader = match super::reader::SoundCloudHlsReader::new(&stream_url, bitrate_bps, local_addr, proxy) {
             Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
             Err(e) => {
-              error!("SoundCloud HLS MP3: failed to init HlsReader: {}", e);
+              error!("SoundCloud HLS MP3: failed to init SoundCloudHlsReader: {}", e);
               return;
             }
           };
           run_processor(reader, Some("mp3"), tx, cmd_rx);
         }
 
-        // ── HLS AAC / TS ───────────────────────────────────────────
         SoundCloudStreamKind::HlsAac => {
-          // HlsReader automatically demuxes TS → ADTS if needed.
-          let reader = match crate::sources::youtube::hls::HlsReader::new(
-            &stream_url,
-            local_addr,
-            None,
-            None,
-            proxy,
-          ) {
+          let reader = match super::reader::SoundCloudHlsReader::new(&stream_url, bitrate_bps, local_addr, proxy) {
             Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
             Err(e) => {
-              error!("SoundCloud HLS AAC: failed to init HlsReader: {}", e);
+              error!("SoundCloud HLS AAC: failed to init SoundCloudHlsReader: {}", e);
               return;
             }
           };

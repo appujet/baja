@@ -483,12 +483,15 @@ fn prefetch_loop(
 
         // Re-acquire lock and store the fetched data.
         let mut state = lock.lock().unwrap();
-        // Only append if no seek was requested while we were fetching.
-        if matches!(state.command, PrefetchCommand::Continue) {
-            state.next_buf.extend_from_slice(&tmp_buf);
-            state.current_segment_index = seg_idx + batch.len();
-            state.eos = state.pending.is_empty();
+        if !matches!(state.command, PrefetchCommand::Continue) {
+            // Re-enter the loop to immediately handle the new command (e.g. Seek)
+            // without resetting need_data to false, which would cause a deadlock
+            continue;
         }
+
+        state.next_buf.extend_from_slice(&tmp_buf);
+        state.current_segment_index = seg_idx + batch.len();
+        state.eos = state.pending.is_empty();
         state.need_data = false;
         cvar.notify_one();
     }

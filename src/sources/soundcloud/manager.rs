@@ -336,6 +336,7 @@ impl SoundCloudSource {
         Some(Box::new(SoundCloudTrack {
             stream_url,
             kind,
+            bitrate_bps: 128_000,
             local_addr,
             proxy: self.config.proxy.clone(),
         }))
