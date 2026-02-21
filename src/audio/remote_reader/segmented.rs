@@ -6,7 +6,7 @@ use std::{
 };
 
 use symphonia::core::io::MediaSource;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn, trace};
 
 use crate::common::types::AnyResult;
 
@@ -55,7 +55,7 @@ impl SegmentedRemoteReader {
       .and_then(|v| v.to_str().ok())
       .map(str::to_string);
 
-    info!(
+    debug!(
       "Opened SegmentedRemoteReader: {} (len={}, type={:?})",
       url, len, content_type
     );
@@ -185,7 +185,7 @@ fn fetch_worker(
             let mut state = lock.lock().unwrap();
             let actual_len = data.len();
             state.chunks.insert(idx, ChunkState::Ready(Arc::new(data)));
-            debug!(
+            trace!(
               "SegmentedRemoteReader worker filled chunk {} ({} bytes)",
               idx, actual_len
             );
@@ -260,7 +260,7 @@ impl Read for SegmentedRemoteReader {
           state = new_state;
 
           if result.timed_out() {
-            debug!(
+            trace!(
               "SegmentedRemoteReader read wait timed out for chunk {}",
               chunk_idx
             );
