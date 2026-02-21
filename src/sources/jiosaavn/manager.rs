@@ -15,11 +15,10 @@ use crate::{
 const API_BASE: &str = "https://www.jiosaavn.com/api.php";
 
 pub struct JioSaavnSource {
-
   client: reqwest::Client,
   url_regex: Regex,
-  search_prefix: String,
-  rec_prefix: String,
+  search_prefixes: Vec<String>,
+  rec_prefixes: Vec<String>,
   secret_key: Vec<u8>,
   proxy: Option<crate::configs::HttpProxyConfig>,
   // Limits
@@ -144,6 +143,7 @@ impl JioSaavnSource {
     let uri = json
       .get("perma_url")
       .and_then(|v| v.as_str())
+      .filter(|s| !s.is_empty())
       .map(|s| s.to_string());
 
     let duration_str = json
@@ -194,6 +194,7 @@ impl JioSaavnSource {
     let artwork_url = json
       .get("image")
       .and_then(|v| v.as_str())
+      .filter(|s| !s.is_empty())
       .map(|s| s.replace("150x150", "500x500"));
 
     let track_info = TrackInfo {
@@ -273,87 +274,6 @@ impl JioSaavnSource {
         cause: "".to_string(),
       })
     }
-
-    fn parse_track(&self, json: &Value) -> Option<Track> {
-        let id = json.get("id").and_then(|v| {
-            v.as_str()
-                .map(|s| s.to_string())
-                .or_else(|| v.as_i64().map(|i| i.to_string()))
-        })?;
-
-        let title_raw = json.get("title").or_else(|| json.get("song"))?.as_str()?;
-        let title = self.clean_string(title_raw);
-
-        let uri = json
-            .get("perma_url")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string());
-
-        let duration_str = json
-            .get("more_info")
-            .and_then(|m| m.get("duration"))
-            .or_else(|| json.get("duration"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("0");
-        let duration = duration_str.parse::<u64>().unwrap_or(0) * 1000;
-
-        let primary_artists = json
-            .get("more_info")
-            .and_then(|m| m.get("artistMap"))
-            .and_then(|am| am.get("primary_artists"));
-        let artists = json
-            .get("more_info")
-            .and_then(|m| m.get("artistMap"))
-            .and_then(|am| am.get("artists"));
-
-        let meta_artists = if let Some(arr) = primary_artists.and_then(|v| v.as_array()) {
-            if !arr.is_empty() {
-                Some(arr)
-            } else {
-                artists.and_then(|v| v.as_array())
-            }
-        } else {
-            artists.and_then(|v| v.as_array())
-        };
-
-        let author = if let Some(arr) = meta_artists {
-            arr.iter()
-                .filter_map(|a| a.get("name").and_then(|v| v.as_str()))
-                .collect::<Vec<_>>()
-                .join(", ")
-        } else {
-            json.get("more_info")
-                .and_then(|m| m.get("music"))
-                .or_else(|| json.get("primary_artists"))
-                .or_else(|| json.get("singers"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("Unknown Artist")
-                .to_string()
-        };
-        let author = self.clean_string(&author);
-
-        let artwork_url = json
-            .get("image")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(|s| s.replace("150x150", "500x500"));
-
-        let track_info = TrackInfo {
-            identifier: id,
-            is_seekable: true,
-            author,
-            length: duration,
-            is_stream: false,
-            position: 0,
-            title,
-            uri,
-            artwork_url,
-            isrc: None,
-            source_name: "jiosaavn".to_string(),
-        };
-
-        Some(Track::new(track_info))
   }
 
   async fn get_recommendations(&self, query: &str) -> LoadResult {
@@ -449,7 +369,7 @@ impl JioSaavnSource {
               return LoadResult::Playlist(PlaylistData {
                 info: PlaylistInfo {
                   name: "JioSaavn Recommendations".to_string(),
-                  selected_track: 0,
+                  selected_track: -1,
                 },
                 plugin_info: serde_json::json!({ "type": "recommendations" }),
                 tracks,
@@ -514,90 +434,14 @@ impl JioSaavnSource {
           .unwrap_or("");
         let mut name = self.clean_string(name_raw);
 
-        let station_id = self.get_json(&params).await.and_then(|json| {
-            json.get("stationid")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        });
-
-        if let Some(sid) = station_id {
-            let k_limit = self.recommendations_limit.to_string();
-            let params = vec![
-                ("__call", "webradio.getSong"),
-                ("api_version", "4"),
-                ("_format", "json"),
-                ("_marker", "0"),
-                ("ctx", "android"),
-                ("stationid", &sid),
-                ("k", &k_limit),
-            ];
-
-            if let Some(json) = self.get_json(&params).await {
-                if let Some(obj) = json.as_object() {
-                    let tracks: Vec<Track> = obj
-                        .values()
-                        .filter_map(|v| v.get("song"))
-                        .filter_map(|song| self.parse_track(song))
-                        .collect();
-
-                    if !tracks.is_empty() {
-                        return LoadResult::Playlist(PlaylistData {
-                            info: PlaylistInfo {
-                                name: "JioSaavn Recommendations".to_string(),
-                                selected_track: -1,
-                            },
-                            plugin_info: serde_json::json!({}),
-                            tracks,
-                        });
-                    }
-                }
-            }
-        }
-
-        if let Some(metadata) = self.fetch_metadata(&id).await {
-            if let Some(artist_ids) = metadata.get("primary_artists_id").and_then(|v| v.as_str()) {
-                let params = vec![
-                    ("__call", "search.artistOtherTopSongs"),
-                    ("api_version", "4"),
-                    ("_format", "json"),
-                    ("_marker", "0"),
-                    ("ctx", "wap6dot0"),
-                    ("artist_ids", artist_ids),
-                    ("song_id", &id),
-                    ("language", "unknown"),
-                ];
-
-                if let Some(json) = self.get_json(&params).await {
-                    if let Some(arr) = json.as_array() {
-                        let tracks: Vec<Track> = arr
-                            .iter()
-                            .take(self.recommendations_limit)
-                            .filter_map(|item| self.parse_track(item))
-                            .collect();
-
-                        if !tracks.is_empty() {
-                            return LoadResult::Playlist(PlaylistData {
-                                info: PlaylistInfo {
-                                    name: "JioSaavn Recommendations".to_string(),
-                                    selected_track: -1,
-                                },
-                                plugin_info: serde_json::json!({}),
-                                tracks,
-                            });
-                        }
-                    }
-                }
-            }
-
         if type_ == "artist" {
           name = format!("{}'s Top Tracks", name);
-
         }
 
         LoadResult::Playlist(PlaylistData {
           info: PlaylistInfo {
             name,
-            selected_track: 0,
+            selected_track: -1,
           },
           plugin_info: serde_json::json!({}),
           tracks,
@@ -683,39 +527,6 @@ impl JioSaavnSource {
               track.info.uri = Some(perma_url.to_string());
             }
 
-        if let Some(data) = self.get_json(&params).await {
-            let list = data.get("list").or_else(|| data.get("topSongs"));
-            if let Some(arr) = list.and_then(|v| v.as_array()) {
-                if arr.is_empty() {
-                    return LoadResult::Empty {};
-                }
-
-                let tracks: Vec<Track> = arr
-                    .iter()
-                    .filter_map(|item| self.parse_track(item))
-                    .collect();
-
-                let name_raw = data
-                    .get("title")
-                    .or_else(|| data.get("name"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let mut name = self.clean_string(name_raw);
-
-                if type_ == "artist" {
-                    name = format!("{}'s Top Tracks", name);
-                }
-
-                LoadResult::Playlist(PlaylistData {
-                    info: PlaylistInfo {
-                        name,
-                        selected_track: -1,
-                    },
-                    plugin_info: serde_json::json!({}),
-                    tracks,
-                })
-            } else {
-                LoadResult::Empty {}
             // Update Author
             if let Some(artists) = detail.get("primary_artists").and_then(|v| v.as_str()) {
               if !artists.is_empty() {
@@ -745,24 +556,6 @@ impl JioSaavnSource {
       }
     }
 
-    fn can_handle(&self, identifier: &str) -> bool {
-        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
-            || self.rec_prefixes.iter().any(|p| identifier.starts_with(p))
-            || self.url_regex.is_match(identifier)
-    }
-
-    fn search_prefixes(&self) -> Vec<&str> {
-        self.search_prefixes.iter().map(|s| s.as_str()).collect()
-    }
-
-    async fn load(
-        &self,
-        identifier: &str,
-        _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> LoadResult {
-        if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
-            let query = identifier.strip_prefix(prefix).unwrap();
-            return self.search(query).await;
     // Parse Artists -> PlaylistData
     if all_types || types.contains(&"artist".to_string()) {
       if let Some(data) = json
@@ -793,9 +586,6 @@ impl JioSaavnSource {
       }
     }
 
-        if let Some(prefix) = self.rec_prefixes.iter().find(|p| identifier.starts_with(*p)) {
-            let query = identifier.strip_prefix(prefix).unwrap();
-            return self.get_recommendations(query).await;
     // Parse TopQuery -> TextData
     if all_types || types.contains(&"text".to_string()) {
       if let Some(data) = json
@@ -888,9 +678,20 @@ impl SourcePlugin for JioSaavnSource {
   }
 
   fn can_handle(&self, identifier: &str) -> bool {
-    identifier.starts_with(&self.search_prefix)
-      || identifier.starts_with(&self.rec_prefix)
+    self
+      .search_prefixes
+      .iter()
+      .any(|p| identifier.starts_with(p))
+      || self.rec_prefixes.iter().any(|p| identifier.starts_with(p))
       || self.url_regex.is_match(identifier)
+  }
+
+  fn search_prefixes(&self) -> Vec<&str> {
+    self.search_prefixes.iter().map(|s| s.as_str()).collect()
+  }
+
+  fn rec_prefixes(&self) -> Vec<&str> {
+    self.rec_prefixes.iter().map(|s| s.as_str()).collect()
   }
 
   async fn load(
@@ -898,13 +699,21 @@ impl SourcePlugin for JioSaavnSource {
     identifier: &str,
     _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
   ) -> LoadResult {
-    if identifier.starts_with(&self.rec_prefix) {
-      let query = identifier.strip_prefix(&self.rec_prefix).unwrap();
+    if let Some(prefix) = self
+      .rec_prefixes
+      .iter()
+      .find(|p| identifier.starts_with(*p))
+    {
+      let query = identifier.strip_prefix(prefix).unwrap();
       return self.get_recommendations(query).await;
     }
 
-    if identifier.starts_with(&self.search_prefix) {
-      let query = identifier.strip_prefix(&self.search_prefix).unwrap();
+    if let Some(prefix) = self
+      .search_prefixes
+      .iter()
+      .find(|p| identifier.starts_with(*p))
+    {
+      let query = identifier.strip_prefix(prefix).unwrap();
       return self.search(query).await;
     }
 
@@ -981,8 +790,8 @@ impl SourcePlugin for JioSaavnSource {
     types: &[String],
     _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
   ) -> Option<crate::api::tracks::SearchResult> {
-    let q = if query.starts_with(&self.search_prefix) {
-      query.strip_prefix(&self.search_prefix).unwrap()
+    let q = if let Some(prefix) = self.search_prefixes.iter().find(|p| query.starts_with(*p)) {
+      query.strip_prefix(prefix).unwrap()
     } else {
       query
     };

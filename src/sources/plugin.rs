@@ -57,4 +57,12 @@ pub trait SourcePlugin: Send + Sync {
   fn get_proxy_config(&self) -> Option<crate::configs::HttpProxyConfig> {
     None
   }
+
+  fn search_prefixes(&self) -> Vec<&str> {
+    vec![]
+  }
+
+  fn rec_prefixes(&self) -> Vec<&str> {
+    vec![]
+  }
 }
