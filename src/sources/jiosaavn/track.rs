@@ -47,11 +47,12 @@ impl PlayableTrack for JioSaavnTrack {
         }
       };
 
-      let ext_hint = std::path::Path::new(&url)
+      let kind = std::path::Path::new(&url)
         .extension()
-        .and_then(|s| s.to_str());
+        .and_then(|s| s.to_str())
+        .and_then(crate::common::types::AudioKind::from_ext);
 
-      match AudioProcessor::new(reader, ext_hint, tx, cmd_rx) {
+      match AudioProcessor::new(reader, kind, tx, cmd_rx) {
         Ok(mut processor) => {
           if let Err(e) = processor.run() {
             tracing::error!("JioSaavn audio processor error: {}", e);

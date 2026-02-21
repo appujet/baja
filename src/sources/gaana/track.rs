@@ -48,16 +48,17 @@ impl PlayableTrack for GaanaTrack {
             .map(|r| Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
         };
 
-        let ext_hint = if url.contains(".m3u8") || url.contains("/api/manifest/hls_") {
-          Some("aac")
+        let kind = if url.contains(".m3u8") || url.contains("/api/manifest/hls_") {
+          Some(crate::common::types::AudioKind::Aac)
         } else {
           std::path::Path::new(&url)
             .extension()
             .and_then(|s| s.to_str())
+            .and_then(crate::common::types::AudioKind::from_ext)
         };
 
         if let Some(reader) = reader {
-          match AudioProcessor::new(reader, ext_hint, tx, cmd_rx) {
+          match AudioProcessor::new(reader, kind, tx, cmd_rx) {
             Ok(mut processor) => {
               if let Err(e) = processor.run() {
                 tracing::error!("GaanaTrack audio processor error: {}", e);

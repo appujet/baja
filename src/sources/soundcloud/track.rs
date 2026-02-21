@@ -56,7 +56,12 @@ impl PlayableTrack for SoundCloudTrack {
               return;
             }
           };
-          run_processor(reader, Some("mp3"), tx, cmd_rx);
+          run_processor(
+            reader,
+            Some(crate::common::types::AudioKind::Mp3),
+            tx,
+            cmd_rx,
+          );
         }
 
         SoundCloudStreamKind::ProgressiveAac => {
@@ -67,41 +72,85 @@ impl PlayableTrack for SoundCloudTrack {
               return;
             }
           };
-          run_processor(reader, Some("m4a"), tx, cmd_rx);
+          run_processor(
+            reader,
+            Some(crate::common::types::AudioKind::Mp4),
+            tx,
+            cmd_rx,
+          );
         }
 
         SoundCloudStreamKind::HlsOpus => {
-          let reader = match super::reader::SoundCloudHlsReader::new(&stream_url, bitrate_bps, local_addr, proxy) {
+          let reader = match super::reader::SoundCloudHlsReader::new(
+            &stream_url,
+            bitrate_bps,
+            local_addr,
+            proxy,
+          ) {
             Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
             Err(e) => {
-              error!("SoundCloud HLS Opus: failed to init SoundCloudHlsReader: {}", e);
+              error!(
+                "SoundCloud HLS Opus: failed to init SoundCloudHlsReader: {}",
+                e
+              );
               return;
             }
           };
-          run_processor(reader, Some("ogg"), tx, cmd_rx);
+          run_processor(
+            reader,
+            Some(crate::common::types::AudioKind::Opus),
+            tx,
+            cmd_rx,
+          );
         }
 
         SoundCloudStreamKind::HlsMp3 => {
-          let reader = match super::reader::SoundCloudHlsReader::new(&stream_url, bitrate_bps, local_addr, proxy) {
+          let reader = match super::reader::SoundCloudHlsReader::new(
+            &stream_url,
+            bitrate_bps,
+            local_addr,
+            proxy,
+          ) {
             Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
             Err(e) => {
-              error!("SoundCloud HLS MP3: failed to init SoundCloudHlsReader: {}", e);
+              error!(
+                "SoundCloud HLS MP3: failed to init SoundCloudHlsReader: {}",
+                e
+              );
               return;
             }
           };
-          run_processor(reader, Some("mp3"), tx, cmd_rx);
+          run_processor(
+            reader,
+            Some(crate::common::types::AudioKind::Mp3),
+            tx,
+            cmd_rx,
+          );
         }
 
         SoundCloudStreamKind::HlsAac => {
-          let reader = match super::reader::SoundCloudHlsReader::new(&stream_url, bitrate_bps, local_addr, proxy) {
+          let reader = match super::reader::SoundCloudHlsReader::new(
+            &stream_url,
+            bitrate_bps,
+            local_addr,
+            proxy,
+          ) {
             Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
             Err(e) => {
-              error!("SoundCloud HLS AAC: failed to init SoundCloudHlsReader: {}", e);
+              error!(
+                "SoundCloud HLS AAC: failed to init SoundCloudHlsReader: {}",
+                e
+              );
               return;
             }
           };
           // Hint as "aac" so symphonia knows what to expect from ADTS stream.
-          run_processor(reader, Some("aac"), tx, cmd_rx);
+          run_processor(
+            reader,
+            Some(crate::common::types::AudioKind::Aac),
+            tx,
+            cmd_rx,
+          );
         }
       }
     });
@@ -112,11 +161,11 @@ impl PlayableTrack for SoundCloudTrack {
 
 fn run_processor(
   reader: Box<dyn symphonia::core::io::MediaSource>,
-  ext_hint: Option<&str>,
+  kind: Option<crate::common::types::AudioKind>,
   tx: flume::Sender<i16>,
   cmd_rx: flume::Receiver<DecoderCommand>,
 ) {
-  match AudioProcessor::new(reader, ext_hint, tx, cmd_rx) {
+  match AudioProcessor::new(reader, kind, tx, cmd_rx) {
     Ok(mut p) => {
       if let Err(e) = p.run() {
         error!("SoundCloud AudioProcessor error: {}", e);
@@ -124,8 +173,8 @@ fn run_processor(
     }
     Err(e) => {
       error!(
-        "SoundCloud: failed to init AudioProcessor (hint={:?}): {}",
-        ext_hint, e
+        "SoundCloud: failed to init AudioProcessor (kind={:?}): {}",
+        kind, e
       );
     }
   }

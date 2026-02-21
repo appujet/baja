@@ -29,7 +29,7 @@ impl PlayableTrack for YoutubeTrack {
     let (tx, rx) = flume::bounded::<i16>(4096 * 4);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
 
-    // Clone needed data for the thread
+    // Prepare data for the decoding thread
     let identifier = self.identifier.clone();
     let clients = self.clients.clone();
     let oauth = self.oauth.clone();
@@ -38,133 +38,111 @@ impl PlayableTrack for YoutubeTrack {
     let local_addr = self.local_addr;
     let proxy = self.proxy.clone();
 
-    // Use a persistent reference for helper calls
-    let track_ref = Arc::new(YoutubeTrack {
-      identifier: identifier.clone(),
-      clients,
-      oauth,
-      cipher_manager,
-      visitor_data: visitor_data.clone(),
-      local_addr,
-      proxy: proxy.clone(),
-    });
-
     std::thread::spawn(move || {
       let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
 
-      let context = if let Some(vd) = &visitor_data {
-        serde_json::json!({ "visitorData": vd })
-      } else {
-        serde_json::json!({})
-      };
-
+      let context = serde_json::json!({ "visitorData": visitor_data });
       let mut success = false;
 
-      for client in &track_ref.clients {
+      for client in &clients {
+        let client_name = client.name();
         debug!(
-          "YoutubeTrack: Attempting playback for '{}' with {}",
-          identifier,
-          client.name()
+          "YoutubeTrack: Resolving '{}' using {}",
+          identifier, client_name
         );
 
-        let playback_url = runtime.block_on(async {
-          match client
-            .get_track_url(
-              &identifier,
-              &context,
-              track_ref.cipher_manager.clone(),
-              track_ref.oauth.clone(),
-            )
+        let playback_result = runtime.block_on(async {
+          client
+            .get_track_url(&identifier, &context, cipher_manager.clone(), oauth.clone())
             .await
-          {
-            Ok(Some(url)) => Some(url),
-            _ => None,
-          }
         });
 
-        let url = match playback_url {
-          Some(u) => u,
-          None => {
-            debug!(
-              "YoutubeTrack: Client {} failed to resolve URL",
-              client.name()
-            );
+        let url = match playback_result {
+          Ok(Some(u)) => u,
+          Ok(None) => {
+            debug!("YoutubeTrack: {} returned no stream URL", client_name);
+            continue;
+          }
+          Err(e) => {
+            debug!("YoutubeTrack: {} failed to resolve: {}", client_name, e);
             continue;
           }
         };
 
-        debug!("YoutubeTrack: Resolved URL using {}", client.name());
+        debug!(
+          "YoutubeTrack: Resolved stream URL via {}: {}",
+          client_name, url
+        );
 
-        let custom_reader: Option<Box<dyn symphonia::core::io::MediaSource>> =
+        // 1. Initialize the appropriate MediaSource reader
+        let reader: Box<dyn symphonia::core::io::MediaSource> =
           if url.contains(".m3u8") || url.contains("/playlist") {
             let player_url = if url.contains("youtube.com") {
               Some(url.clone())
             } else {
               None
             };
-            HlsReader::new(
+
+            match HlsReader::new(
               &url,
               local_addr,
-              Some(track_ref.cipher_manager.clone()),
+              Some(cipher_manager.clone()),
               player_url,
               proxy.clone(),
-            )
-            .ok()
-            .map(|r| Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
+            ) {
+              Ok(r) => Box::new(r),
+              Err(e) => {
+                error!(
+                  "YoutubeTrack: HlsReader initialization failed for {}: {}",
+                  client_name, e
+                );
+                continue;
+              }
+            }
           } else {
-            None
+            match super::reader::YoutubeReader::new(&url, local_addr, proxy.clone()) {
+              Ok(r) => Box::new(r),
+              Err(e) => {
+                error!(
+                  "YoutubeTrack: YoutubeReader initialization failed for {}: {}",
+                  client_name, e
+                );
+                continue;
+              }
+            }
           };
 
-        let reader = match custom_reader {
-          Some(r) => r,
-          None => match super::reader::YoutubeReader::new(&url, local_addr, proxy.clone()) {
-            Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
-            Err(e) => {
-              error!(
-                "YoutubeTrack: Failed to open YoutubeReader for {}: {}",
-                client.name(),
-                e
-              );
-              continue;
-            }
-          },
-        };
-
-        let ext_hint = if url.contains(".m3u8") || url.contains("/api/manifest/hls_") {
-          Some("aac")
-        } else if url.contains("itag=251")
-          || url.contains("itag=250")
-          || url.contains("mime=audio/webm")
-        {
-          Some("webm")
+        // 2. Identify the likely codec format for Symphonia's demuxer
+        let kind = if url.contains(".m3u8") || url.contains("/hls_") {
+          Some(crate::common::types::AudioKind::Aac)
+        } else if url.contains("itag=251") || url.contains("mime=audio/webm") {
+          Some(crate::common::types::AudioKind::Webm)
         } else if url.contains("itag=140") || url.contains("mime=audio/mp4") {
-          Some("mp4")
+          Some(crate::common::types::AudioKind::Mp4)
         } else {
           std::path::Path::new(&url)
             .extension()
             .and_then(|s| s.to_str())
+            .and_then(crate::common::types::AudioKind::from_ext)
         };
 
-        match AudioProcessor::new(reader, ext_hint, tx.clone(), cmd_rx.clone()) {
+        // 3. Initialize AudioProcessor and start decoding session
+        match AudioProcessor::new(reader, kind, tx.clone(), cmd_rx.clone()) {
           Ok(mut processor) => {
-            debug!(
-              "YoutubeTrack: Playback started successfully with {}",
-              client.name()
-            );
+            debug!("YoutubeTrack: Playback session started for {}", client_name);
             success = true;
             if let Err(e) = processor.run() {
-              error!("YoutubeTrack: Decoding session failed: {}", e);
+              error!("YoutubeTrack: Decoding session finished with error: {}", e);
             }
-            break; // Stop trying other clients if we successfully started and then finished/failed
+            break; // Successfully played/finished, stop trying other clients
           }
           Err(e) => {
             error!(
-              "YoutubeTrack: Initialization failed with {}: {}. Trying next client...",
-              client.name(),
-              e
+              "YoutubeTrack: AudioProcessor initialization failed with {}: {}",
+              client_name, e
             );
             continue;
           }
