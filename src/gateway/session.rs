@@ -49,6 +49,7 @@ pub struct VoiceGateway {
   endpoint: String,
   mixer: Shared<Mixer>,
   filter_chain: Shared<crate::audio::filters::FilterChain>,
+  ping: Arc<AtomicI64>,
   cancel_token: CancellationToken,
 }
 
@@ -77,6 +78,7 @@ impl VoiceGateway {
     endpoint: String,
     mixer: Shared<Mixer>,
     filter_chain: Shared<crate::audio::filters::FilterChain>,
+    ping: Arc<AtomicI64>,
   ) -> Self {
     Self {
       guild_id,
@@ -87,6 +89,7 @@ impl VoiceGateway {
       endpoint,
       mixer,
       filter_chain,
+      ping,
       cancel_token: CancellationToken::new(),
     }
   }
@@ -228,6 +231,7 @@ impl VoiceGateway {
     let dave = Arc::new(Mutex::new(DaveHandler::new(self.user_id, self.channel_id)));
     let tx_hb = tx.clone();
     let mut heartbeat_handle = None;
+    let last_heartbeat = Arc::new(AtomicI64::new(0));
 
     let outcome = loop {
       let msg = match read.next().await {
@@ -279,19 +283,22 @@ impl VoiceGateway {
 
               let tx_hb_inner = tx_hb.clone();
               let seq_ack_hb = seq_ack.clone();
+              let last_hb_inner = last_heartbeat.clone();
               heartbeat_handle = Some(tokio::spawn(async move {
                 let mut interval =
                   tokio::time::interval(tokio::time::Duration::from_millis(heartbeat_interval));
                 loop {
                   interval.tick().await;
                   let current_seq = seq_ack_hb.load(Ordering::Relaxed);
+                  let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64;
+                  last_hb_inner.store(now as i64, Ordering::SeqCst);
                   let hb = VoiceGatewayMessage {
                     op: 3,
                     d: serde_json::json!({
-                        "t": std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis() as u64,
+                        "t": now,
                         "seq_ack": current_seq
                     }),
                   };
@@ -423,7 +430,17 @@ impl VoiceGateway {
               }
             }
             6 => {
-              // Heartbeat ACK — can measure ping here if needed
+              // Heartbeat ACK — measure ping
+              let sent = last_heartbeat.load(Ordering::SeqCst);
+              if sent > 0 {
+                let now = std::time::SystemTime::now()
+                  .duration_since(std::time::UNIX_EPOCH)
+                  .unwrap()
+                  .as_millis() as i64;
+                let latency = now - sent;
+                self.ping.store(latency, Ordering::Relaxed);
+                tracing::debug!("Voice heartbeat ACK. Ping: {}ms", latency);
+              }
             }
             9 => {
               // Op 9: Resumed — reset reconnect attempts

@@ -1,0 +1,60 @@
+use std::sync::Arc;
+
+use axum::{
+  extract::{Path, State},
+  http::StatusCode,
+  response::{IntoResponse, Json},
+};
+
+use crate::{api, server::AppState};
+
+/// DELETE /v4/sessions/{sessionId}/players/{guildId}
+pub async fn destroy_player(
+  Path((session_id, guild_id)): Path<(String, String)>,
+  State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+  tracing::debug!("Destroy player: session={} guild={}", session_id, guild_id);
+
+  match state.sessions.get(&session_id) {
+    Some(session) => {
+      if let Some((_, player)) = session.players.remove(&guild_id) {
+        // Emit TrackEnd(Cleanup) if track existed
+        if player.track.is_some() {
+          if let Some(track_data) = player.to_player_response().track {
+            tracing::debug!("Emitting TrackEnd(Cleanup) for guild {}", guild_id);
+            let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
+              guild_id: guild_id.clone(),
+              track: track_data,
+              reason: api::TrackEndReason::Cleanup,
+            });
+            session.send_message(&end_event).await;
+          }
+        }
+
+        if let Some(handle) = &player.track_handle {
+          player
+            .stop_signal
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+          handle.stop();
+        }
+        {
+          let engine = player.engine.lock().await;
+          let mut mixer = engine.mixer.lock().await;
+          mixer.stop_all();
+        }
+      }
+      StatusCode::NO_CONTENT.into_response()
+    }
+    None => (
+      StatusCode::NOT_FOUND,
+      Json(
+        serde_json::to_value(crate::common::LavalinkError::not_found(
+          "Session not found",
+          format!("/v4/sessions/{}/players/{}", session_id, guild_id),
+        ))
+        .unwrap(),
+      ),
+    )
+      .into_response(),
+  }
+}

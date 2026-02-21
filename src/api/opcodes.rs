@@ -95,6 +95,7 @@ pub async fn handle_op(
           let guild = player.guild_id.clone();
           let voice_state = player.voice.clone();
           let filter_chain = player.filter_chain.clone();
+          let ping = player.ping.clone();
 
           if let Some(task) = player.gateway_task.take() {
             task.abort();
@@ -102,7 +103,7 @@ pub async fn handle_op(
 
           drop(player);
           let new_task =
-            crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain).await;
+            crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain, ping).await;
 
           if let Some(mut player) = session.players.get_mut(&guild_id) {
             player.gateway_task = Some(new_task);

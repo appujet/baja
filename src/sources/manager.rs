@@ -19,16 +19,16 @@ use crate::audio::processor::DecoderCommand;
 
 /// Source Manager
 pub struct SourceManager {
-    sources: Vec<BoxedSource>,
-    mirrors: Option<crate::configs::MirrorsConfig>,
-    pub youtube_cipher_manager: Option<Arc<YouTubeCipherManager>>,
+  sources: Vec<BoxedSource>,
+  mirrors: Option<crate::configs::MirrorsConfig>,
+  pub youtube_cipher_manager: Option<Arc<YouTubeCipherManager>>,
 }
 
 impl SourceManager {
-    /// Create a new SourceManager with all available sources
-    pub fn new(config: &crate::configs::Config) -> Self {
-        let mut sources: Vec<BoxedSource> = Vec::new();
-        let mut youtube_cipher_manager = None;
+  /// Create a new SourceManager with all available sources
+  pub fn new(config: &crate::configs::Config) -> Self {
+    let mut sources: Vec<BoxedSource> = Vec::new();
+    let mut youtube_cipher_manager = None;
 
         // Register all sources
         if config.sources.jiosaavn {
@@ -79,189 +79,207 @@ impl SourceManager {
             sources.push(Box::new(HttpSource::new()));
         }
 
-        Self {
-            sources,
-            mirrors: config.mirrors.clone(),
-            youtube_cipher_manager,
-        }
+
+    Self {
+      sources,
+      mirrors: config.mirrors.clone(),
+      youtube_cipher_manager,
+    }
+  }
+
+  /// Load tracks using the first matching source
+  pub async fn load(
+    &self,
+    identifier: &str,
+    routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+  ) -> crate::api::tracks::LoadResult {
+    // Try each source in order
+    for source in &self.sources {
+      if source.can_handle(identifier) {
+        tracing::debug!("Loading '{}' with source: {}", identifier, source.name());
+        return source.load(identifier, routeplanner.clone()).await;
+      }
     }
 
-    /// Load tracks using the first matching source
-    pub async fn load(
-        &self,
-        identifier: &str,
-        routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> crate::api::tracks::LoadResult {
-        // Try each source in order
-        for source in &self.sources {
-            if source.can_handle(identifier) {
-                tracing::debug!("Loading '{}' with source: {}", identifier, source.name());
-                return source.load(identifier, routeplanner.clone()).await;
+    tracing::warn!("No source could handle identifier: {}", identifier);
+    crate::api::tracks::LoadResult::Empty {}
+  }
+  pub async fn load_search(
+    &self,
+    query: &str,
+    types: &[String],
+    routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+  ) -> Option<crate::api::tracks::SearchResult> {
+    // Try each source in order
+    for source in &self.sources {
+      if source.can_handle(query) {
+        tracing::debug!("Loading search '{}' with source: {}", query, source.name());
+        // Call load_search on the candidate source
+        return source.load_search(query, types, routeplanner.clone()).await;
+      }
+    }
+
+    tracing::warn!("No source could handle search query: {}", query);
+    None
+  }
+
+  pub async fn get_track(
+    &self,
+    track_info: &crate::api::tracks::TrackInfo,
+    routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+  ) -> Option<BoxedTrack> {
+    let identifier = track_info.uri.as_deref().unwrap_or(&track_info.identifier);
+
+    for source in &self.sources {
+      if source.can_handle(identifier) {
+        tracing::debug!(
+          "Resolving playable track for '{}' with source: {}",
+          identifier,
+          source.name()
+        );
+
+        if let Some(track) = source.get_track(identifier, routeplanner.clone()).await {
+          return Some(track);
+        }
+        break;
+      }
+    }
+
+    if let Some(mirrors) = &self.mirrors {
+      let isrc = track_info.isrc.as_deref().unwrap_or("");
+      let query = format!("{} - {}", track_info.title, track_info.author);
+
+      if isrc.is_empty() {
+        tracing::debug!("Track has no ISRC");
+      }
+
+      for provider in &mirrors.providers {
+        let search_query = provider.replace("%ISRC%", isrc).replace("%QUERY%", &query);
+
+        if isrc.is_empty() && provider.contains("%ISRC%") {
+          continue;
+        }
+
+        tracing::debug!("Attempting mirror provider: {}", search_query);
+
+        match self.load(&search_query, routeplanner.clone()).await {
+          crate::api::tracks::LoadResult::Track(track) => {
+            let nested_id = track.info.uri.as_deref().unwrap_or(&track.info.identifier);
+            if let Some(playable) = self
+              .resolve_nested_track(nested_id, routeplanner.clone())
+              .await
+            {
+              tracing::debug!(
+                "Mirror success: {} -> {}",
+                search_query,
+                track.info.identifier
+              );
+              return Some(playable);
             }
-        }
-
-        tracing::warn!("No source could handle identifier: {}", identifier);
-        crate::api::tracks::LoadResult::Empty {}
-    }
-
-    pub async fn get_track(
-        &self,
-        track_info: &crate::api::tracks::TrackInfo,
-        routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<BoxedTrack> {
-        let identifier = track_info.uri.as_deref().unwrap_or(&track_info.identifier);
-
-        for source in &self.sources {
-            if source.can_handle(identifier) {
+          }
+          crate::api::tracks::LoadResult::Search(tracks) => {
+            if let Some(first_track) = tracks.first() {
+              let nested_id = first_track
+                .info
+                .uri
+                .as_deref()
+                .unwrap_or(&first_track.info.identifier);
+              if let Some(playable) = self
+                .resolve_nested_track(nested_id, routeplanner.clone())
+                .await
+              {
                 tracing::debug!(
-                    "Resolving playable track for '{}' with source: {}",
-                    identifier,
-                    source.name()
+                  "Mirror success (search): {} -> {}",
+                  search_query,
+                  first_track.info.identifier
                 );
-
-                if let Some(track) = source.get_track(identifier, routeplanner.clone()).await {
-                    return Some(track);
-                }
-                break;
+                return Some(playable);
+              }
             }
+          }
+          _ => {}
         }
+      }
+    }
 
-        if let Some(mirrors) = &self.mirrors {
-            let isrc = track_info.isrc.as_deref().unwrap_or("");
-            let query = format!("{} - {}", track_info.title, track_info.author);
+    tracing::warn!("Failed to resolve playable track for: {}", identifier);
+    None
+  }
 
-            if isrc.is_empty() {
-                tracing::debug!("Track has no ISRC");
-            }
-
-            for provider in &mirrors.providers {
-                let search_query = provider.replace("%ISRC%", isrc).replace("%QUERY%", &query);
-
-                if isrc.is_empty() && provider.contains("%ISRC%") {
-                    continue;
-                }
-
-                tracing::debug!("Attempting mirror provider: {}", search_query);
-
-                match self.load(&search_query, routeplanner.clone()).await {
-                    crate::api::tracks::LoadResult::Track(track) => {
-                        let nested_id = track.info.uri.as_deref().unwrap_or(&track.info.identifier);
-                        if let Some(playable) = self
-                            .resolve_nested_track(nested_id, routeplanner.clone())
-                            .await
-                        {
-                            tracing::debug!(
-                                "Mirror success: {} -> {}",
-                                search_query,
-                                track.info.identifier
-                            );
-                            return Some(playable);
-                        }
-                    }
-                    crate::api::tracks::LoadResult::Search(tracks) => {
-                        if let Some(first_track) = tracks.first() {
-                            let nested_id = first_track
-                                .info
-                                .uri
-                                .as_deref()
-                                .unwrap_or(&first_track.info.identifier);
-                            if let Some(playable) = self
-                                .resolve_nested_track(nested_id, routeplanner.clone())
-                                .await
-                            {
-                                tracing::debug!(
-                                    "Mirror success (search): {} -> {}",
-                                    search_query,
-                                    first_track.info.identifier
-                                );
-                                return Some(playable);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
+  /// Helper to resolve a nested ID found via mirror search
+  async fn resolve_nested_track(
+    &self,
+    identifier: &str,
+    routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+  ) -> Option<BoxedTrack> {
+    for source in &self.sources {
+      if source.can_handle(identifier) {
+        if let Some(track) = source.get_track(identifier, routeplanner.clone()).await {
+          return Some(track);
         }
+      }
+    }
+    None
+  }
 
-        tracing::warn!("Failed to resolve playable track for: {}", identifier);
-        None
-    }
-
-    /// Helper to resolve a nested ID found via mirror search
-    async fn resolve_nested_track(
-        &self,
-        identifier: &str,
-        routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<BoxedTrack> {
-        for source in &self.sources {
-            if source.can_handle(identifier) {
-                if let Some(track) = source.get_track(identifier, routeplanner.clone()).await {
-                    return Some(track);
-                }
-            }
-        }
-        None
-    }
-
-    /// Get names of all registered sources
-    pub fn source_names(&self) -> Vec<String> {
-        self.sources.iter().map(|s| s.name().to_string()).collect()
-    }
-    pub fn get_proxy_config(&self, source_name: &str) -> Option<crate::configs::HttpProxyConfig> {
-        self.sources
-            .iter()
-            .find(|s| s.name() == source_name)
-            .and_then(|s| s.get_proxy_config())
-    }
+  /// Get names of all registered sources
+  pub fn source_names(&self) -> Vec<String> {
+    self.sources.iter().map(|s| s.name().to_string()).collect()
+  }
+  pub fn get_proxy_config(&self, source_name: &str) -> Option<crate::configs::HttpProxyConfig> {
+    self
+      .sources
+      .iter()
+      .find(|s| s.name() == source_name)
+      .and_then(|s| s.get_proxy_config())
+  }
 }
 
 pub struct MirroredTrack {
-    pub query: String,
-    pub source_manager: Arc<SourceManager>,
+  pub query: String,
+  pub source_manager: Arc<SourceManager>,
 }
 
 impl PlayableTrack for MirroredTrack {
-    fn start_decoding(&self) -> (flume::Receiver<i16>, flume::Sender<DecoderCommand>) {
-        let (tx, rx) = flume::bounded::<i16>(4096 * 4);
-        let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
+  fn start_decoding(&self) -> (flume::Receiver<i16>, flume::Sender<DecoderCommand>) {
+    let (tx, rx) = flume::bounded::<i16>(4096 * 4);
+    let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
 
-        let query = self.query.clone();
-        let manager = self.source_manager.clone();
+    let query = self.query.clone();
+    let manager = self.source_manager.clone();
 
-        std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
+    std::thread::spawn(move || {
+      let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
 
-            runtime.block_on(async {
-                if let crate::api::tracks::LoadResult::Search(tracks) =
-                    manager.load(&query, None).await
-                {
-                    if let Some(first) = tracks.first() {
-                        if let Some(playable) = manager.get_track(&first.info, None).await {
-                            let (inner_rx, inner_cmd_tx) = playable.start_decoding();
+      runtime.block_on(async {
+        if let crate::api::tracks::LoadResult::Search(tracks) = manager.load(&query, None).await {
+          if let Some(first) = tracks.first() {
+            if let Some(playable) = manager.get_track(&first.info, None).await {
+              let (inner_rx, inner_cmd_tx) = playable.start_decoding();
 
-                            // Proxy commands
-                            let cmd_tx_clone = inner_cmd_tx.clone();
-                            std::thread::spawn(move || {
-                                while let Ok(cmd) = cmd_rx.recv() {
-                                    let _ = cmd_tx_clone.send(cmd);
-                                }
-                            });
-
-                            // Proxy samples
-                            while let Ok(sample) = inner_rx.recv() {
-                                if tx.send(sample).is_err() {
-                                    break;
-                                }
-                            }
-                        }
-                    }
+              // Proxy commands
+              let cmd_tx_clone = inner_cmd_tx.clone();
+              std::thread::spawn(move || {
+                while let Ok(cmd) = cmd_rx.recv() {
+                  let _ = cmd_tx_clone.send(cmd);
                 }
-            });
-        });
+              });
 
-        (rx, cmd_tx)
-    }
+              // Proxy samples
+              while let Ok(sample) = inner_rx.recv() {
+                if tx.send(sample).is_err() {
+                  break;
+                }
+              }
+            }
+          }
+        }
+      });
+    });
+
+    (rx, cmd_tx)
+  }
 }

@@ -133,6 +133,7 @@ pub async fn start_playback(
   let session_clone = session.clone();
   let stop_signal = player.stop_signal.clone();
   let track_data_clone = track_data.clone();
+  let ping = player.ping.clone();
 
   let track_task = tokio::spawn(async move {
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
@@ -166,7 +167,7 @@ pub async fn start_playback(
             time: crate::server::now_ms(),
             position: handle_clone.get_position(),
             connected: true,
-            ping: -1,
+            ping: ping.load(std::sync::atomic::Ordering::Relaxed),
           },
         };
         session_clone.send_message(&update).await;

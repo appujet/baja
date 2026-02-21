@@ -5,6 +5,15 @@ pub struct LoadTracksQuery {
   pub identifier: String,
 }
 
+/// Request parameters for the `loadsearch` endpoint.
+#[derive(serde::Deserialize)]
+pub struct LoadSearchQuery {
+  /// The search query
+  pub query: String,
+  /// Comma-separated list of types to search for (e.g. "track,playlist,album,artist,text")
+  pub types: Option<String>,
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecodeTrackQuery {

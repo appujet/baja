@@ -9,87 +9,9 @@ use axum::{
 use crate::{
   api,
   api::tracks::{Track, TrackInfo},
-  player::{
-    Filters, Player, PlayerContext, PlayerState, PlayerUpdate, Players, VoiceConnectionState,
-    VoiceState,
-  },
-  server::{AppState, now_ms},
+  player::{PlayerContext, PlayerUpdate, VoiceConnectionState},
+  server::AppState,
 };
-
-/// GET /v4/sessions/{sessionId}/players
-pub async fn get_players(
-  Path(session_id): Path<String>,
-  State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-  tracing::info!("GET /v4/sessions/{}/players", session_id);
-  match state.sessions.get(&session_id) {
-    Some(session) => {
-      let players: Vec<Player> = session
-        .players
-        .iter()
-        .map(|p| p.to_player_response())
-        .collect();
-      (StatusCode::OK, Json(Players { players })).into_response()
-    }
-    None => (
-      StatusCode::NOT_FOUND,
-      Json(
-        serde_json::to_value(crate::common::LavalinkError::not_found(
-          format!("Session not found: {}", session_id),
-          format!("/v4/sessions/{}/players", session_id),
-        ))
-        .unwrap(),
-      ),
-    )
-      .into_response(),
-  }
-}
-
-/// GET /v4/sessions/{sessionId}/players/{guildId}
-pub async fn get_player(
-  Path((session_id, guild_id)): Path<(String, String)>,
-  State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-  tracing::info!("GET /v4/sessions/{}/players/{}", session_id, guild_id);
-  match state.sessions.get(&session_id) {
-    Some(session) => match session.players.get(&guild_id) {
-      Some(player) => (
-        StatusCode::OK,
-        Json(serde_json::to_value(player.to_player_response()).unwrap()),
-      )
-        .into_response(),
-      None => {
-        // Return empty player (Lavalink behavior: player exists implicitly)
-        let empty = Player {
-          guild_id: guild_id.clone(),
-          track: None,
-          volume: 100,
-          paused: false,
-          state: PlayerState {
-            time: now_ms(),
-            position: 0,
-            connected: false,
-            ping: -1,
-          },
-          voice: VoiceState::default(),
-          filters: Filters::default(),
-        };
-        (StatusCode::OK, Json(serde_json::to_value(empty).unwrap())).into_response()
-      }
-    },
-    None => (
-      StatusCode::NOT_FOUND,
-      Json(
-        serde_json::to_value(crate::common::LavalinkError::not_found(
-          format!("Session not found: {}", session_id),
-          format!("/v4/sessions/{}/players/{}", session_id, guild_id),
-        ))
-        .unwrap(),
-      ),
-    )
-      .into_response(),
-  }
-}
 
 /// PATCH /v4/sessions/{sessionId}/players/{guildId}
 pub async fn update_player(
@@ -219,9 +141,10 @@ pub async fn update_player(
       let guild = player.guild_id.clone();
       let voice_state = player.voice.clone();
       let filter_chain = player.filter_chain.clone();
+      let ping = player.ping.clone();
       drop(player);
       let handle =
-        crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain).await;
+        crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain, ping).await;
       // Re-acquire player for track handling below
       player = session.players.get_mut(&guild_id).unwrap();
 
@@ -361,57 +284,6 @@ pub async fn update_player(
     Json(serde_json::to_value(response).unwrap()),
   )
     .into_response()
-}
-
-/// DELETE /v4/sessions/{sessionId}/players/{guildId}
-pub async fn destroy_player(
-  Path((session_id, guild_id)): Path<(String, String)>,
-  State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
-  tracing::debug!("Destroy player: session={} guild={}", session_id, guild_id);
-
-  match state.sessions.get(&session_id) {
-    Some(session) => {
-      if let Some((_, player)) = session.players.remove(&guild_id) {
-        // Emit TrackEnd(Cleanup) if track existed
-        if player.track.is_some() {
-          if let Some(track_data) = player.to_player_response().track {
-            tracing::debug!("Emitting TrackEnd(Cleanup) for guild {}", guild_id);
-            let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
-              guild_id: guild_id.clone(),
-              track: track_data,
-              reason: api::TrackEndReason::Cleanup,
-            });
-            session.send_message(&end_event).await;
-          }
-        }
-
-        if let Some(handle) = &player.track_handle {
-          player
-            .stop_signal
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-          handle.stop();
-        }
-        {
-          let engine = player.engine.lock().await;
-          let mut mixer = engine.mixer.lock().await;
-          mixer.stop_all();
-        }
-      }
-      StatusCode::NO_CONTENT.into_response()
-    }
-    None => (
-      StatusCode::NOT_FOUND,
-      Json(
-        serde_json::to_value(crate::common::LavalinkError::not_found(
-          "Session not found",
-          format!("/v4/sessions/{}/players/{}", session_id, guild_id),
-        ))
-        .unwrap(),
-      ),
-    )
-      .into_response(),
-  }
 }
 
 /// PATCH /v4/sessions/{sessionId}
