@@ -497,6 +497,45 @@ impl JioSaavnSource {
       }
     }
 
+    // Batch update track details for duration and perma_url
+    if !tracks.is_empty() {
+      let pids: Vec<String> = tracks.iter().map(|t| t.info.identifier.clone()).collect();
+      let pids_str = pids.join(",");
+      let details_params = vec![
+        ("__call", "song.getDetails"),
+        ("_format", "json"),
+        ("pids", &pids_str),
+      ];
+
+      if let Some(details_json) = self.get_json(&details_params).await {
+        for track in &mut tracks {
+          if let Some(detail) = details_json.get(&track.info.identifier) {
+            // Update length
+            if let Some(duration) = detail
+              .get("duration")
+              .and_then(|v| v.as_str())
+              .and_then(|s| s.parse::<u64>().ok())
+              .or_else(|| detail.get("duration").and_then(|v| v.as_u64()))
+            {
+              track.info.length = duration * 1000;
+            }
+
+            // Update URI
+            if let Some(perma_url) = detail.get("perma_url").and_then(|v| v.as_str()) {
+              track.info.uri = Some(perma_url.to_string());
+            }
+
+            // Update Author
+            if let Some(artists) = detail.get("primary_artists").and_then(|v| v.as_str()) {
+              if !artists.is_empty() {
+                track.info.author = self.clean_string(artists);
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Parse Albums -> PlaylistData
     if all_types || types.contains(&"album".to_string()) {
       if let Some(data) = json
