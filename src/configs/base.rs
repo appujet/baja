@@ -32,6 +32,8 @@ pub struct Config {
   pub audiomack: Option<AudiomackConfig>,
   #[serde(default)]
   pub pandora: Option<PandoraConfig>,
+  #[serde(default)]
+  pub qobuz: Option<QobuzConfig>,
 }
 
 impl Default for Config {
@@ -53,6 +55,7 @@ impl Default for Config {
       soundcloud: None,
       audiomack: None,
       pandora: None,
+      qobuz: None,
     }
   }
 }

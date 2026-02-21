@@ -24,6 +24,7 @@ gaana = true
 tidal = true
 audiomack = true
 pandora = true
+qobuz = true
 
 [mirrors]
 providers = [
@@ -130,7 +131,25 @@ search_limit = 10
 playlist_load_limit = 100
 
 # Optional proxy for Pandora
-#[pandora.proxy]
+[pandora.proxy]
+#url = "http://proxy.example.com:8080"
+#username = "myuser"
+#password = "mypassword"
+
+[qobuz]
+# user_token is optional; without it all playback falls back to mirrors.
+# Get it from play.qobuz.com → DevTools → Application → Local Storage → localuser → token
+# user_token = "your_user_token_here"
+# app_id and app_secret are optional; auto-extracted from bundle.js if omitted
+# app_id = ""
+# app_secret = ""
+search_limit = 10
+playlist_load_limit = 100
+album_load_limit = 50
+artist_load_limit = 20
+
+# Optional proxy for Qobuz
+[qobuz.proxy]
 #url = "http://proxy.example.com:8080"
 #username = "myuser"
 #password = "mypassword"

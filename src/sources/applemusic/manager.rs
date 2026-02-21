@@ -37,6 +37,7 @@ impl AppleMusicSource {
 
     let client = reqwest::Client::builder()
       .default_headers(headers)
+      .gzip(true)
       .build()
       .unwrap();
 

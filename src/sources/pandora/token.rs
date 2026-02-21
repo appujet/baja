@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
@@ -130,7 +130,9 @@ impl PandoraTokenTracker {
         let resp = self.client.post("https://www.pandora.com/api/v1/auth/anonymousLogin")
             .header("Cookie", csrf_raw)
             .header("X-CsrfToken", csrf_parsed)
-            .json(&json!({}))
+            .header("Content-Type", "application/json")
+            .header("Accept", "*/*")
+            .body("")
             .send()
             .await
             .map_err(|e| e.to_string())?;

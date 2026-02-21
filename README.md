@@ -39,7 +39,7 @@ The following table outlines the current implementation status of various featur
 | **Amazon Music** | ❌ | Planned implementation |
 | **Apple Music** | ✅ | Implementation |
 | **Anghami** | ❌ | Planned implementation |
-| **Audiomack** | ❌ | Planned implementation |
+| **Audiomack** | ✅ | Implementation |
 | **Audius** | ❌ | Planned implementation |
 | **Bandcamp** | ❌ | Planned implementation |
 | **Bilibili** | ❌ | Planned implementation |
@@ -48,11 +48,11 @@ The following table outlines the current implementation status of various featur
 | **Kwai** | ❌ | Planned implementation |
 | **Last.fm** | ❌ | Planned implementation |
 | **MixCloud** | ❌ | Planned implementation |
-| **Pandora** | ❌ | Planned implementation |
-| **Qobuz** | ❌ | Planned implementation |
+| **Pandora** | ✅ | Implementation |
+| **Qobuz** | ✅ | Implementation |
 | **Reddit** | ❌ | Planned implementation |
 | **Shazam** | ❌ | Planned implementation |
-| **SoundCloud** | ❌ | Planned implementation |
+| **SoundCloud** | ✅ | Integration with progressive and HLS streams |
 | **Tidal** | ✅ | Implementation |
 | **Twitch** | ❌ | Planned implementation |
 | **Vimeo** | ❌ | Planned implementation |

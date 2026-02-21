@@ -45,6 +45,7 @@ impl SoundCloudSource {
 
     let mut client_builder = reqwest::Client::builder()
       .default_headers(headers)
+      .gzip(true)
       .timeout(Duration::from_secs(15));
 
     if let Some(proxy_cfg) = &config.proxy {

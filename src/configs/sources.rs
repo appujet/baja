@@ -22,6 +22,8 @@ pub struct SourcesConfig {
   pub audiomack: bool,
   #[serde(default)]
   pub pandora: bool,
+  #[serde(default)]
+  pub qobuz: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -420,6 +422,50 @@ impl Default for PandoraConfig {
       csrf_token: None,
       search_limit: default_pd_search_limit(),
       playlist_load_limit: default_pd_playlist_load_limit(),
+    }
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct QobuzConfig {
+  pub user_token: Option<String>,
+  pub app_id: Option<String>,
+  pub app_secret: Option<String>,
+  pub proxy: Option<HttpProxyConfig>,
+  #[serde(default = "default_qb_search_limit")]
+  pub search_limit: usize,
+  #[serde(default = "default_qb_playlist_load_limit")]
+  pub playlist_load_limit: usize,
+  #[serde(default = "default_qb_album_load_limit")]
+  pub album_load_limit: usize,
+  #[serde(default = "default_qb_artist_load_limit")]
+  pub artist_load_limit: usize,
+}
+
+fn default_qb_search_limit() -> usize {
+  10
+}
+fn default_qb_playlist_load_limit() -> usize {
+  100
+}
+fn default_qb_album_load_limit() -> usize {
+  50
+}
+fn default_qb_artist_load_limit() -> usize {
+  20
+}
+
+impl Default for QobuzConfig {
+  fn default() -> Self {
+    Self {
+      user_token: None,
+      app_id: None,
+      app_secret: None,
+      proxy: None,
+      search_limit: default_qb_search_limit(),
+      playlist_load_limit: default_qb_playlist_load_limit(),
+      album_load_limit: default_qb_album_load_limit(),
+      artist_load_limit: default_qb_artist_load_limit(),
     }
   }
 }

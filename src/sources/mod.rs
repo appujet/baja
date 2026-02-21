@@ -10,6 +10,7 @@ pub mod manager;
 pub mod plugin;
 pub mod soundcloud;
 pub mod pandora;
+pub mod qobuz;
 pub mod spotify;
 pub mod tidal;
 pub mod youtube;

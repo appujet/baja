@@ -11,6 +11,7 @@ use super::{
   jiosaavn::JioSaavnSource,
   local::LocalSource,
   plugin::{BoxedSource, BoxedTrack, PlayableTrack},
+  qobuz::QobuzSource,
   soundcloud::SoundCloudSource,
   pandora::PandoraSource,
   spotify::manager::SpotifySource,
@@ -21,7 +22,7 @@ use crate::audio::processor::DecoderCommand;
 
 /// Source Manager
 pub struct SourceManager {
-  sources: Vec<BoxedSource>,
+  pub sources: Vec<BoxedSource>,
   mirrors: Option<crate::configs::MirrorsConfig>,
   pub youtube_cipher_manager: Option<Arc<YouTubeCipherManager>>,
 }
@@ -31,6 +32,7 @@ impl SourceManager {
   pub fn new(config: &crate::configs::Config) -> Self {
     let mut sources: Vec<BoxedSource> = Vec::new();
     let mut youtube_cipher_manager = None;
+
 
     // Register all sources
     if config.sources.jiosaavn {
@@ -79,6 +81,10 @@ impl SourceManager {
     if config.sources.pandora {
       info!("Registering Pandora source");
       sources.push(Box::new(PandoraSource::new(config.pandora.clone())));
+    }
+    if config.sources.qobuz {
+      info!("Registering Qobuz source");
+      sources.push(Box::new(QobuzSource::new(config)));
     }
     if config.sources.http {
       info!("Registering HTTP source");

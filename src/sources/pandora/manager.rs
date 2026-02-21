@@ -34,7 +34,9 @@ impl PandoraSource {
     headers.insert(USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"));
 
     let mut client_builder = reqwest::Client::builder()
-      .default_headers(headers);
+      .default_headers(headers)
+      .gzip(true)
+      .timeout(std::time::Duration::from_secs(30));
 
     let (s_limit, csrf_override) = if let Some(c) = config {
       if let Some(proxy_config) = &c.proxy {
