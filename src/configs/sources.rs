@@ -18,6 +18,8 @@ pub struct SourcesConfig {
     pub tidal: bool,
     #[serde(default)]
     pub soundcloud: bool,
+    #[serde(default)]
+    pub audiomack: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -369,6 +371,24 @@ impl Default for SoundCloudConfig {
             proxy: None,
             search_limit: default_sc_search_limit(),
             playlist_load_limit: default_sc_playlist_load_limit(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AudiomackConfig {
+    #[serde(default = "default_amk_search_limit")]
+    pub search_limit: usize,
+}
+
+fn default_amk_search_limit() -> usize {
+    20
+}
+
+impl Default for AudiomackConfig {
+    fn default() -> Self {
+        Self {
+            search_limit: default_amk_search_limit(),
         }
     }
 }

@@ -19,6 +19,7 @@ pub type BoxedSource = Box<dyn SourcePlugin>;
 /// Trait that all source plugins must implement.
 #[async_trait]
 pub trait SourcePlugin: Send + Sync {
+
   /// Unique identifier for this source (e.g., "http", "youtube", "spotify")
   fn name(&self) -> &str;
 
