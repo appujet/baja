@@ -120,11 +120,11 @@ impl PlayableTrack for YoutubeTrack {
 
         let reader = match custom_reader {
           Some(r) => r,
-          None => match crate::audio::RemoteReader::new(&url, local_addr, proxy.clone()) {
-            Ok(r) => Box::new(r),
+          None => match super::reader::YoutubeReader::new(&url, local_addr, proxy.clone()) {
+            Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
             Err(e) => {
               error!(
-                "YoutubeTrack: Failed to open RemoteReader for {}: {}",
+                "YoutubeTrack: Failed to open YoutubeReader for {}: {}",
                 client.name(),
                 e
               );

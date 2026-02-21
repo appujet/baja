@@ -17,6 +17,8 @@ pub mod clients;
 pub mod extractor;
 pub mod hls;
 pub mod oauth;
+pub mod reader;
+pub mod ua;
 
 pub mod track;
 

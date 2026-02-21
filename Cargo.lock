@@ -2501,15 +2501,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rand_agents"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a443ab8a19bb7bbfa003b760590d7b6fe13fab900e18d766d1819576c43e797c"
-dependencies = [
- "rand 0.8.5",
-]
-
-[[package]]
 name = "rand_chacha"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2767,7 +2758,6 @@ dependencies = [
  "ipnet",
  "md-5",
  "rand 0.8.5",
- "rand_agents",
  "regex",
  "reqwest",
  "rubato",
