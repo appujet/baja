@@ -9,6 +9,7 @@ use super::{
   gaana::GaanaSource,
   http::HttpSource,
   jiosaavn::JioSaavnSource,
+  local::LocalSource,
   plugin::{BoxedSource, BoxedTrack, PlayableTrack},
   soundcloud::SoundCloudSource,
   spotify::manager::SpotifySource,
@@ -77,6 +78,10 @@ impl SourceManager {
     if config.sources.http {
       info!("Registering HTTP source");
       sources.push(Box::new(HttpSource::new()));
+    }
+    if config.sources.local {
+      info!("Registering Local source");
+      sources.push(Box::new(LocalSource::new()));
     }
 
     Self {

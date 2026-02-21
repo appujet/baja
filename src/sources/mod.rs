@@ -2,6 +2,7 @@ pub mod applemusic;
 pub mod audiomack;
 pub mod http;
 pub mod jiosaavn;
+pub mod local;
 
 pub mod deezer;
 pub mod gaana;
