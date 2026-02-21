@@ -25,9 +25,16 @@ pub struct YoutubeTrack {
 }
 
 impl PlayableTrack for YoutubeTrack {
-  fn start_decoding(&self) -> (Receiver<i16>, Sender<DecoderCommand>) {
+  fn start_decoding(
+    &self,
+  ) -> (
+    Receiver<i16>,
+    Sender<DecoderCommand>,
+    flume::Receiver<String>,
+  ) {
     let (tx, rx) = flume::bounded::<i16>(4096 * 4);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
+    let (err_tx, err_rx) = flume::bounded::<String>(1);
 
     // Prepare data for the decoding thread
     let identifier = self.identifier.clone();
@@ -130,7 +137,13 @@ impl PlayableTrack for YoutubeTrack {
         };
 
         // 3. Initialize AudioProcessor and start decoding session
-        match AudioProcessor::new(reader, kind, tx.clone(), cmd_rx.clone()) {
+        match AudioProcessor::new(
+          reader,
+          kind,
+          tx.clone(),
+          cmd_rx.clone(),
+          Some(err_tx.clone()),
+        ) {
           Ok(mut processor) => {
             debug!("YoutubeTrack: Playback session started for {}", client_name);
             success = true;
@@ -157,6 +170,6 @@ impl PlayableTrack for YoutubeTrack {
       }
     });
 
-    (rx, cmd_tx)
+    (rx, cmd_tx, err_rx)
   }
 }

@@ -36,9 +36,16 @@ pub struct SoundCloudTrack {
 }
 
 impl PlayableTrack for SoundCloudTrack {
-  fn start_decoding(&self) -> (Receiver<i16>, Sender<DecoderCommand>) {
+  fn start_decoding(
+    &self,
+  ) -> (
+    Receiver<i16>,
+    Sender<DecoderCommand>,
+    flume::Receiver<String>,
+  ) {
     let (tx, rx) = flume::bounded::<i16>(4096 * 4);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
+    let (err_tx, err_rx) = flume::bounded::<String>(1);
 
     let stream_url = self.stream_url.clone();
     let kind = self.kind.clone();
@@ -61,6 +68,7 @@ impl PlayableTrack for SoundCloudTrack {
             Some(crate::common::types::AudioKind::Mp3),
             tx,
             cmd_rx,
+            err_tx,
           );
         }
 
@@ -77,6 +85,7 @@ impl PlayableTrack for SoundCloudTrack {
             Some(crate::common::types::AudioKind::Mp4),
             tx,
             cmd_rx,
+            err_tx,
           );
         }
 
@@ -101,6 +110,7 @@ impl PlayableTrack for SoundCloudTrack {
             Some(crate::common::types::AudioKind::Opus),
             tx,
             cmd_rx,
+            err_tx,
           );
         }
 
@@ -125,6 +135,7 @@ impl PlayableTrack for SoundCloudTrack {
             Some(crate::common::types::AudioKind::Mp3),
             tx,
             cmd_rx,
+            err_tx,
           );
         }
 
@@ -150,12 +161,13 @@ impl PlayableTrack for SoundCloudTrack {
             Some(crate::common::types::AudioKind::Aac),
             tx,
             cmd_rx,
+            err_tx,
           );
         }
       }
     });
 
-    (rx, cmd_tx)
+    (rx, cmd_tx, err_rx)
   }
 }
 
@@ -164,8 +176,9 @@ fn run_processor(
   kind: Option<crate::common::types::AudioKind>,
   tx: flume::Sender<i16>,
   cmd_rx: flume::Receiver<DecoderCommand>,
+  err_tx: flume::Sender<String>,
 ) {
-  match AudioProcessor::new(reader, kind, tx, cmd_rx) {
+  match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
     Ok(mut p) => {
       if let Err(e) = p.run() {
         error!("SoundCloud AudioProcessor error: {}", e);

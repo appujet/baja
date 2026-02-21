@@ -246,14 +246,29 @@ impl VoiceGateway {
       let msg = match read.next().await {
         Some(Ok(msg)) => msg,
         Some(Err(e)) => {
-          // IO error on WS read — this is the "Connection reset by peer" case.
-          // Treat as reconnectable.
+          // IO error on WS read — treat as abnormal closure (1006).
           warn!("Voice WS read error: {}. Will attempt reconnect.", e);
+          if let Some(evt_tx) = &self.event_tx {
+            let _ = evt_tx.send(crate::api::LavalinkEvent::WebSocketClosed {
+              guild_id: self.guild_id.clone(),
+              code: 1006,
+              reason: format!("IO error: {}", e),
+              by_remote: true,
+            });
+          }
           break SessionOutcome::Reconnect;
         }
         None => {
-          // Stream ended (clean close without close frame)
+          // Stream ended without a close frame.
           tracing::debug!("Voice WS stream ended for guild {}", self.guild_id);
+          if let Some(evt_tx) = &self.event_tx {
+            let _ = evt_tx.send(crate::api::LavalinkEvent::WebSocketClosed {
+              guild_id: self.guild_id.clone(),
+              code: 1000,
+              reason: "Stream ended".to_string(),
+              by_remote: true,
+            });
+          }
           break SessionOutcome::Reconnect;
         }
       };

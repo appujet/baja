@@ -6,8 +6,18 @@ use flume::{Receiver, Sender};
 use crate::audio::processor::DecoderCommand;
 
 /// A track that can start its own decoding and return PCM samples.
+/// Returns `(pcm_rx, cmd_tx, error_rx)` where:
+/// - `pcm_rx`   — i16 PCM samples produced by the decoder
+/// - `cmd_tx`   — send seek/stop commands to the decoder
+/// - `error_rx` — receives a single `String` if a fatal decode/IO error occurs
 pub trait PlayableTrack: Send + Sync {
-  fn start_decoding(&self) -> (Receiver<i16>, Sender<DecoderCommand>);
+  fn start_decoding(
+    &self,
+  ) -> (
+    Receiver<i16>,
+    Sender<DecoderCommand>,
+    flume::Receiver<String>,
+  );
 }
 
 /// A boxed playable track.
@@ -19,7 +29,6 @@ pub type BoxedSource = Box<dyn SourcePlugin>;
 /// Trait that all source plugins must implement.
 #[async_trait]
 pub trait SourcePlugin: Send + Sync {
-
   /// Unique identifier for this source (e.g., "http", "youtube", "spotify")
   fn name(&self) -> &str;
 

@@ -22,7 +22,13 @@ pub struct JioSaavnTrack {
 }
 
 impl PlayableTrack for JioSaavnTrack {
-  fn start_decoding(&self) -> (Receiver<i16>, Sender<DecoderCommand>) {
+  fn start_decoding(
+    &self,
+  ) -> (
+    Receiver<i16>,
+    Sender<DecoderCommand>,
+    flume::Receiver<String>,
+  ) {
     let mut playback_url = self
       .decrypt_url(&self.encrypted_url)
       .expect("Failed to decrypt JioSaavn URL");
@@ -33,6 +39,7 @@ impl PlayableTrack for JioSaavnTrack {
 
     let (tx, rx) = flume::bounded::<i16>(4096 * 4);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
+    let (err_tx, err_rx) = flume::bounded::<String>(1);
 
     let url = playback_url.clone();
     let local_addr = self.local_addr;
@@ -43,6 +50,7 @@ impl PlayableTrack for JioSaavnTrack {
         Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
         Err(e) => {
           tracing::error!("Failed to create JioSaavnReader for JioSaavn: {}", e);
+          let _ = err_tx.send(format!("Failed to open stream: {}", e));
           return;
         }
       };
@@ -52,7 +60,7 @@ impl PlayableTrack for JioSaavnTrack {
         .and_then(|s| s.to_str())
         .and_then(crate::common::types::AudioKind::from_ext);
 
-      match AudioProcessor::new(reader, kind, tx, cmd_rx) {
+      match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
         Ok(mut processor) => {
           if let Err(e) = processor.run() {
             tracing::error!("JioSaavn audio processor error: {}", e);
@@ -64,7 +72,7 @@ impl PlayableTrack for JioSaavnTrack {
       }
     });
 
-    (rx, cmd_tx)
+    (rx, cmd_tx, err_rx)
   }
 }
 

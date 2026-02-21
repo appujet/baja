@@ -195,9 +195,16 @@ pub struct HttpTrack {
 }
 
 impl PlayableTrack for HttpTrack {
-  fn start_decoding(&self) -> (flume::Receiver<i16>, flume::Sender<DecoderCommand>) {
+  fn start_decoding(
+    &self,
+  ) -> (
+    flume::Receiver<i16>,
+    flume::Sender<DecoderCommand>,
+    flume::Receiver<String>,
+  ) {
     let (tx, rx) = flume::bounded::<i16>(4096 * 4);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
+    let (err_tx, err_rx) = flume::bounded::<String>(1);
 
     let url = self.url.clone();
     let local_addr = self.local_addr;
@@ -207,6 +214,7 @@ impl PlayableTrack for HttpTrack {
         Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
         Err(e) => {
           error!("Failed to create HttpReader for HTTP: {}", e);
+          let _ = err_tx.send(format!("Failed to open stream: {}", e));
           return;
         }
       };
@@ -216,7 +224,7 @@ impl PlayableTrack for HttpTrack {
         .and_then(|s| s.to_str())
         .and_then(crate::common::types::AudioKind::from_ext);
 
-      match AudioProcessor::new(reader, kind, tx, cmd_rx) {
+      match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
         Ok(mut processor) => {
           if let Err(e) = processor.run() {
             error!("HTTP track audio processor error: {}", e);
@@ -228,6 +236,6 @@ impl PlayableTrack for HttpTrack {
       }
     });
 
-    (rx, cmd_tx)
+    (rx, cmd_tx, err_rx)
   }
 }

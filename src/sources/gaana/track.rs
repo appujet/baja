@@ -18,9 +18,16 @@ pub struct GaanaTrack {
 }
 
 impl PlayableTrack for GaanaTrack {
-  fn start_decoding(&self) -> (Receiver<i16>, Sender<DecoderCommand>) {
+  fn start_decoding(
+    &self,
+  ) -> (
+    Receiver<i16>,
+    Sender<DecoderCommand>,
+    flume::Receiver<String>,
+  ) {
     let (tx, rx) = flume::bounded::<i16>(4096 * 4);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
+    let (err_tx, err_rx) = flume::bounded::<String>(1);
 
     let track_id = self.track_id.clone();
     let client = self.client.clone();
@@ -58,7 +65,7 @@ impl PlayableTrack for GaanaTrack {
         };
 
         if let Some(reader) = reader {
-          match AudioProcessor::new(reader, kind, tx, cmd_rx) {
+          match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
             Ok(mut processor) => {
               if let Err(e) = processor.run() {
                 tracing::error!("GaanaTrack audio processor error: {}", e);
@@ -76,7 +83,7 @@ impl PlayableTrack for GaanaTrack {
       }
     });
 
-    (rx, cmd_tx)
+    (rx, cmd_tx, err_rx)
   }
 }
 

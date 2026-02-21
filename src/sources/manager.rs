@@ -3,17 +3,17 @@ use std::sync::Arc;
 use tracing::info;
 
 use super::{
-    applemusic::manager::AppleMusicSource,
-    audiomack::manager::AudiomackSource,
-    deezer::DeezerSource,
-    gaana::GaanaSource,
-    http::HttpSource,
-    jiosaavn::JioSaavnSource,
-    plugin::{BoxedSource, BoxedTrack, PlayableTrack},
-    soundcloud::SoundCloudSource,
-    spotify::manager::SpotifySource,
-    tidal::TidalSource,
-    youtube::{YouTubeSource, cipher::YouTubeCipherManager},
+  applemusic::manager::AppleMusicSource,
+  audiomack::manager::AudiomackSource,
+  deezer::DeezerSource,
+  gaana::GaanaSource,
+  http::HttpSource,
+  jiosaavn::JioSaavnSource,
+  plugin::{BoxedSource, BoxedTrack, PlayableTrack},
+  soundcloud::SoundCloudSource,
+  spotify::manager::SpotifySource,
+  tidal::TidalSource,
+  youtube::{YouTubeSource, cipher::YouTubeCipherManager},
 };
 use crate::audio::processor::DecoderCommand;
 
@@ -30,55 +30,54 @@ impl SourceManager {
     let mut sources: Vec<BoxedSource> = Vec::new();
     let mut youtube_cipher_manager = None;
 
-        // Register all sources
-        if config.sources.jiosaavn {
-            info!("Registering JioSaavn source");
-            sources.push(Box::new(JioSaavnSource::new(config.jiosaavn.clone())));
-        }
-        if config.sources.deezer {
-            info!("Registering Deezer source");
-            sources.push(Box::new(
-                DeezerSource::new(config.deezer.clone().unwrap_or_default())
-                    .expect("Failed to create Deezer source"),
-            ));
-        }
-        if config.sources.youtube {
-            info!("Registering YouTube source");
-            let yt = YouTubeSource::new(config.youtube.clone());
-            youtube_cipher_manager = Some(yt.cipher_manager());
-            sources.push(Box::new(yt));
-        }
-        if config.sources.spotify {
-            info!("Registering Spotify source");
-            sources.push(Box::new(SpotifySource::new(config.spotify.clone())));
-        }
-        if config.sources.applemusic {
-            info!("Registering Apple Music source");
-            sources.push(Box::new(AppleMusicSource::new(config.applemusic.clone())));
-        }
-        if config.sources.gaana {
-            info!("Registering Gaana source");
-            sources.push(Box::new(GaanaSource::new(config.gaana.clone())));
-        }
-        if config.sources.tidal {
-            info!("Registering Tidal source");
-            sources.push(Box::new(TidalSource::new(config.tidal.clone())));
-        }
-        if config.sources.soundcloud {
-            info!("Registering SoundCloud source");
-            sources.push(Box::new(SoundCloudSource::new(
-                config.soundcloud.clone().unwrap_or_default(),
-            )));
-        }
-        if config.sources.audiomack {
-            info!("Registering Audiomack source");
-            sources.push(Box::new(AudiomackSource::new(config.audiomack.clone())));
-        }
-        if config.sources.http {
-            info!("Registering HTTP source");
-            sources.push(Box::new(HttpSource::new()));
-        }
-
+    // Register all sources
+    if config.sources.jiosaavn {
+      info!("Registering JioSaavn source");
+      sources.push(Box::new(JioSaavnSource::new(config.jiosaavn.clone())));
+    }
+    if config.sources.deezer {
+      info!("Registering Deezer source");
+      sources.push(Box::new(
+        DeezerSource::new(config.deezer.clone().unwrap_or_default())
+          .expect("Failed to create Deezer source"),
+      ));
+    }
+    if config.sources.youtube {
+      info!("Registering YouTube source");
+      let yt = YouTubeSource::new(config.youtube.clone());
+      youtube_cipher_manager = Some(yt.cipher_manager());
+      sources.push(Box::new(yt));
+    }
+    if config.sources.spotify {
+      info!("Registering Spotify source");
+      sources.push(Box::new(SpotifySource::new(config.spotify.clone())));
+    }
+    if config.sources.applemusic {
+      info!("Registering Apple Music source");
+      sources.push(Box::new(AppleMusicSource::new(config.applemusic.clone())));
+    }
+    if config.sources.gaana {
+      info!("Registering Gaana source");
+      sources.push(Box::new(GaanaSource::new(config.gaana.clone())));
+    }
+    if config.sources.tidal {
+      info!("Registering Tidal source");
+      sources.push(Box::new(TidalSource::new(config.tidal.clone())));
+    }
+    if config.sources.soundcloud {
+      info!("Registering SoundCloud source");
+      sources.push(Box::new(SoundCloudSource::new(
+        config.soundcloud.clone().unwrap_or_default(),
+      )));
+    }
+    if config.sources.audiomack {
+      info!("Registering Audiomack source");
+      sources.push(Box::new(AudiomackSource::new(config.audiomack.clone())));
+    }
+    if config.sources.http {
+      info!("Registering HTTP source");
+      sources.push(Box::new(HttpSource::new()));
+    }
 
     Self {
       sources,
@@ -241,9 +240,16 @@ pub struct MirroredTrack {
 }
 
 impl PlayableTrack for MirroredTrack {
-  fn start_decoding(&self) -> (flume::Receiver<i16>, flume::Sender<DecoderCommand>) {
+  fn start_decoding(
+    &self,
+  ) -> (
+    flume::Receiver<i16>,
+    flume::Sender<DecoderCommand>,
+    flume::Receiver<String>,
+  ) {
     let (tx, rx) = flume::bounded::<i16>(4096 * 4);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
+    let (err_tx, err_rx) = flume::bounded::<String>(1);
 
     let query = self.query.clone();
     let manager = self.source_manager.clone();
@@ -258,13 +264,20 @@ impl PlayableTrack for MirroredTrack {
         if let crate::api::tracks::LoadResult::Search(tracks) = manager.load(&query, None).await {
           if let Some(first) = tracks.first() {
             if let Some(playable) = manager.get_track(&first.info, None).await {
-              let (inner_rx, inner_cmd_tx) = playable.start_decoding();
+              let (inner_rx, inner_cmd_tx, inner_err_rx) = playable.start_decoding();
 
               // Proxy commands
               let cmd_tx_clone = inner_cmd_tx.clone();
               std::thread::spawn(move || {
                 while let Ok(cmd) = cmd_rx.recv() {
                   let _ = cmd_tx_clone.send(cmd);
+                }
+              });
+
+              // Proxy errors
+              std::thread::spawn(move || {
+                if let Ok(err) = inner_err_rx.recv() {
+                  let _ = err_tx.send(err);
                 }
               });
 
@@ -280,6 +293,6 @@ impl PlayableTrack for MirroredTrack {
       });
     });
 
-    (rx, cmd_tx)
+    (rx, cmd_tx, err_rx)
   }
 }

@@ -120,7 +120,7 @@ pub async fn start_playback(
     identifier, track_info.source_name
   );
 
-  let (rx, cmd_tx) = playable_track.start_decoding();
+  let (rx, cmd_tx, error_rx) = playable_track.start_decoding();
   let (handle, audio_state, vol, pos) = TrackHandle::new(cmd_tx);
 
   {
@@ -160,7 +160,7 @@ pub async fn start_playback(
     let update_duration = std::time::Duration::from_secs(update_interval_secs);
 
     let mut last_position = handle_clone.get_position();
-    let mut stuck_ms = 0;
+    let mut stuck_ms = 0u64;
 
     loop {
       interval.tick().await;
@@ -172,12 +172,38 @@ pub async fn start_playback(
 
       let current_state = handle_clone.get_state();
       if current_state == PlaybackState::Stopped {
-        let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
-          guild_id: guild_id.clone(),
-          track: track_data_clone.clone(),
-          reason: api::TrackEndReason::Finished,
-        });
-        session_clone.send_message(&end_event).await;
+        // Check if the decoder reported a fatal error.
+        match error_rx.try_recv() {
+          Ok(err_msg) => {
+            tracing::warn!("[{}] Mid-playback decoder error: {}", guild_id, err_msg);
+            let exception_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackException {
+              guild_id: guild_id.clone(),
+              track: track_data_clone.clone(),
+              exception: api::TrackException {
+                message: Some(err_msg.clone()),
+                severity: crate::common::Severity::Fault,
+                cause: err_msg,
+              },
+            });
+            session_clone.send_message(&exception_event).await;
+
+            let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
+              guild_id: guild_id.clone(),
+              track: track_data_clone.clone(),
+              reason: api::TrackEndReason::LoadFailed,
+            });
+            session_clone.send_message(&end_event).await;
+          }
+          Err(_) => {
+            // Channel empty or disconnected — normal natural finish.
+            let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
+              guild_id: guild_id.clone(),
+              track: track_data_clone.clone(),
+              reason: api::TrackEndReason::Finished,
+            });
+            session_clone.send_message(&end_event).await;
+          }
+        }
         break;
       }
 
@@ -193,6 +219,19 @@ pub async fn start_playback(
             });
             session_clone.send_message(&stuck_event).await;
             tracing::warn!("Track {} got stuck!", track_data_clone.info.title);
+
+            // Send a playerUpdate immediately after stuck — mirrors Lavalink behaviour.
+            let stuck_update = api::OutgoingMessage::PlayerUpdate {
+              guild_id: guild_id.clone(),
+              state: PlayerState {
+                time: crate::server::now_ms(),
+                position: current_pos,
+                connected: true,
+                ping: ping.load(std::sync::atomic::Ordering::Relaxed),
+              },
+            };
+            session_clone.send_message(&stuck_update).await;
+            last_update = std::time::Instant::now();
           }
         } else {
           stuck_ms = 0;

@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use crate::{api, server::AppState};
 
 pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
@@ -53,7 +55,7 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
     cpu: api::Cpu {
       cores: num_cpus(),
       system_load,
-      lavalink_load: 0.0, // Harder to calculate per-process load without external crate
+      lavalink_load: read_process_cpu_load(),
     },
     frame_stats,
   }
@@ -112,4 +114,60 @@ fn read_memory_stats() -> (u64, u64, u64) {
     }
   }
   (rss, free, total)
+}
+
+/// Reads per-process CPU time from `/proc/self/stat` and computes the CPU
+/// load fraction since the last call. Returns a value in `[0.0, 1.0]`
+/// representing fraction of total CPU time used by this process.
+///
+/// Linux kernel always uses 100 ticks/sec for USER_HZ in /proc/self/stat,
+/// so we avoid a libc dependency by hardcoding 100.
+fn read_process_cpu_load() -> f64 {
+  static PREV_CPU: AtomicU64 = AtomicU64::new(0);
+  static PREV_WALL: AtomicU64 = AtomicU64::new(0);
+
+  // Read /proc/self/stat — utime is field 14, stime is field 15 (1-indexed).
+  // The comm field (2nd) can contain spaces and parens; skip past the closing ')'.
+  let stat = match std::fs::read_to_string("/proc/self/stat") {
+    Ok(s) => s,
+    Err(_) => return 0.0,
+  };
+  let after_comm = match stat.rfind(')') {
+    Some(i) => &stat[i + 1..],
+    None => return 0.0,
+  };
+
+  let fields: Vec<&str> = after_comm.split_whitespace().collect();
+  // After ')': state(0), ppid(1), pgrp(2), session(3), tty(4), tpgid(5),
+  //             flags(6), minflt(7), cminflt(8), majflt(9), cmajflt(10),
+  //             utime(11), stime(12), ...
+  let utime: u64 = fields.get(11).and_then(|v| v.parse().ok()).unwrap_or(0);
+  let stime: u64 = fields.get(12).and_then(|v| v.parse().ok()).unwrap_or(0);
+  let cpu_ticks = utime + stime;
+
+  // Wall-clock in ticks: uptime_secs * USER_HZ (always 100 on Linux)
+  let uptime_sec: f64 = std::fs::read_to_string("/proc/uptime")
+    .ok()
+    .and_then(|s| s.split_whitespace().next().and_then(|v| v.parse().ok()))
+    .unwrap_or(0.0);
+
+  const USER_HZ: u64 = 100;
+  let wall_ticks = (uptime_sec * USER_HZ as f64) as u64;
+
+  let prev_cpu = PREV_CPU.swap(cpu_ticks, Ordering::Relaxed);
+  let prev_wall = PREV_WALL.swap(wall_ticks, Ordering::Relaxed);
+
+  // First call: no delta yet
+  if prev_wall == 0 {
+    return 0.0;
+  }
+
+  let d_cpu = cpu_ticks.saturating_sub(prev_cpu) as f64;
+  let d_wall = wall_ticks.saturating_sub(prev_wall) as f64;
+
+  if d_wall == 0.0 {
+    return 0.0;
+  }
+
+  (d_cpu / d_wall).clamp(0.0, 1.0)
 }

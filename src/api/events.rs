@@ -27,6 +27,7 @@ pub enum LavalinkEvent {
   #[serde(rename = "TrackStartEvent")]
   #[serde(rename_all = "camelCase")]
   TrackStart { guild_id: String, track: Track },
+
   #[serde(rename = "TrackEndEvent")]
   #[serde(rename_all = "camelCase")]
   TrackEnd {
@@ -34,25 +35,25 @@ pub enum LavalinkEvent {
     track: Track,
     reason: TrackEndReason,
   },
+
   #[serde(rename = "TrackExceptionEvent")]
   #[serde(rename_all = "camelCase")]
-  #[allow(dead_code)]
   TrackException {
     guild_id: String,
     track: Track,
     exception: TrackException,
   },
+
   #[serde(rename = "TrackStuckEvent")]
   #[serde(rename_all = "camelCase")]
-  #[allow(dead_code)]
   TrackStuck {
     guild_id: String,
     track: Track,
     threshold_ms: u64,
   },
+
   #[serde(rename = "WebSocketClosedEvent")]
   #[serde(rename_all = "camelCase")]
-  #[allow(dead_code)]
   WebSocketClosed {
     guild_id: String,
     code: u16,
@@ -73,7 +74,6 @@ pub enum TrackEndReason {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub struct TrackException {
   pub message: Option<String>,
   pub severity: crate::common::Severity,

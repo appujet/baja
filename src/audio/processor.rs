@@ -26,6 +26,10 @@ pub struct AudioProcessor {
   track_id: u32,
   tx: Sender<i16>,
   cmd_rx: Receiver<DecoderCommand>,
+  /// When set, fatal mid-playback errors are forwarded here so the
+  /// playback loop can emit a `TrackExceptionEvent` instead of a
+  /// silent `TrackEnd(Finished)`.
+  error_tx: Option<flume::Sender<String>>,
   sample_buf: Option<SampleBuffer<i16>>,
 
   // Audio specs
@@ -41,6 +45,7 @@ impl AudioProcessor {
     kind: Option<crate::common::types::AudioKind>,
     tx: Sender<i16>,
     cmd_rx: Receiver<DecoderCommand>,
+    error_tx: Option<flume::Sender<String>>,
   ) -> Result<Self, Error> {
     let mss = MediaSourceStream::new(source, Default::default());
     let mut hint = Hint::new();
@@ -83,6 +88,7 @@ impl AudioProcessor {
       track_id,
       tx,
       cmd_rx,
+      error_tx,
       sample_buf: None,
       source_rate,
       target_rate,
@@ -110,7 +116,12 @@ impl AudioProcessor {
       let packet = match self.format.next_packet() {
         Ok(p) => p,
         Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-        Err(e) => return Err(e),
+        Err(e) => {
+          if let Some(tx) = &self.error_tx {
+            let _ = tx.send(format!("Packet read error: {}", e));
+          }
+          return Err(e);
+        }
       };
 
       if packet.track_id() != self.track_id {
@@ -148,10 +159,15 @@ impl AudioProcessor {
         }
         Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
         Err(Error::DecodeError(e)) => {
-          warn!("Decode error: {}", e);
+          warn!("Decode error (recoverable): {}", e);
           continue;
         }
-        Err(e) => return Err(e),
+        Err(e) => {
+          if let Some(tx) = &self.error_tx {
+            let _ = tx.send(format!("Decode error: {}", e));
+          }
+          return Err(e);
+        }
       }
     }
 
