@@ -10,6 +10,7 @@ excluded_ips = []
 
 [sources]
 youtube = true
+soundcloud = true
 spotify = true
 http = true
 local = false
@@ -41,6 +42,17 @@ get_oauth_token = false # Set to true to enable OAuth device flow initialization
 url = "https://cipher.kikkia.dev/api" # The URL for the cipher resolution server
 # token = "your_token_here" 
 
+[soundcloud]
+# client_id = "your_client_id_here"  # Auto-extracted from soundcloud.com if not set
+search_limit = 10
+playlist_load_limit = 100
+
+# Optional proxy for SoundCloud
+[soundcloud.proxy]
+# url = "http://proxy.example.com:8080"
+# username = "myuser"
+# password = "mypassword"
+
 # The decryption configuration for the JioSaavn tracks
 [jiosaavn]
 search_limit = 10 # Limit number of search results
@@ -67,12 +79,12 @@ master_decryption_key = "your_master_key_here"
 # url = "http://proxy.example.com:8080"
 # username = "myuser"
 # password = "mypassword"
+
 [spotify]
 playlist_load_limit = 6 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
 album_load_limit = 6 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
 search_limit = 10 # Limit number of search results
 recommendations_limit = 10 # Limit number of recommendation results
-
 playlist_page_load_concurrency = 10 # Number of playlist pages to fetch concurrently
 album_page_load_concurrency = 5 # Number of album pages to fetch concurrently
 track_resolve_concurrency = 50 # Number of tracks to resolve concurrently

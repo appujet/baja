@@ -16,6 +16,8 @@ pub struct SourcesConfig {
     pub gaana: bool,
     #[serde(default)]
     pub tidal: bool,
+    #[serde(default)]
+    pub soundcloud: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -337,6 +339,36 @@ impl Default for TidalConfig {
             playlist_load_limit: default_td_playlist_load_limit(),
             album_load_limit: default_td_album_load_limit(),
             artist_load_limit: default_td_artist_load_limit(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SoundCloudConfig {
+    /// Optional manual client_id override (auto-extracted from soundcloud.com if not set)
+    pub client_id: Option<String>,
+    /// Proxy configuration
+    pub proxy: Option<HttpProxyConfig>,
+    #[serde(default = "default_sc_search_limit")]
+    pub search_limit: usize,
+    #[serde(default = "default_sc_playlist_load_limit")]
+    pub playlist_load_limit: usize,
+}
+
+fn default_sc_search_limit() -> usize {
+    10
+}
+fn default_sc_playlist_load_limit() -> usize {
+    100
+}
+
+impl Default for SoundCloudConfig {
+    fn default() -> Self {
+        Self {
+            client_id: None,
+            proxy: None,
+            search_limit: default_sc_search_limit(),
+            playlist_load_limit: default_sc_playlist_load_limit(),
         }
     }
 }

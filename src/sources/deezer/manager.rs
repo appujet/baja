@@ -3,6 +3,7 @@ use regex::Regex;
 use reqwest::header::HeaderMap;
 use serde_json::Value;
 use std::sync::Arc;
+use tracing::debug;
 
 use super::{token::DeezerTokenTracker, track::DeezerTrack};
 use crate::{
@@ -46,6 +47,7 @@ impl DeezerSource {
 
         if let Some(proxy_config) = &config.proxy {
             if let Some(url) = &proxy_config.url {
+                debug!("Configuring proxy for DeezerSource: {}", url);
                 if let Ok(mut proxy_obj) = reqwest::Proxy::all(url) {
                     if let (Some(username), Some(password)) =
                         (&proxy_config.username, &proxy_config.password)
