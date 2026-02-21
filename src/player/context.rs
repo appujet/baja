@@ -1,15 +1,16 @@
-use std::sync::Arc;
+use std::sync::{
+  Arc,
+  atomic::{AtomicBool, AtomicI64, Ordering},
+};
 
 use tokio::sync::Mutex;
 
-use super::state::{Filters, Player, PlayerState, VoiceConnectionState, VoiceState};
 use crate::{
-  api::tracks::Track,
   audio::{filters::FilterChain, playback::TrackHandle},
   common::types::Shared,
+  player::state::{Filters, Player, PlayerState, VoiceConnectionState, VoiceState},
 };
 
-/// Internal player state.
 pub struct PlayerContext {
   pub guild_id: String,
   pub volume: i32,
@@ -22,7 +23,8 @@ pub struct PlayerContext {
   pub filters: Filters,
   pub filter_chain: Shared<FilterChain>,
   pub end_time: Option<u64>,
-  pub stop_signal: Arc<std::sync::atomic::AtomicBool>,
+  pub stop_signal: Arc<AtomicBool>,
+  pub ping: Arc<AtomicI64>,
   pub gateway_task: Option<tokio::task::JoinHandle<()>>,
   pub track_task: Option<tokio::task::JoinHandle<()>>,
   pub user_data: serde_json::Value,
@@ -30,8 +32,6 @@ pub struct PlayerContext {
 
 impl PlayerContext {
   pub fn new(guild_id: String) -> Self {
-    let filters = Filters::default();
-    let filter_chain = Arc::new(Mutex::new(FilterChain::from_config(&filters)));
     Self {
       guild_id,
       volume: 100,
@@ -41,10 +41,11 @@ impl PlayerContext {
       position: 0,
       voice: VoiceConnectionState::default(),
       engine: Arc::new(Mutex::new(crate::gateway::VoiceEngine::new())),
-      filters,
-      filter_chain,
+      filters: Filters::default(),
+      filter_chain: Arc::new(Mutex::new(FilterChain::from_config(&Filters::default()))),
       end_time: None,
-      stop_signal: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+      stop_signal: Arc::new(AtomicBool::new(false)),
+      ping: Arc::new(AtomicI64::new(-1)),
       gateway_task: None,
       track_task: None,
       user_data: serde_json::json!({}),
@@ -52,29 +53,26 @@ impl PlayerContext {
   }
 
   pub fn to_player_response(&self) -> Player {
-    let current_pos = self
-      .track_handle
-      .as_ref()
-      .map(|h| h.get_position())
-      .unwrap_or(self.position);
+    let track = if let Some(t) = &self.track {
+      crate::api::tracks::Track::decode(t)
+    } else {
+      None
+    };
 
     Player {
       guild_id: self.guild_id.clone(),
-      track: self.track.as_ref().and_then(|t| {
-        let mut track = Track::decode(t);
-        if let Some(ref mut trk) = track {
-          trk.info.position = current_pos;
-          trk.user_data = self.user_data.clone();
-        }
-        track
-      }),
+      track,
       volume: self.volume,
       paused: self.paused,
       state: PlayerState {
         time: crate::server::now_ms(),
-        position: current_pos,
+        position: self
+          .track_handle
+          .as_ref()
+          .map(|h| h.get_position())
+          .unwrap_or(self.position),
         connected: !self.voice.token.is_empty(),
-        ping: -1,
+        ping: self.ping.load(Ordering::Relaxed),
       },
       voice: VoiceState {
         token: self.voice.token.clone(),
@@ -83,19 +81,6 @@ impl PlayerContext {
         channel_id: self.voice.channel_id.clone(),
       },
       filters: self.filters.clone(),
-    }
-  }
-}
-
-impl Drop for PlayerContext {
-  fn drop(&mut self) {
-    if let Some(task) = &self.gateway_task {
-      tracing::debug!("Aborting gateway task for guild {}", self.guild_id);
-      task.abort();
-    }
-    if let Some(task) = &self.track_task {
-      tracing::debug!("Aborting track task for guild {}", self.guild_id);
-      task.abort();
     }
   }
 }

@@ -12,7 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use tokio::sync::Mutex;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     api,
@@ -169,28 +169,22 @@ pub async fn handle_socket(
         }
     }
 
-    // Interval for stats heartbeat (30s to prevent client-side timeouts)
     let mut stats_interval = tokio::time::interval(std::time::Duration::from_secs(30));
     stats_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    // Interval for WebSocket Ping (20s to prevent idle disconnects and provide responsiveness)
     let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(20));
     ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let start_time = std::time::Instant::now();
-
-    // Main event loop
     loop {
         tokio::select! {
             _ = ping_interval.tick() => {
-                // Send Ping frame to keep connection alive
                 if let Err(e) = socket.send(Message::Ping(vec![].into())).await {
                     error!("Socket send error (ping): session={} err={}", session_id, e);
                     break;
                 }
             }
             _ = stats_interval.tick() => {
-                     // Send stats only if not paused and this socket is active
                      if !session.paused.load(Relaxed) {
                          let stats = collect_stats(&state, start_time.elapsed().as_millis() as u64);
                          let msg = api::OutgoingMessage::Stats(stats);
@@ -240,11 +234,9 @@ pub async fn handle_socket(
         }
     }
 
-    // Cleanup or pause for resume
     if session.resumable.load(Relaxed) {
         session.paused.store(true, Relaxed);
 
-        // Race condition check: Ensure we haven't been replaced by a new connection
         {
             let current_sender = session.sender.lock().await;
             if !current_sender.same_channel(&tx) {
@@ -258,7 +250,6 @@ pub async fn handle_socket(
 
         state.sessions.remove(&session_id);
 
-        // "Shutdown resumable session with id ... because it has the same id as a newly disconnected resumable session."
         if let Some((_, removed)) = state.resumable_sessions.remove(&session_id) {
             warn!(
                 "Shutdown resumable session with id {} because it has the same id as a newly disconnected resumable session.",
