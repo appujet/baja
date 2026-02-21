@@ -9,7 +9,7 @@ The following table outlines the current implementation status of various featur
 ### Core Infrastructure
 | Feature | Status | Description |
 | :--- | :---: | :--- |
-| **Lavalink v4 REST API** | 🚧 | Full compatibility with v4 endpoints |
+| **Lavalink v4 REST API** | ✅ | Full compatibility with v4 endpoints |
 | **WebSocket Interface** | ✅ | Event dispatching and real-time stats |
 | **Session Management** | ✅ | Session creation, discovery, and cleanup |
 | **Resumable Sessions** | ✅ | Connection persistence across restarts/disconnects |
