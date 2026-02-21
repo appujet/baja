@@ -286,4 +286,463 @@ These methods exist but are entirely undocumented. It's unclear when `rec_prefix
 
 ---
 
+---
+
+## 📦 Binary Size Reduction
+
+
+To audit what's actually being probed, add a `tracing::debug!` in `AudioProcessor::new` that logs `probed.format.name()`.
+
+---
+
+### S2. `reqwest` `blocking` feature adds a full synchronous HTTP stack
+**File:** `Cargo.toml` (line 46)
+
+The `blocking` feature compiles a separate thread-pool-based HTTP client on top of the async one. Since you're in a fully async Tokio app, this dead weight is compiled but shouldn't be used. Removing it saves compilation time and binary size:
+
+```toml
+reqwest = { version = "0.12", default-features = false, features = [
+  "json", "rustls-tls", "stream", "cookies"
+] }
+```
+
+---
+
+### S3. `uuid` enables both `v4` and `v7` but only `v4` is used
+**File:** `Cargo.toml` (line 45)
+
+```toml
+uuid = { version = "1.21.0", features = ["v4", "v7", "serde"] }
+```
+
+Search the codebase — only `Uuid::new_v4()` is called. Removing `"v7"` is a minor win since both pull in `rand`, but it signals exactly what the code needs:
+
+```toml
+uuid = { version = "1.21.0", features = ["v4", "serde"] }
+```
+
+---
+
+### S4. `futures` crate is a large dependency — check if only specific sub-traits are needed
+**File:** `Cargo.toml` (line 12)
+
+The `futures` crate re-exports many things. In an async Tokio project, many `futures` utilities are available directly from `tokio::` or from smaller crates. Audit usages across the codebase and potentially replace with:
+- `futures-util` (only combinators, no executor)
+- Or rely on `tokio::stream`, `tokio::select!`, etc. directly
+
+---
+
+### S5. `davey = "0.1.1"` — unknown/obscure dependency
+**File:** `Cargo.toml` (line 20)
+
+`davey` is a very small, obscure crate with no known widespread adoption. Verify it is actually being used somewhere in the codebase. If it's a leftover dependency, remove it. Unused dependencies increase compile time, audit surface, and binary footprint.
+
+---
+
+### S6. Add a `[profile.dev]` section for faster development builds
+**File:** `Cargo.toml`
+
+The release profile is well-configured, but development builds have no configuration at all. For a codebase with this many crypto and audio processing dependencies, dev compile times can be very long. Add:
+
+```toml
+[profile.dev]
+opt-level = 1         # basic optimization — dramatically speeds up debug builds
+debug = true
+
+[profile.dev.package."*"]
+opt-level = 3         # fully optimize ALL dependencies even in dev mode
+```
+
+This alone can make `cargo build` **2–4× faster** during development by pre-optimizing heavy deps (symphonia, rubato, reqwest, etc.).
+
+---
+
+### S7. Enable `incremental = false` only in release; ensure it's on in dev
+**File:** `Cargo.toml`
+
+The release profile has `codegen-units = 1` which disables incremental compilation (correct for release). But make sure dev builds don't accidentally inherit this. Add explicitly:
+
+```toml
+[profile.dev]
+incremental = true
+```
+
+---
+
+---
+
+## ⚡ Runtime Performance
+
+### P1. Mixer `mix_buf` zeroing uses a manual loop instead of `fill()`
+**File:** `src/audio/playback/mixer.rs` (lines 57–60)
+
+```rust
+// Before — manual loop
+for s in self.mix_buf.iter_mut() {
+    *s = 0;
+}
+
+// After — idiomatic, LLVM can auto-vectorize this
+self.mix_buf.fill(0);
+```
+
+---
+
+### P2. Mixer reads samples one-by-one via `try_recv()` in a tight loop
+**File:** `src/audio/playback/mixer.rs` (lines 83–96)
+
+Each call to `try_recv()` has per-call overhead (atomic check, potential contention). For a 1920-sample frame, this is 1920 individual atomic operations per track. Consider draining in chunks using `flume`'s `drain()` or switching the channel to send fixed-size frames (`[i16; 1920]`) instead of individual samples:
+
+```rust
+// Instead of sending i16 samples
+flume::bounded::<i16>(4096 * 4);
+
+// Send fixed frames
+flume::bounded::<[i16; 960]>(16); // 16 frames buffer
+```
+
+This reduces channel overhead dramatically for the audio hot path.
+
+---
+
+### P3. `Resampler` sends samples one-by-one through a `flume::Sender`
+**File:** `src/audio/pipeline/resampler.rs` (lines 43–46)
+
+Each resampled sample is sent individually via `tx.send(s as i16)`. For a 48kHz stereo stream this is ~96,000 individual channel sends per second. Collect the resampled output into a `Vec<i16>` and send it in a single batch, or pass in a mutable output slice:
+
+```rust
+// Instead of:
+pub fn process(&mut self, input: &[i16], tx: &Sender<i16>) -> AnyResult<()>
+
+// Prefer:
+pub fn process(&mut self, input: &[i16], output: &mut Vec<i16>) -> AnyResult<()>
+```
+
+---
+
+### P4. `Ordering::SeqCst` used in audio hot path
+**File:** `src/audio/playback/mixer.rs` (line 103), `src/player/playback.rs` (line 169)
+
+`SeqCst` is the strongest (and most expensive) memory ordering. In the audio mixing loop, position updates and stop-signal checks don't need global sequential consistency — `Acquire`/`Release` pairs are sufficient and cheaper on x86 and ARM:
+
+```rust
+// Before
+track.position.fetch_add((i / 2) as u64, Ordering::SeqCst);
+stop_signal.load(Ordering::SeqCst);
+
+// After
+track.position.fetch_add((i / 2) as u64, Ordering::Relaxed); // position is only read for display
+stop_signal.load(Ordering::Acquire);
+```
+
+---
+
+### P5. `PlayerContext::to_player_response()` decodes the track on every call
+**File:** `src/player/context.rs` (lines 59–64)
+
+`Track::decode()` runs base64 decode + binary deserialization every time `to_player_response()` is called. This is called repeatedly in `start_playback` (multiple times per track start). Cache the decoded `TrackInfo` alongside the encoded `String` in `PlayerContext`:
+
+```rust
+pub struct PlayerContext {
+    pub track: Option<String>,           // encoded
+    pub track_info: Option<TrackInfo>,   // decoded — cache this
+    ...
+}
+```
+
+---
+
+### P6. `FilterChain` boxes every filter with `Box<dyn AudioFilter>`
+**File:** `src/audio/filters/mod.rs` (line 72)
+
+```rust
+filters: Vec<Box<dyn AudioFilter>>,
+```
+
+Dynamic dispatch through vtable calls in the audio hot path hurts performance and prevents inlining. Each filter call per sample frame crosses a vtable boundary. Consider an enum-dispatch approach:
+
+```rust
+pub enum ConcreteFilter {
+    Volume(VolumeFilter),
+    Equalizer(EqualizerFilter),
+    Karaoke(KaraokeFilter),
+    Tremolo(TremoloFilter),
+    // ...
+}
+```
+
+Or use the `enum_dispatch` crate which generates this automatically while keeping the trait API.
+
+---
+
+### P7. `timescale_buffer` grows unboundedly if frames aren't consumed
+**File:** `src/audio/filters/mod.rs` (line 76, lines 209, 220–227)
+
+`timescale_buffer` is a `Vec<i16>` that gets appended to every `process()` call, but is only drained when `fill_frame()` has enough data. Under a faster-than-realtime timescale (`speed > 1.0`), this buffer can grow without an upper bound. Add a capacity cap:
+
+```rust
+const MAX_TIMESCALE_BUFFER: usize = 1920 * 32; // max ~320ms of buffer
+
+if self.timescale_buffer.len() > MAX_TIMESCALE_BUFFER {
+    self.timescale_buffer.drain(..1920); // drop oldest frame
+}
+```
+
+---
+
+---
+
+## 🪵 Logging Level Hygiene
+
+The current logging has two problems: **too noisy at `info`** (floods production logs) and **not enough detail at `debug`/`trace`** (makes debugging hard).
+
+### L1. Every REST endpoint logs at `info` — should be `debug`
+**File:** `src/transport/routes/stats/info.rs`, `src/transport/routes/stats/track.rs`, `src/transport/routes/player/get.rs`, `src/transport/routes/player/update.rs`
+
+Every HTTP handler fires an `info!` log on every request:
+
+```rust
+tracing::info!("GET /v4/info");
+tracing::info!("GET /v4/loadtracks: identifier='{}'", identifier);
+tracing::info!("GET /v4/sessions/{}/players", session_id);
+tracing::info!("GET /v4/decodetrack");
+tracing::info!("POST /v4/decodetracks: count={}", body.tracks.len());
+```
+
+These fire on **every client request** and pollute production logs. HTTP tracing is already provided by the `tower_http::trace::TraceLayer` applied in `main.rs`. Downgrade all of these to `debug!` or remove them entirely:
+
+```rust
+// Before
+tracing::info!("GET /v4/loadtracks: identifier='{}'", identifier);
+
+// After
+tracing::debug!("GET /v4/loadtracks: identifier='{}'", identifier);
+```
+
+---
+
+### L2. Source registration logs are fine at `info` — but should include the config summary
+**File:** `src/sources/manager.rs` (lines 37–94)
+
+The source registration logs (`info!("Registering YouTube source")`) are appropriate, but add no context about what was configured. Improve them to include relevant config details:
+
+```rust
+// Before
+info!("Registering YouTube source");
+
+// After
+info!(
+    "Registering YouTube source [search={:?}, playback={:?}]",
+    config.youtube.clients.search,
+    config.youtube.clients.playback
+);
+```
+
+---
+
+### L3. "No source could handle identifier" should be `debug`, not `warn`
+**File:** `src/sources/manager.rs` (lines 119, 137)
+
+```rust
+tracing::warn!("No source could handle identifier: {}", identifier);
+tracing::warn!("No source could handle search query: {}", query);
+```
+
+These fire whenever a source is checked and doesn't match. This is expected normal flow (e.g., Spotify source gets a YouTube URL). This is not a warning — it's informational routing. Change to `debug!`:
+
+```rust
+tracing::debug!("No source matched identifier: {}", identifier);
+```
+
+---
+
+### L4. "Client connected without 'Client-Name'" is `warn` — should be `debug`
+**File:** `src/transport/websocket_server.rs` (line 63)
+
+```rust
+warn!("Client connected without 'Client-Name' header");
+```
+
+Missing `Client-Name` is not a warning — it's an optional header. Many valid clients omit it. This fires on every connection without it, spamming production logs. Downgrade to `debug!`.
+
+---
+
+### L5. "Loading '…' with source" and mirror provider logs should be `trace`
+**File:** `src/sources/manager.rs` (lines 114, 131, 178)
+
+```rust
+tracing::debug!("Loading '{}' with source: {}", identifier, source.name());
+tracing::debug!("Attempting mirror provider: {}", search_query);
+```
+
+These fire on every single track load — at normal `debug` they'd flood debug sessions. Move to `trace!` since they're inner-loop diagnostic details:
+
+```rust
+tracing::trace!("Loading '{}' with source: {}", identifier, source.name());
+tracing::trace!("Mirror provider attempt: {}", search_query);
+```
+
+---
+
+### L6. WebSocket disconnect handling needs clearer log messages
+**File:** `src/transport/websocket_server.rs` (lines 241–291)
+
+The disconnect flow logs `info!("Connection closed (resumable)")` and `info!("Connection closed (not resumable)")` — both useful. But the resumption timeout expiry (`info!("Session resume timeout expired: {}", sid)`) should be `warn!`, as it means a session was lost without reconnection:
+
+```rust
+// This is a notable event worth flagging
+warn!("Session resume timeout — session {} was not resumed in time and has been cleaned up.", sid);
+```
+
+---
+
+### L7. Audio processor logs at `debug` for start/stop — should include track metadata
+**File:** `src/audio/processor.rs` (lines 102–105) and `src/player/playback.rs` (line 118)
+
+```rust
+debug!("Starting playback loop: {}Hz {}ch -> {}Hz", self.source_rate, self.channels, self.target_rate);
+info!("Playback starting: {} (source: {})", identifier, track_info.source_name);
+```
+
+These are good but could be improved:
+- The `AudioProcessor` debug log should also include whether resampling is actually needed (`source_rate != target_rate`).
+- The playback `info!` should log at `info` (which it does) — keep it.
+- Add a `debug!` after successful decode setup to log codec info: `track.codec_params.codec`.
+
+---
+
+### L8. Token initialization and background tasks have no progress logging
+**Files:** various source managers (Deezer, Spotify, Tidal)
+
+Based on past conversations, token initialization happens in the background. There are no `debug!` logs for "token refresh started", "token refresh succeeded", or "token refresh failed". Add structured logging for these lifecycle events so token expiry can be diagnosed from logs without attaching a debugger.
+
+---
+
+---
+
+## 📖 Documentation Improvements
+
+### D1. `SourcePlugin` trait lacks a crate-level doc comment explaining the plugin model
+**File:** `src/sources/plugin.rs`
+
+The `SourcePlugin` trait is the extension point for all audio sources, but has no module-level `//!` comment explaining:
+- How sources are registered (via `SourceManager::new`)
+- What `can_handle` must guarantee (no side effects, fast, deterministic)
+- The relationship between `load` (metadata) and `get_track` (playback URL)
+- Thread-safety requirements (`Send + Sync`)
+
+```rust
+//! # Source Plugin System
+//!
+//! Sources are registered in [`SourceManager`] and consulted in order.
+//! Each source must implement [`SourcePlugin`]:
+//! - [`can_handle`] — fast, side-effect-free URL/identifier check
+//! - [`load`] — resolve identifier into track metadata
+//! - [`get_track`] — resolve identifier into a playable stream
+```
+
+---
+
+### D2. `PlayableTrack::start_decoding` return tuple is hard to understand
+**File:** `src/sources/plugin.rs` (lines 14–20)
+
+The return type `(Receiver<i16>, Sender<DecoderCommand>, Receiver<String>)` has no named fields. Add a doc comment explaining each channel's role:
+
+```rust
+/// Start decoding and return three channels:
+///
+/// - `pcm_rx`: Receives interleaved i16 PCM samples at 48kHz stereo.
+/// - `cmd_tx`: Send [`DecoderCommand::Seek`] or [`DecoderCommand::Stop`].
+/// - `error_rx`: Receives at most one fatal error message. If the channel
+///   closes cleanly (disconnected) without a message, decoding finished normally.
+fn start_decoding(&self) -> (Receiver<i16>, Sender<DecoderCommand>, Receiver<String>);
+```
+
+---
+
+### D3. `DecoderCommand` enum variants lack doc comments
+**File:** `src/audio/processor.rs` (lines 16–19)
+
+```rust
+pub enum DecoderCommand {
+    Seek(u64), // Position in milliseconds
+    Stop,
+}
+```
+
+The inline comment `// Position in milliseconds` should be a proper `///` doc comment. Also document that `Stop` causes the decode loop to exit gracefully (not abruptly):
+
+```rust
+pub enum DecoderCommand {
+    /// Seek to the given position in milliseconds.
+    /// Causes the resampler and decoder state to reset.
+    Seek(u64),
+    /// Gracefully stop the decode loop. The PCM channel will be dropped after this.
+    Stop,
+}
+```
+
+---
+
+### D4. `AudioFilter` trait needs method-level docs
+**File:** `src/audio/filters/mod.rs` (lines 61–68)
+
+`process`, `is_enabled`, and `reset` have no individual method docs beyond the trait-level comment. Specifically:
+- `is_enabled` — document what "enabled" means (i.e., non-identity/non-default params)
+- `reset` — document when this is called (seek, filter config change)
+- `process` — document the expected buffer layout (1920 interleaved stereo i16 samples)
+
+---
+
+### D5. `FilterChain::fill_frame` behavior on underrun is undocumented from caller's perspective
+**File:** `src/audio/filters/mod.rs` (lines 215–227)
+
+The function returns `false` when there aren't enough timescale-buffered samples yet. The caller's expected behavior in this case (skip the frame, output silence?) is not documented. Add:
+
+```rust
+/// Drain exactly `output.len()` resampled samples into `output`.
+///
+/// Returns `true` if enough data was available (frame written).
+/// Returns `false` if the timescale buffer is underflowed — the caller
+/// should output silence for this frame and try again next tick.
+pub fn fill_frame(&mut self, output: &mut [i16]) -> bool {
+```
+
+---
+
+### D6. `Mixer` struct and fields need doc comments
+**File:** `src/audio/playback/mixer.rs`
+
+`Mixer` and `MixerTrack` have no doc comments. Document:
+- What `mix_buf` is (intermediate i32 accumulation buffer to prevent clipping before converting back to i16)
+- The expected frame size (1920 samples = 960 stereo frames = 20ms at 48kHz)
+- Why `i32` is used as the accumulation type (to hold the sum of multiple i16 tracks without overflow)
+
+---
+
+### D7. `PlayerContext` fields lack doc comments for non-obvious ones
+**File:** `src/player/context.rs` (lines 14–33)
+
+Fields like `stop_signal`, `frames_sent`, `frames_nulled`, `ping` have no docs explaining:
+- `stop_signal`: used to break the `track_task` loop when a new track starts
+- `frames_sent` / `frames_nulled`: used for Discord voice stats reporting
+- `ping`: updated by the gateway module from voice UDP heartbeats
+
+---
+
+### D8. `build.rs` fallback logic for git info is undocumented
+**File:** `build.rs` (lines 66–92)
+
+The file has two code paths: try `git` CLI, fall back to reading `.git/HEAD` manually. Add a top-level comment:
+
+```rust
+// Build script that embeds git metadata (branch, commit SHA, timestamp)
+// into the binary via environment variables at compile time.
+//
+// Tries the `git` CLI first. Falls back to direct .git/ file parsing
+// for environments where git is not available (e.g. in some CI/Docker builds).
+```
+
+---
+
 *Last updated: 2026-02-22*
