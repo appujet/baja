@@ -7,10 +7,22 @@ pub struct ServerConfig {
   pub password: String,
   #[serde(default = "default_player_update_interval")]
   pub player_update_interval: u64,
+  #[serde(default = "default_stats_interval")]
+  pub stats_interval: u64,
+  #[serde(default = "default_websocket_ping_interval")]
+  pub websocket_ping_interval: u64,
 }
 
 fn default_player_update_interval() -> u64 {
   5
+}
+
+fn default_stats_interval() -> u64 {
+  60
+}
+
+fn default_websocket_ping_interval() -> u64 {
+  30
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
