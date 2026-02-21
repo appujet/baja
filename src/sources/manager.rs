@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tracing::info;
 
 use super::{
+  anghami::AnghamiSource,
   applemusic::manager::AppleMusicSource,
   audiomack::manager::AudiomackSource,
   deezer::DeezerSource,
@@ -85,6 +86,10 @@ impl SourceManager {
     if config.sources.qobuz {
       info!("Registering Qobuz source");
       sources.push(Box::new(QobuzSource::new(config)));
+    }
+    if config.sources.anghami {
+      info!("Registering Anghami source");
+      sources.push(Box::new(AnghamiSource::new(config)));
     }
     if config.sources.http {
       info!("Registering HTTP source");

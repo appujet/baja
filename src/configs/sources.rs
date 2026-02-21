@@ -24,6 +24,8 @@ pub struct SourcesConfig {
   pub pandora: bool,
   #[serde(default)]
   pub qobuz: bool,
+  #[serde(default)]
+  pub anghami: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -466,6 +468,24 @@ impl Default for QobuzConfig {
       playlist_load_limit: default_qb_playlist_load_limit(),
       album_load_limit: default_qb_album_load_limit(),
       artist_load_limit: default_qb_artist_load_limit(),
+    }
+  }
+}
+
+fn default_ag_search_limit() -> usize {
+  10
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct AnghamiConfig {
+  #[serde(default = "default_ag_search_limit")]
+  pub search_limit: usize,
+}
+
+impl Default for AnghamiConfig {
+  fn default() -> Self {
+    Self {
+      search_limit: default_ag_search_limit(),
     }
   }
 }

@@ -34,6 +34,8 @@ pub struct Config {
   pub pandora: Option<PandoraConfig>,
   #[serde(default)]
   pub qobuz: Option<QobuzConfig>,
+  #[serde(default)]
+  pub anghami: Option<AnghamiConfig>,
 }
 
 impl Default for Config {
@@ -56,6 +58,7 @@ impl Default for Config {
       audiomack: None,
       pandora: None,
       qobuz: None,
+      anghami: None,
     }
   }
 }

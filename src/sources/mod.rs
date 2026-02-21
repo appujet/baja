@@ -1,3 +1,4 @@
+pub mod anghami;
 pub mod applemusic;
 pub mod audiomack;
 pub mod http;

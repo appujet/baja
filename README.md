@@ -38,7 +38,7 @@ The following table outlines the current implementation status of various featur
 | **JioSaavn** | ✅ | Metadata resolution and full playback support |
 | **Amazon Music** | ❌ | Planned implementation |
 | **Apple Music** | ✅ | Implementation |
-| **Anghami** | ❌ | Planned implementation |
+| **Anghami** | ✅ | Metadata resolution with full mirror playback support (Protobuf-encoded response handling) |
 | **Audiomack** | ✅ | Implementation |
 | **Audius** | ❌ | Planned implementation |
 | **Bandcamp** | ❌ | Planned implementation |

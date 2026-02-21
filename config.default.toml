@@ -25,6 +25,7 @@ tidal = true
 audiomack = true
 pandora = true
 qobuz = true
+anghami = true
 
 [mirrors]
 providers = [
@@ -153,6 +154,9 @@ artist_load_limit = 20
 #url = "http://proxy.example.com:8080"
 #username = "myuser"
 #password = "mypassword"
+
+[anghami]
+search_limit = 10
 
 [filters]
 volume = true
