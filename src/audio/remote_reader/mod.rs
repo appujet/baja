@@ -1,4 +1,6 @@
+pub mod segmented;
 use crate::common::types::AnyResult;
+
 // Remove ua module as it's moved to youtube source
 
 use std::{
