@@ -1,6 +1,6 @@
+use std::{collections::BTreeMap, net::IpAddr};
+
 use flume::{Receiver, Sender};
-use std::collections::BTreeMap;
-use std::net::IpAddr;
 
 use crate::{
   audio::processor::DecoderCommand,
@@ -143,8 +143,7 @@ async fn parse_response(resp: reqwest::Response) -> Option<String> {
 }
 
 fn thread_rng_nonce() -> String {
-  use rand::distributions::Alphanumeric;
-  use rand::{Rng, thread_rng};
+  use rand::{Rng, distributions::Alphanumeric, thread_rng};
 
   thread_rng()
     .sample_iter(&Alphanumeric)

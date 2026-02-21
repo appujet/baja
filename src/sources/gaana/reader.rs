@@ -1,7 +1,11 @@
-use crate::audio::remote_reader::{BaseRemoteReader, create_client};
-use crate::common::types::AnyResult;
 use std::io::{Read, Seek, SeekFrom};
+
 use symphonia::core::io::MediaSource;
+
+use crate::{
+  audio::remote_reader::{BaseRemoteReader, create_client},
+  common::types::AnyResult,
+};
 
 pub struct GaanaReader {
   inner: BaseRemoteReader,

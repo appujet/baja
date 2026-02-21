@@ -1,12 +1,14 @@
-use crate::common::types::AnyResult;
 use std::{
   collections::HashMap,
   io::{Read, Seek, SeekFrom},
   sync::{Arc, Condvar, Mutex},
   thread,
 };
+
 use symphonia::core::io::MediaSource;
 use tracing::{debug, info, warn};
+
+use crate::common::types::AnyResult;
 
 const CHUNK_SIZE: usize = 512 * 1024; // 512KB chunks
 const PREFETCH_CHUNKS: usize = 32; // 16MB prefetch window

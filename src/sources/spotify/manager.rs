@@ -452,7 +452,11 @@ impl SpotifySource {
       .or_else(|| track.get("external_ids"))
       .and_then(|ids| {
         // Direct property (common in search results)
-        if let Some(isrc) = ids.get("isrc").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        if let Some(isrc) = ids
+          .get("isrc")
+          .and_then(|v| v.as_str())
+          .filter(|s| !s.is_empty())
+        {
           return Some(isrc.to_string());
         }
         // Items list (common in fetchTrack)
@@ -799,7 +803,10 @@ impl SourcePlugin for SpotifySource {
   }
 
   fn can_handle(&self, identifier: &str) -> bool {
-    self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+    self
+      .search_prefixes
+      .iter()
+      .any(|p| identifier.starts_with(p))
       || self.rec_prefixes.iter().any(|p| identifier.starts_with(p))
       || self.url_regex.is_match(identifier)
   }
@@ -813,7 +820,11 @@ impl SourcePlugin for SpotifySource {
     identifier: &str,
     _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
   ) -> LoadResult {
-    if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+    if let Some(prefix) = self
+      .search_prefixes
+      .iter()
+      .find(|p| identifier.starts_with(*p))
+    {
       let query = &identifier[prefix.len()..];
       return self.search_internal(query).await;
     }

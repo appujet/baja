@@ -1,10 +1,8 @@
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::{Arc, atomic::Ordering};
 
 use tracing::{error, info};
 
-use super::context::PlayerContext;
-use super::state::PlayerState;
+use super::{context::PlayerContext, state::PlayerState};
 use crate::{
   api,
   audio::playback::{PlaybackState, TrackHandle},

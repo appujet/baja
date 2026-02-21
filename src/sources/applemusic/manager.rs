@@ -133,13 +133,13 @@ impl AppleMusicSource {
         .filter(|s| !s.is_empty())
         .map(|s| s.replace("{w}", "1000").replace("{h}", "1000"))
     });
- 
+
     let url = attributes
       .get("url")
       .and_then(|v| v.as_str())
       .filter(|s| !s.is_empty())
       .map(|s| s.to_string());
- 
+
     Some(TrackInfo {
       title,
       author,
@@ -365,7 +365,11 @@ impl SourcePlugin for AppleMusicSource {
   }
 
   fn can_handle(&self, identifier: &str) -> bool {
-    self.search_prefixes.iter().any(|p| identifier.starts_with(p)) || self.url_regex.is_match(identifier)
+    self
+      .search_prefixes
+      .iter()
+      .any(|p| identifier.starts_with(p))
+      || self.url_regex.is_match(identifier)
   }
 
   fn search_prefixes(&self) -> Vec<&str> {
@@ -377,7 +381,11 @@ impl SourcePlugin for AppleMusicSource {
     identifier: &str,
     _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
   ) -> LoadResult {
-    if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+    if let Some(prefix) = self
+      .search_prefixes
+      .iter()
+      .find(|p| identifier.starts_with(*p))
+    {
       let query = &identifier[prefix.len()..];
       return self.search(query).await;
     }

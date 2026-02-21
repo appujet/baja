@@ -1,9 +1,12 @@
-use super::ua::get_youtube_ua;
-use crate::audio::remote_reader::create_client;
-use crate::audio::remote_reader::segmented::SegmentedRemoteReader;
-use crate::common::types::AnyResult;
 use std::io::{Read, Seek, SeekFrom};
+
 use symphonia::core::io::MediaSource;
+
+use super::ua::get_youtube_ua;
+use crate::{
+  audio::remote_reader::{create_client, segmented::SegmentedRemoteReader},
+  common::types::AnyResult,
+};
 
 pub struct YoutubeReader {
   inner: SegmentedRemoteReader,

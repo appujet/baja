@@ -1,8 +1,5 @@
 pub mod segmented;
-use crate::common::types::AnyResult;
-
 // Remove ua module as it's moved to youtube source
-
 use std::{
   io::{Read, Seek, SeekFrom},
   sync::{Arc, Condvar, Mutex},
@@ -11,6 +8,8 @@ use std::{
 
 use symphonia::core::io::MediaSource;
 use tracing::{debug, info, warn};
+
+use crate::common::types::AnyResult;
 
 #[derive(Debug)]
 enum PrefetchCommand {

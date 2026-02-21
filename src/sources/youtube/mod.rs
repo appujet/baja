@@ -287,7 +287,10 @@ impl SourcePlugin for YouTubeSource {
   }
 
   fn can_handle(&self, identifier: &str) -> bool {
-    self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+    self
+      .search_prefixes
+      .iter()
+      .any(|p| identifier.starts_with(p))
       || self.rec_prefixes.iter().any(|p| identifier.starts_with(p))
       || self.url_regex.is_match(identifier)
   }
@@ -308,12 +311,22 @@ impl SourcePlugin for YouTubeSource {
       json!({})
     };
 
-    if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+    if let Some(prefix) = self
+      .search_prefixes
+      .iter()
+      .find(|p| identifier.starts_with(*p))
+    {
       return self.handle_search(identifier, prefix, &context).await;
     }
 
-    if let Some(prefix) = self.rec_prefixes.iter().find(|p| identifier.starts_with(*p)) {
-      return self.handle_recommendations(identifier, prefix, &context).await;
+    if let Some(prefix) = self
+      .rec_prefixes
+      .iter()
+      .find(|p| identifier.starts_with(*p))
+    {
+      return self
+        .handle_recommendations(identifier, prefix, &context)
+        .await;
     }
 
     if self.url_regex.is_match(identifier) {
@@ -367,7 +380,12 @@ impl YouTubeSource {
     LoadResult::Empty {}
   }
 
-  async fn handle_recommendations(&self, identifier: &str, prefix: &str, context: &Value) -> LoadResult {
+  async fn handle_recommendations(
+    &self,
+    identifier: &str,
+    prefix: &str,
+    context: &Value,
+  ) -> LoadResult {
     let seed_id = &identifier[prefix.len()..];
     let playlist_id = format!("RD{}", seed_id);
 

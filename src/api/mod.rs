@@ -5,13 +5,13 @@ use serde::{Deserialize, Deserializer};
 /// - Field present with `null` → `Some(None)` (e.g., stop the player)
 /// - Field present with value → `Some(Some(value))`
 pub(crate) fn deserialize_optional_optional<'de, D, T>(
-    deserializer: D,
+  deserializer: D,
 ) -> Result<Option<Option<T>>, D::Error>
 where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
+  D: Deserializer<'de>,
+  T: Deserialize<'de>,
 {
-    Ok(Some(Option::deserialize(deserializer)?))
+  Ok(Some(Option::deserialize(deserializer)?))
 }
 
 pub mod events;

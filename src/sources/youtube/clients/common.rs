@@ -1,6 +1,7 @@
+use std::sync::{Arc, OnceLock};
+
 use regex::Regex;
 use serde_json::{Value, json};
-use std::sync::{Arc, OnceLock};
 
 use super::YouTubeCipherManager;
 use crate::common::types::AnyResult;

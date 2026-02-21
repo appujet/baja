@@ -7,8 +7,10 @@ use std::io::{Read, Seek, SeekFrom};
 use symphonia::core::io::MediaSource;
 use tracing::debug;
 
-use self::crypt::{CHUNK_SIZE, DeezerCrypt};
-use self::remote_reader::DeezerRemoteReader;
+use self::{
+  crypt::{CHUNK_SIZE, DeezerCrypt},
+  remote_reader::DeezerRemoteReader,
+};
 
 pub struct DeezerReader {
   source: DeezerRemoteReader,
