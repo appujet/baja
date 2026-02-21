@@ -32,7 +32,7 @@ The following table outlines the current implementation status of various featur
 | Source | Status | Description |
 | :--- | :---: | :--- |
 | **HTTP / HTTPS** | ✅ | Direct streaming from web URLs |
-| **YouTube** | 🚧 | Integration with `sabr` streaming (under development) |
+| **YouTube** | ✅ | Integration with `TV` and `IOS` client are supported for playback and (`sabr` streaming is under development) |
 | **Spotify** | ✅ | Metadata resolution and full mirror playback support |
 | **JioSaavn** | ✅ | Metadata resolution and full playback support |
 | **Amazon Music** | ❌ | Planned implementation |
