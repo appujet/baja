@@ -531,6 +531,9 @@ impl JioSaavnSource {
                 track.info.author = self.clean_string(artists);
               }
             }
+
+            // Re-encode track with updated info
+            track.encoded = track.encode();
           }
         }
       }
