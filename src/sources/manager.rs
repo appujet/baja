@@ -9,6 +9,7 @@ use super::{
     http::HttpSource,
     jiosaavn::JioSaavnSource,
     plugin::{BoxedSource, BoxedTrack, PlayableTrack},
+    soundcloud::SoundCloudSource,
     spotify::manager::SpotifySource,
     tidal::TidalSource,
     youtube::{YouTubeSource, cipher::YouTubeCipherManager},
@@ -61,6 +62,12 @@ impl SourceManager {
         if config.sources.tidal {
             info!("Registering Tidal source");
             sources.push(Box::new(TidalSource::new(config.tidal.clone())));
+        }
+        if config.sources.soundcloud {
+            info!("Registering SoundCloud source");
+            sources.push(Box::new(SoundCloudSource::new(
+                config.soundcloud.clone().unwrap_or_default(),
+            )));
         }
         if config.sources.http {
             info!("Registering HTTP source");

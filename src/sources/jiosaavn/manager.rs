@@ -73,7 +73,7 @@ impl JioSaavnSource {
 
         if let Some(proxy_config) = &proxy {
             if let Some(url) = &proxy_config.url {
-                tracing::debug!("Configuring proxy for JioSaavnSource: {}", url);
+                debug!("Configuring proxy for JioSaavnSource: {}", url);
                 if let Ok(proxy_obj) = reqwest::Proxy::all(url) {
                     let mut proxy_obj = proxy_obj;
                     if let (Some(username), Some(password)) =
