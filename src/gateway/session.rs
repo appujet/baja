@@ -50,6 +50,9 @@ pub struct VoiceGateway {
   mixer: Shared<Mixer>,
   filter_chain: Shared<crate::audio::filters::FilterChain>,
   ping: Arc<AtomicI64>,
+  event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::api::LavalinkEvent>>,
+  frames_sent: Arc<std::sync::atomic::AtomicU64>,
+  frames_nulled: Arc<std::sync::atomic::AtomicU64>,
   cancel_token: CancellationToken,
 }
 
@@ -79,6 +82,9 @@ impl VoiceGateway {
     mixer: Shared<Mixer>,
     filter_chain: Shared<crate::audio::filters::FilterChain>,
     ping: Arc<AtomicI64>,
+    event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::api::LavalinkEvent>>,
+    frames_sent: Arc<std::sync::atomic::AtomicU64>,
+    frames_nulled: Arc<std::sync::atomic::AtomicU64>,
   ) -> Self {
     Self {
       guild_id,
@@ -90,6 +96,9 @@ impl VoiceGateway {
       mixer,
       filter_chain,
       ping,
+      event_tx,
+      frames_sent,
+      frames_nulled,
       cancel_token: CancellationToken::new(),
     }
   }
@@ -381,6 +390,8 @@ impl VoiceGateway {
                     ssrc, mode_clone
                   );
                   let filter_chain_clone = self.filter_chain.clone();
+                  let f_sent = self.frames_sent.clone();
+                  let f_nulled = self.frames_nulled.clone();
                   tokio::spawn(async move {
                     if let Err(e) = speak_loop(
                       mixer,
@@ -391,6 +402,8 @@ impl VoiceGateway {
                       mode_clone,
                       dave_clone,
                       filter_chain_clone,
+                      f_sent,
+                      f_nulled,
                       cancel_clone,
                     )
                     .await
@@ -658,6 +671,16 @@ impl VoiceGateway {
             code, reason, self.guild_id
           );
 
+          if let Some(tx) = &self.event_tx {
+            let event = crate::api::LavalinkEvent::WebSocketClosed {
+              guild_id: self.guild_id.clone(),
+              code,
+              reason: reason.clone(),
+              by_remote: true,
+            };
+            let _ = tx.send(event);
+          }
+
           if is_reconnectable_close(code) {
             break SessionOutcome::Reconnect;
           } else {
@@ -732,6 +755,8 @@ async fn speak_loop(
   mode: String,
   dave: Shared<DaveHandler>,
   filter_chain: Shared<crate::audio::filters::FilterChain>,
+  frames_sent: Arc<std::sync::atomic::AtomicU64>,
+  frames_nulled: Arc<std::sync::atomic::AtomicU64>,
   cancel_token: CancellationToken,
 ) -> AnyResult<()> {
   use crate::{audio::pipeline::encoder::Encoder, gateway::UdpBackend};
@@ -761,8 +786,10 @@ async fn speak_loop(
 
             if has_audio {
                 silence_frames = 0;
+                frames_sent.fetch_add(1, Ordering::Relaxed);
             } else {
                 silence_frames += 1;
+                frames_nulled.fetch_add(1, Ordering::Relaxed);
                 // Send 5 frames of silence to distinguish "end of speech" from "packet loss"
                 if silence_frames > 5 {
                     continue;

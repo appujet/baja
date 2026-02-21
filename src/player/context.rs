@@ -1,6 +1,6 @@
 use std::sync::{
   Arc,
-  atomic::{AtomicBool, AtomicI64, Ordering},
+  atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
 };
 
 use tokio::sync::Mutex;
@@ -28,6 +28,8 @@ pub struct PlayerContext {
   pub gateway_task: Option<tokio::task::JoinHandle<()>>,
   pub track_task: Option<tokio::task::JoinHandle<()>>,
   pub user_data: serde_json::Value,
+  pub frames_sent: Arc<AtomicU64>,
+  pub frames_nulled: Arc<AtomicU64>,
 }
 
 impl PlayerContext {
@@ -49,6 +51,8 @@ impl PlayerContext {
       gateway_task: None,
       track_task: None,
       user_data: serde_json::json!({}),
+      frames_sent: Arc::new(AtomicU64::new(0)),
+      frames_nulled: Arc::new(AtomicU64::new(0)),
     }
   }
 

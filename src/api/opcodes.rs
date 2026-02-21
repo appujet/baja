@@ -101,9 +101,30 @@ pub async fn handle_op(
             task.abort();
           }
 
+          let frames_sent = player.frames_sent.clone();
+          let frames_nulled = player.frames_nulled.clone();
+
           drop(player);
-          let new_task =
-            crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain, ping).await;
+          let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+          let session_clone = session.clone();
+          tokio::spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+              let msg = crate::api::OutgoingMessage::Event(event);
+              session_clone.send_message(&msg).await;
+            }
+          });
+          let new_task = crate::server::connect_voice(
+            engine,
+            guild,
+            uid,
+            voice_state,
+            filter_chain,
+            ping,
+            Some(event_tx),
+            frames_sent,
+            frames_nulled,
+          )
+          .await;
 
           if let Some(mut player) = session.players.get_mut(&guild_id) {
             player.gateway_task = Some(new_task);

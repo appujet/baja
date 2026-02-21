@@ -12,6 +12,9 @@ pub async fn connect_voice(
   voice: VoiceConnectionState,
   filter_chain: Shared<FilterChain>,
   ping: std::sync::Arc<std::sync::atomic::AtomicI64>,
+  event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::api::LavalinkEvent>>,
+  frames_sent: std::sync::Arc<std::sync::atomic::AtomicU64>,
+  frames_nulled: std::sync::Arc<std::sync::atomic::AtomicU64>,
 ) -> tokio::task::JoinHandle<()> {
   let engine_lock = engine.lock().await;
   let channel_id = voice
@@ -31,6 +34,9 @@ pub async fn connect_voice(
     mixer,
     filter_chain,
     ping,
+    event_tx,
+    frames_sent,
+    frames_nulled,
   );
 
   tokio::spawn(async move {

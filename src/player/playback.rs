@@ -92,6 +92,25 @@ pub async fn start_playback(
     Some(t) => t,
     None => {
       error!("Failed to resolve track: {}", identifier);
+      if let Some(track_data) = player.to_player_response().track {
+        let event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackException {
+          guild_id: player.guild_id.clone(),
+          track: track_data.clone(),
+          exception: api::TrackException {
+            message: Some(format!("Failed to resolve track: {}", identifier)),
+            severity: crate::common::Severity::Common,
+            cause: format!("Failed to resolve track: {}", identifier),
+          },
+        });
+        session.send_message(&event).await;
+
+        let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
+          guild_id: player.guild_id.clone(),
+          track: track_data,
+          reason: api::TrackEndReason::LoadFailed,
+        });
+        session.send_message(&end_event).await;
+      }
       return;
     }
   };
@@ -136,9 +155,12 @@ pub async fn start_playback(
   let ping = player.ping.clone();
 
   let track_task = tokio::spawn(async move {
-    let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+    let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
     let mut last_update = std::time::Instant::now();
     let update_duration = std::time::Duration::from_secs(update_interval_secs);
+
+    let mut last_position = handle_clone.get_position();
+    let mut stuck_ms = 0;
 
     loop {
       interval.tick().await;
@@ -159,13 +181,34 @@ pub async fn start_playback(
         break;
       }
 
+      let current_pos = handle_clone.get_position();
+      if current_state == PlaybackState::Playing {
+        if current_pos == last_position {
+          stuck_ms += 500;
+          if stuck_ms == 10000 {
+            let stuck_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackStuck {
+              guild_id: guild_id.clone(),
+              track: track_data_clone.clone(),
+              threshold_ms: 10000,
+            });
+            session_clone.send_message(&stuck_event).await;
+            tracing::warn!("Track {} got stuck!", track_data_clone.info.title);
+          }
+        } else {
+          stuck_ms = 0;
+        }
+      } else {
+        stuck_ms = 0;
+      }
+      last_position = current_pos;
+
       if last_update.elapsed() >= update_duration {
         last_update = std::time::Instant::now();
         let update = api::OutgoingMessage::PlayerUpdate {
           guild_id: guild_id.clone(),
           state: PlayerState {
             time: crate::server::now_ms(),
-            position: handle_clone.get_position(),
+            position: current_pos,
             connected: true,
             ping: ping.load(std::sync::atomic::Ordering::Relaxed),
           },

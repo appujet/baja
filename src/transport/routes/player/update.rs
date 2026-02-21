@@ -142,9 +142,30 @@ pub async fn update_player(
       let voice_state = player.voice.clone();
       let filter_chain = player.filter_chain.clone();
       let ping = player.ping.clone();
+      let frames_sent = player.frames_sent.clone();
+      let frames_nulled = player.frames_nulled.clone();
       drop(player);
-      let handle =
-        crate::server::connect_voice(engine, guild, uid, voice_state, filter_chain, ping).await;
+      let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+      let session_clone = session.clone();
+      tokio::spawn(async move {
+        while let Some(event) = event_rx.recv().await {
+          let msg = api::OutgoingMessage::Event(event);
+          session_clone.send_message(&msg).await;
+        }
+      });
+
+      let handle = crate::server::connect_voice(
+        engine,
+        guild,
+        uid,
+        voice_state,
+        filter_chain,
+        ping,
+        Some(event_tx),
+        frames_sent,
+        frames_nulled,
+      )
+      .await;
       // Re-acquire player for track handling below
       player = session.players.get_mut(&guild_id).unwrap();
 
