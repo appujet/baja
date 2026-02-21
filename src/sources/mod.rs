@@ -1,4 +1,5 @@
 pub mod applemusic;
+pub mod audiomack;
 pub mod http;
 pub mod jiosaavn;
 

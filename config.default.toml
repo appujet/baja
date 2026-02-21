@@ -19,6 +19,7 @@ deezer = true
 applemusic = true
 gaana = true
 tidal = true
+audiomack = true
 
 [mirrors]
 providers = [
@@ -115,6 +116,9 @@ country_code = "US"
 playlist_load_limit = 50
 album_load_limit = 50
 artist_load_limit = 20
+
+[audiomack]
+search_limit = 20
 
 [filters]
 volume = true

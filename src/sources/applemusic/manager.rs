@@ -26,8 +26,7 @@ pub struct AppleMusicSource {
   playlist_page_load_concurrency: usize,
   #[allow(dead_code)]
   album_page_load_concurrency: usize,
-
-  search_prefix: String,
+  search_prefixes: Vec<String>,
   url_regex: Regex,
 }
 
@@ -65,7 +64,7 @@ impl AppleMusicSource {
             album_load_limit: a_limit,
             playlist_page_load_concurrency: p_conc,
             album_page_load_concurrency: a_conc,
-            search_prefix: "amsearch:".to_string(),
+            search_prefixes: vec!["amsearch:".to_string()],
             url_regex: Regex::new(r"https?://(?:www\.)?music\.apple\.com/(?:[a-zA-Z]{2}/)?(album|playlist|artist|song)/[^/]+/([a-zA-Z0-9\-.]+)(?:\?i=(\d+))?").unwrap(),
         }
   }
@@ -131,22 +130,23 @@ impl AppleMusicSource {
         .get("artwork")
         .and_then(|a| a.get("url"))
         .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
         .map(|s| s.replace("{w}", "1000").replace("{h}", "1000"))
     });
-
+ 
     let url = attributes
       .get("url")
       .and_then(|v| v.as_str())
-      .unwrap_or("")
-      .to_string();
-
+      .filter(|s| !s.is_empty())
+      .map(|s| s.to_string());
+ 
     Some(TrackInfo {
       title,
       author,
       length,
       identifier: id,
       is_stream: false,
-      uri: Some(url),
+      uri: url,
       artwork_url,
       isrc,
       source_name: "applemusic".to_string(),
@@ -365,7 +365,11 @@ impl SourcePlugin for AppleMusicSource {
   }
 
   fn can_handle(&self, identifier: &str) -> bool {
-    identifier.starts_with(&self.search_prefix) || self.url_regex.is_match(identifier)
+    self.search_prefixes.iter().any(|p| identifier.starts_with(p)) || self.url_regex.is_match(identifier)
+  }
+
+  fn search_prefixes(&self) -> Vec<&str> {
+    self.search_prefixes.iter().map(|s| s.as_str()).collect()
   }
 
   async fn load(
@@ -373,8 +377,8 @@ impl SourcePlugin for AppleMusicSource {
     identifier: &str,
     _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
   ) -> LoadResult {
-    if identifier.starts_with(&self.search_prefix) {
-      let query = &identifier[self.search_prefix.len()..];
+    if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+      let query = &identifier[prefix.len()..];
       return self.search(query).await;
     }
 

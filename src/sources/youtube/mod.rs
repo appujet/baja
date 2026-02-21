@@ -31,7 +31,8 @@ use clients::{
 use oauth::YouTubeOAuth;
 
 pub struct YouTubeSource {
-  search_prefix: String,
+  search_prefixes: Vec<String>,
+  rec_prefixes: Vec<String>,
   url_regex: Regex,
   // Store clients separated by function
   search_clients: Vec<Arc<dyn YouTubeClient>>,
@@ -131,7 +132,8 @@ impl YouTubeSource {
     }
 
     Self {
-      search_prefix: "ytsearch:".to_string(),
+      search_prefixes: vec!["ytsearch:".to_string(), "ytmsearch:".to_string()],
+      rec_prefixes: vec!["ytrec:".to_string()],
       url_regex: Regex::new(r"(?:youtube\.com|youtu\.be)").unwrap(),
       search_clients,
       playback_clients,
@@ -285,10 +287,13 @@ impl SourcePlugin for YouTubeSource {
   }
 
   fn can_handle(&self, identifier: &str) -> bool {
-    identifier.starts_with(&self.search_prefix)
-      || identifier.starts_with("ytmsearch:")
-      || identifier.starts_with("ytrec:")
+    self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+      || self.rec_prefixes.iter().any(|p| identifier.starts_with(p))
       || self.url_regex.is_match(identifier)
+  }
+
+  fn search_prefixes(&self) -> Vec<&str> {
+    self.search_prefixes.iter().map(|s| s.as_str()).collect()
   }
 
   async fn load(
@@ -303,12 +308,12 @@ impl SourcePlugin for YouTubeSource {
       json!({})
     };
 
-    if identifier.starts_with(&self.search_prefix) || identifier.starts_with("ytmsearch:") {
-      return self.handle_search(identifier, &context).await;
+    if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+      return self.handle_search(identifier, prefix, &context).await;
     }
 
-    if identifier.starts_with("ytrec:") {
-      return self.handle_recommendations(identifier, &context).await;
+    if let Some(prefix) = self.rec_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+      return self.handle_recommendations(identifier, prefix, &context).await;
     }
 
     if self.url_regex.is_match(identifier) {
@@ -343,11 +348,11 @@ impl SourcePlugin for YouTubeSource {
 }
 
 impl YouTubeSource {
-  async fn handle_search(&self, identifier: &str, context: &Value) -> LoadResult {
-    let (query, prefer_music) = if identifier.starts_with("ytmsearch:") {
-      (&identifier["ytmsearch:".len()..], true)
+  async fn handle_search(&self, identifier: &str, prefix: &str, context: &Value) -> LoadResult {
+    let (query, prefer_music) = if prefix == "ytmsearch:" {
+      (&identifier[prefix.len()..], true)
     } else {
-      (&identifier["ytsearch:".len()..], false)
+      (&identifier[prefix.len()..], false)
     };
 
     let clients = self.prioritize_clients(&self.search_clients, prefer_music);
@@ -362,8 +367,8 @@ impl YouTubeSource {
     LoadResult::Empty {}
   }
 
-  async fn handle_recommendations(&self, identifier: &str, context: &Value) -> LoadResult {
-    let seed_id = &identifier["ytrec:".len()..];
+  async fn handle_recommendations(&self, identifier: &str, prefix: &str, context: &Value) -> LoadResult {
+    let seed_id = &identifier[prefix.len()..];
     let playlist_id = format!("RD{}", seed_id);
 
     let clients = self.prioritize_clients(&self.resolve_clients, true);

@@ -28,6 +28,8 @@ pub struct Config {
     pub tidal: Option<TidalConfig>,
     #[serde(default)]
     pub soundcloud: Option<SoundCloudConfig>,
+    #[serde(default)]
+    pub audiomack: Option<AudiomackConfig>,
 }
 
 impl Default for Config {
@@ -47,6 +49,7 @@ impl Default for Config {
             gaana: None,
             tidal: None,
             soundcloud: None,
+            audiomack: None,
         }
     }
 }

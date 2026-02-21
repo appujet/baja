@@ -19,9 +19,9 @@ pub struct DeezerSource {
     config: crate::configs::DeezerConfig,
     pub token_tracker: Arc<DeezerTokenTracker>,
     url_regex: Regex,
-    search_prefix: String,
-    isrc_prefix: String,
-    rec_prefix: String,
+    search_prefixes: Vec<String>,
+    isrc_prefixes: Vec<String>,
+    rec_prefixes: Vec<String>,
     rec_artist_prefix: String,
     rec_track_prefix: String,
     share_url_prefix: String,
@@ -67,9 +67,9 @@ impl DeezerSource {
             config,
             token_tracker,
             url_regex: Regex::new(r"https?://(?:www\.)?deezer\.com/(?:[a-z]+(?:-[a-z]+)?/)?(?<type>track|album|playlist|artist)/(?<id>\d+)").unwrap(),
-            search_prefix: "dzsearch:".to_string(),
-            isrc_prefix: "dzisrc:".to_string(),
-            rec_prefix: "dzrec:".to_string(),
+            search_prefixes: vec!["dzsearch:".to_string()],
+            isrc_prefixes: vec!["dzisrc:".to_string()],
+            rec_prefixes: vec!["dzrec:".to_string()],
             rec_artist_prefix: "artist=".to_string(),
             rec_track_prefix: "track=".to_string(),
             share_url_prefix: "https://deezer.page.link/".to_string(),
@@ -89,15 +89,18 @@ impl DeezerSource {
         let isrc = json
             .get("isrc")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
         let artwork_url = json
             .get("album")
             .and_then(|a| a.get("cover_xl"))
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
         let uri = json
             .get("link")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
 
         Some(Track::new(TrackInfo {
@@ -208,7 +211,7 @@ impl DeezerSource {
                 name: "Deezer Recommendations".to_string(),
                 selected_track: -1,
             },
-            plugin_info: Value::Null,
+            plugin_info: serde_json::json!({}),
             tracks,
         })
     }
@@ -293,7 +296,7 @@ impl DeezerSource {
                     .to_string(),
                 selected_track: -1,
             },
-            plugin_info: Value::Null,
+            plugin_info: serde_json::json!({}),
             tracks,
         })
     }
@@ -330,7 +333,7 @@ impl DeezerSource {
                     .to_string(),
                 selected_track: -1,
             },
-            plugin_info: Value::Null,
+            plugin_info: serde_json::json!({}),
             tracks,
         })
     }
@@ -375,7 +378,7 @@ impl DeezerSource {
                 name: format!("{}'s Top Tracks", author),
                 selected_track: -1,
             },
-            plugin_info: Value::Null,
+            plugin_info: serde_json::json!({}),
             tracks,
         })
     }
@@ -387,11 +390,15 @@ impl SourcePlugin for DeezerSource {
         "deezer"
     }
     fn can_handle(&self, identifier: &str) -> bool {
-        identifier.starts_with(&self.search_prefix)
-            || identifier.starts_with(&self.isrc_prefix)
-            || identifier.starts_with(&self.rec_prefix)
+        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+            || self.isrc_prefixes.iter().any(|p| identifier.starts_with(p))
+            || self.rec_prefixes.iter().any(|p| identifier.starts_with(p))
             || identifier.starts_with(&self.share_url_prefix)
             || self.url_regex.is_match(identifier)
+    }
+
+    fn search_prefixes(&self) -> Vec<&str> {
+        self.search_prefixes.iter().map(|s| s.as_str()).collect()
     }
 
     async fn load(
@@ -399,23 +406,23 @@ impl SourcePlugin for DeezerSource {
         identifier: &str,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
-        if identifier.starts_with(&self.search_prefix) {
+        if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
             return self
-                .search(identifier.strip_prefix(&self.search_prefix).unwrap())
+                .search(identifier.strip_prefix(prefix).unwrap())
                 .await;
         }
-        if identifier.starts_with(&self.isrc_prefix) {
+        if let Some(prefix) = self.isrc_prefixes.iter().find(|p| identifier.starts_with(*p)) {
             if let Some(track) = self
-                .get_track_by_isrc(identifier.strip_prefix(&self.isrc_prefix).unwrap())
+                .get_track_by_isrc(identifier.strip_prefix(prefix).unwrap())
                 .await
             {
                 return LoadResult::Track(track);
             }
             return LoadResult::Empty {};
         }
-        if identifier.starts_with(&self.rec_prefix) {
+        if let Some(prefix) = self.rec_prefixes.iter().find(|p| identifier.starts_with(*p)) {
             return self
-                .get_recommendations(identifier.strip_prefix(&self.rec_prefix).unwrap())
+                .get_recommendations(identifier.strip_prefix(prefix).unwrap())
                 .await;
         }
         if identifier.starts_with(&self.share_url_prefix) {

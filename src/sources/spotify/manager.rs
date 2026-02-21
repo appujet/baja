@@ -18,8 +18,8 @@ const PARTNER_API_URL: &str = "https://api-partner.spotify.com/pathfinder/v2/que
 
 pub struct SpotifySource {
   client: reqwest::Client,
-  search_prefix: String,
-  recommendations_prefix: String,
+  search_prefixes: Vec<String>,
+  rec_prefixes: Vec<String>,
   url_regex: Regex,
   track_regex: Regex,
   album_regex: Regex,
@@ -84,8 +84,8 @@ impl SpotifySource {
 
     Self {
             client,
-            search_prefix: "spsearch:".to_string(),
-            recommendations_prefix: "sprec:".to_string(),
+            search_prefixes: vec!["spsearch:".to_string()],
+            rec_prefixes: vec!["sprec:".to_string()],
             url_regex: Regex::new(
                 r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?(track|album|playlist|artist)/([a-zA-Z0-9]+)",
             )
@@ -119,10 +119,6 @@ impl SpotifySource {
             track_resolve_concurrency,
         }
   }
-
-  // -------------------------------------------------------------------------
-  // Utilities
-  // -------------------------------------------------------------------------
 
   fn base62_to_hex(&self, id: &str) -> String {
     const ALPHABET: &str = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -456,7 +452,7 @@ impl SpotifySource {
       .or_else(|| track.get("external_ids"))
       .and_then(|ids| {
         // Direct property (common in search results)
-        if let Some(isrc) = ids.get("isrc").and_then(|v| v.as_str()) {
+        if let Some(isrc) = ids.get("isrc").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
           return Some(isrc.to_string());
         }
         // Items list (common in fetchTrack)
@@ -470,6 +466,7 @@ impl SpotifySource {
           })
           .and_then(|i| i.get("id"))
           .and_then(|v| v.as_str())
+          .filter(|s| !s.is_empty())
           .map(|s| s.to_string())
       })
   }
@@ -563,15 +560,6 @@ impl SpotifySource {
       .unwrap_or("Unknown Album")
       .to_string();
 
-    let artwork_url = album
-      .get("coverArt")
-      .and_then(|c| c.get("sources"))
-      .and_then(|s| s.as_array())
-      .and_then(|s| s.first())
-      .and_then(|i| i.get("url"))
-      .and_then(|v| v.as_str())
-      .map(|s| s.to_string());
-
     let total_count = album
       .pointer("/tracksV2/totalCount")
       .and_then(|v| v.as_u64())
@@ -621,12 +609,11 @@ impl SpotifySource {
       })
       .filter_map(|item| {
         let track_data = item.get("track")?.clone();
-        let artwork_url = artwork_url.clone();
         let semaphore = semaphore.clone();
 
         Some(async move {
           let _permit = semaphore.acquire().await.unwrap();
-          self.parse_generic_track(&track_data, artwork_url).await
+          self.parse_generic_track(&track_data, None).await
         })
       })
       .collect();
@@ -677,23 +664,6 @@ impl SpotifySource {
       .and_then(|v| v.as_str())
       .unwrap_or("Unknown Playlist")
       .to_string();
-
-    let _artwork_url = playlist
-      .pointer("/attributes/image/sources")
-      .and_then(|s| s.as_array())
-      .and_then(|s| s.first())
-      .or_else(|| {
-        playlist
-          .pointer("/images/items")
-          .and_then(|s| s.as_array())
-          .and_then(|s| s.first())
-          .and_then(|i| i.get("sources"))
-          .and_then(|s| s.as_array())
-          .and_then(|s| s.first())
-      })
-      .and_then(|s| s.get("url"))
-      .and_then(|v| v.as_str())
-      .map(|s| s.to_string());
 
     let mut all_items: Vec<Value> = playlist
       .pointer("/content/items")
@@ -812,7 +782,7 @@ impl SpotifySource {
     } else {
       LoadResult::Playlist(PlaylistData {
         info: PlaylistInfo {
-          name,
+          name: name.clone(),
           selected_track: -1,
         },
         plugin_info: json!({}),
@@ -829,9 +799,13 @@ impl SourcePlugin for SpotifySource {
   }
 
   fn can_handle(&self, identifier: &str) -> bool {
-    identifier.starts_with(&self.search_prefix)
-      || identifier.starts_with(&self.recommendations_prefix)
+    self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+      || self.rec_prefixes.iter().any(|p| identifier.starts_with(p))
       || self.url_regex.is_match(identifier)
+  }
+
+  fn search_prefixes(&self) -> Vec<&str> {
+    self.search_prefixes.iter().map(|s| s.as_str()).collect()
   }
 
   async fn load(
@@ -839,8 +813,8 @@ impl SourcePlugin for SpotifySource {
     identifier: &str,
     _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
   ) -> LoadResult {
-    if identifier.starts_with(&self.search_prefix) {
-      let query = &identifier[self.search_prefix.len()..];
+    if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+      let query = &identifier[prefix.len()..];
       return self.search_internal(query).await;
     }
 

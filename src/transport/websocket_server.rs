@@ -12,7 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use tokio::sync::Mutex;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     api,

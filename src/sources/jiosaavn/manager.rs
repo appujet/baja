@@ -17,8 +17,8 @@ const API_BASE: &str = "https://www.jiosaavn.com/api.php";
 pub struct JioSaavnSource {
     client: reqwest::Client,
     url_regex: Regex,
-    search_prefix: String,
-    rec_prefix: String,
+    search_prefixes: Vec<String>,
+    rec_prefixes: Vec<String>,
     secret_key: Vec<u8>,
     proxy: Option<crate::configs::HttpProxyConfig>,
     // Limits
@@ -91,8 +91,8 @@ impl JioSaavnSource {
         Self {
             client,
             url_regex: Regex::new(r"https?://(?:www\.)?jiosaavn\.com/(?:(?<type>album|featured|song|s/playlist|artist)/)(?:[^/]+/)(?<id>[A-Za-z0-9_,-]+)").unwrap(),
-            search_prefix: "jssearch:".to_string(),
-            rec_prefix: "jsrec:".to_string(),
+            search_prefixes: vec!["jssearch:".to_string()],
+            rec_prefixes: vec!["jsrec:".to_string()],
             secret_key: secret_key.into_bytes(),
             proxy,
             search_limit,
@@ -144,6 +144,7 @@ impl JioSaavnSource {
         let uri = json
             .get("perma_url")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
 
         let duration_str = json
@@ -192,6 +193,7 @@ impl JioSaavnSource {
         let artwork_url = json
             .get("image")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.replace("150x150", "500x500"));
 
         let track_info = TrackInfo {
@@ -329,9 +331,9 @@ impl JioSaavnSource {
                         return LoadResult::Playlist(PlaylistData {
                             info: PlaylistInfo {
                                 name: "JioSaavn Recommendations".to_string(),
-                                selected_track: 0,
+                                selected_track: -1,
                             },
-                            plugin_info: serde_json::json!({ "type": "recommendations" }),
+                            plugin_info: serde_json::json!({}),
                             tracks,
                         });
                     }
@@ -364,9 +366,9 @@ impl JioSaavnSource {
                             return LoadResult::Playlist(PlaylistData {
                                 info: PlaylistInfo {
                                     name: "JioSaavn Recommendations".to_string(),
-                                    selected_track: 0,
+                                    selected_track: -1,
                                 },
-                                plugin_info: serde_json::json!({ "type": "recommendations" }),
+                                plugin_info: serde_json::json!({}),
                                 tracks,
                             });
                         }
@@ -436,7 +438,7 @@ impl JioSaavnSource {
                 LoadResult::Playlist(PlaylistData {
                     info: PlaylistInfo {
                         name,
-                        selected_track: 0,
+                        selected_track: -1,
                     },
                     plugin_info: serde_json::json!({}),
                     tracks,
@@ -461,9 +463,13 @@ impl SourcePlugin for JioSaavnSource {
     }
 
     fn can_handle(&self, identifier: &str) -> bool {
-        identifier.starts_with(&self.search_prefix)
-            || identifier.starts_with(&self.rec_prefix)
+        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+            || self.rec_prefixes.iter().any(|p| identifier.starts_with(p))
             || self.url_regex.is_match(identifier)
+    }
+
+    fn search_prefixes(&self) -> Vec<&str> {
+        self.search_prefixes.iter().map(|s| s.as_str()).collect()
     }
 
     async fn load(
@@ -471,14 +477,14 @@ impl SourcePlugin for JioSaavnSource {
         identifier: &str,
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
-        if identifier.starts_with(&self.rec_prefix) {
-            let query = identifier.strip_prefix(&self.rec_prefix).unwrap();
-            return self.get_recommendations(query).await;
+        if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+            let query = identifier.strip_prefix(prefix).unwrap();
+            return self.search(query).await;
         }
 
-        if identifier.starts_with(&self.search_prefix) {
-            let query = identifier.strip_prefix(&self.search_prefix).unwrap();
-            return self.search(query).await;
+        if let Some(prefix) = self.rec_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+            let query = identifier.strip_prefix(prefix).unwrap();
+            return self.get_recommendations(query).await;
         }
 
         // Regex Match URL

@@ -23,8 +23,8 @@ pub struct TidalSource {
     #[allow(dead_code)]
     artist_load_limit: usize,
 
-    search_prefix: String,
-    rec_prefix: String,
+    search_prefixes: Vec<String>,
+    rec_prefixes: Vec<String>,
     url_regex: Regex,
 }
 
@@ -63,8 +63,8 @@ impl TidalSource {
             playlist_load_limit: p_limit,
             album_load_limit: a_limit,
             artist_load_limit: art_limit,
-            search_prefix: "tdsearch:".to_string(),
-            rec_prefix: "tdrec:".to_string(),
+            search_prefixes: vec!["tdsearch:".to_string()],
+            rec_prefixes: vec!["tdrec:".to_string()],
             url_regex: Regex::new(r"https?://(?:(?:listen|www)\.)?tidal\.com/(?:browse/)?(album|track|playlist|mix|artist)/([a-zA-Z0-9\-]+)(?:/.*)?(?:\?.*)?").unwrap(),
         }
     }
@@ -127,30 +127,31 @@ impl TidalSource {
         let isrc = item
             .get("isrc")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
-
+ 
         let artwork_url = item.get("album").and_then(|a| a.get("cover")).and_then(|v| {
-            v.as_str().map(|s| {
+            v.as_str().filter(|s| !s.is_empty()).map(|s| {
                 format!(
                     "https://resources.tidal.com/images/{}/1280x1280.jpg",
                     s.replace("-", "/")
                 )
             })
         });
-
+ 
         let url = item
             .get("url")
             .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .replace("http://", "https://");
-
+            .filter(|s| !s.is_empty())
+            .map(|s| s.replace("http://", "https://"));
+ 
         Some(TrackInfo {
             title,
             author: artists,
             length,
             identifier: id,
             is_stream: false,
-            uri: Some(url),
+            uri: url,
             artwork_url,
             isrc,
             source_name: "tidal".to_string(),
@@ -255,7 +256,6 @@ impl TidalSource {
         }
 
         let name = name_override.unwrap_or_else(|| format!("Mix: {}", id));
-
         LoadResult::Playlist(PlaylistData {
             info: PlaylistInfo {
                 name,
@@ -366,9 +366,13 @@ impl SourcePlugin for TidalSource {
     }
 
     fn can_handle(&self, identifier: &str) -> bool {
-        identifier.starts_with(&self.search_prefix)
-            || identifier.starts_with(&self.rec_prefix)
+        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+            || self.rec_prefixes.iter().any(|p| identifier.starts_with(p))
             || self.url_regex.is_match(identifier)
+    }
+
+    fn search_prefixes(&self) -> Vec<&str> {
+        self.search_prefixes.iter().map(|s| s.as_str()).collect()
     }
 
     async fn load(
@@ -376,13 +380,13 @@ impl SourcePlugin for TidalSource {
         identifier: &str,
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
-        if identifier.starts_with(&self.search_prefix) {
-            let query = &identifier[self.search_prefix.len()..];
+        if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+            let query = &identifier[prefix.len()..];
             return self.search(query).await;
         }
 
-        if identifier.starts_with(&self.rec_prefix) {
-            let id = &identifier[self.rec_prefix.len()..];
+        if let Some(prefix) = self.rec_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+            let id = &identifier[prefix.len()..];
             return self.get_recommendations(id).await;
         }
 

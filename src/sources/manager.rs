@@ -4,6 +4,7 @@ use tracing::info;
 
 use super::{
     applemusic::manager::AppleMusicSource,
+    audiomack::manager::AudiomackSource,
     deezer::DeezerSource,
     gaana::GaanaSource,
     http::HttpSource,
@@ -68,6 +69,10 @@ impl SourceManager {
             sources.push(Box::new(SoundCloudSource::new(
                 config.soundcloud.clone().unwrap_or_default(),
             )));
+        }
+        if config.sources.audiomack {
+            info!("Registering Audiomack source");
+            sources.push(Box::new(AudiomackSource::new(config.audiomack.clone())));
         }
         if config.sources.http {
             info!("Registering HTTP source");

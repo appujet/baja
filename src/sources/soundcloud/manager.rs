@@ -30,6 +30,7 @@ pub struct SoundCloudSource {
     liked_user_urn_re: Regex,
     user_url_re: Regex,
     search_url_re: Regex,
+    search_prefixes: Vec<String>,
 }
 
 impl SoundCloudSource {
@@ -91,6 +92,7 @@ impl SoundCloudSource {
             search_url_re: Regex::new(
                 r"^https?://(?:www\.|m\.)?soundcloud\.com/search(?:/(?:sounds|people|albums|sets))?/?(?:\?.*)?$"
             ).unwrap(),
+            search_prefixes: vec!["scsearch:".to_string()],
         }
     }
 
@@ -168,15 +170,18 @@ impl SoundCloudSource {
         let uri = json
             .get("permalink_url")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
         let artwork_url = json
             .get("artwork_url")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.replace("-large", "-t500x500"));
         let isrc = json
             .get("publisher_metadata")
             .and_then(|m| m.get("isrc"))
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .map(|s| s.to_string());
 
         let track = Track::new(TrackInfo {
@@ -523,7 +528,7 @@ impl SoundCloudSource {
                 name,
                 selected_track: -1,
             },
-            plugin_info: Value::Null,
+            plugin_info: serde_json::json!({}),
             tracks: complete,
         })
     }
@@ -586,7 +591,7 @@ impl SoundCloudSource {
                 name: format!("Liked by {}", user_name),
                 selected_track: -1,
             },
-            plugin_info: Value::Null,
+            plugin_info: serde_json::json!({}),
             tracks,
         })
     }
@@ -704,7 +709,7 @@ impl SoundCloudSource {
                 name: format!("{} {}", playlist_prefix, user_name),
                 selected_track: -1,
             },
-            plugin_info: Value::Null,
+            plugin_info: serde_json::json!({}),
             tracks,
         })
     }
@@ -717,7 +722,7 @@ impl SourcePlugin for SoundCloudSource {
     }
 
     fn can_handle(&self, identifier: &str) -> bool {
-        if identifier.starts_with("scsearch:") {
+        if self.search_prefixes.iter().any(|p| identifier.starts_with(p)) {
             return true;
         }
         // Normalize: strip mobile prefix
@@ -735,13 +740,18 @@ impl SourcePlugin for SoundCloudSource {
             || self.track_url_re.is_match(&url)
     }
 
+    fn search_prefixes(&self) -> Vec<&str> {
+        self.search_prefixes.iter().map(|s| s.as_str()).collect()
+    }
+
     async fn load(
         &self,
         identifier: &str,
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
         // 1. Search
-        if let Some(query) = identifier.strip_prefix("scsearch:") {
+        if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+            let query = identifier.strip_prefix(prefix).unwrap();
             return self.search_tracks(query.trim()).await;
         }
 

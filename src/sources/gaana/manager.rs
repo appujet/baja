@@ -18,7 +18,7 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 pub struct GaanaSource {
     client: reqwest::Client,
     url_regex: Regex,
-    search_prefix: String,
+    search_prefixes: Vec<String>,
     stream_quality: String,
     proxy: Option<crate::configs::HttpProxyConfig>,
     // Limits
@@ -98,7 +98,7 @@ impl GaanaSource {
                 r"(?:https?://)?(?:www\.)?gaana\.com/(?P<type>song|album|playlist|artist)/(?P<seokey>[\w-]+)",
             )
             .unwrap(),
-            search_prefix: "gnsearch:".to_string(),
+            search_prefixes: vec!["gnsearch:".to_string(), "gaanasearch:".to_string()],
             stream_quality,
             proxy,
             search_limit,
@@ -184,9 +184,9 @@ impl GaanaSource {
         LoadResult::Playlist(PlaylistData {
             info: PlaylistInfo {
                 name: name.to_string(),
-                selected_track: 0,
+                selected_track: -1,
             },
-            plugin_info: serde_json::json!({ "type": "album", "url": format!("https://gaana.com/album/{}", seokey) }),
+            plugin_info: serde_json::json!({}),
             tracks,
         })
     }
@@ -220,9 +220,9 @@ impl GaanaSource {
         LoadResult::Playlist(PlaylistData {
             info: PlaylistInfo {
                 name: name.to_string(),
-                selected_track: 0,
+                selected_track: -1,
             },
-            plugin_info: serde_json::json!({ "type": "playlist", "url": format!("https://gaana.com/playlist/{}", seokey) }),
+            plugin_info: serde_json::json!({}),
             tracks,
         })
     }
@@ -283,9 +283,9 @@ impl GaanaSource {
         LoadResult::Playlist(PlaylistData {
             info: PlaylistInfo {
                 name: format!("{}'s Top Tracks", artist_name),
-                selected_track: 0,
+                selected_track: -1,
             },
-            plugin_info: serde_json::json!({ "type": "artist", "url": format!("https://gaana.com/artist/{}", seokey) }),
+            plugin_info: serde_json::json!({}),
             tracks,
         })
     }
@@ -391,7 +391,8 @@ impl GaanaSource {
         let artwork_url = json
             .get("artwork_large")
             .and_then(|v| v.as_str())
-            .or_else(|| json.get("atw").and_then(|v| v.as_str()))
+            .filter(|s| !s.is_empty())
+            .or_else(|| json.get("atw").and_then(|v| v.as_str()).filter(|s| !s.is_empty()))
             .map(|s| s.to_string());
         let track_info = TrackInfo {
             identifier: id,
@@ -471,23 +472,21 @@ impl SourcePlugin for GaanaSource {
         "gaana"
     }
     fn can_handle(&self, identifier: &str) -> bool {
-        identifier.starts_with(&self.search_prefix)
-            || identifier.starts_with("gaanasearch:")
+        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
             || self.url_regex.is_match(identifier)
+    }
+
+    fn search_prefixes(&self) -> Vec<&str> {
+        self.search_prefixes.iter().map(|s| s.as_str()).collect()
     }
     async fn load(
         &self,
         identifier: &str,
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
-        if identifier.starts_with(&self.search_prefix) {
+        if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
             return self
-                .search(identifier.strip_prefix(&self.search_prefix).unwrap().trim())
-                .await;
-        }
-        if identifier.starts_with("gaanasearch:") {
-            return self
-                .search(identifier.strip_prefix("gaanasearch:").unwrap().trim())
+                .search(identifier.strip_prefix(prefix).unwrap().trim())
                 .await;
         }
         if let Some(caps) = self.url_regex.captures(identifier) {
