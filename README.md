@@ -25,7 +25,7 @@ The following table outlines the current implementation status of various featur
 | **Audio Mixing** | ✅ | Multi-track mixing support |
 | **Opus Encoding** | ✅ | Low-latency encoding for Discord |
 | **Audio Filters** | ✅ | Implementation of EQ, Karaoke, Timescale, etc. |
-| **Seeking** | 🚧 | Support for seeking within tracks |
+| **Seeking** | ✅ | Support for seeking within tracks |
 
 
 ### Audio Sources
