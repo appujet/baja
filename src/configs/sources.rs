@@ -20,6 +20,8 @@ pub struct SourcesConfig {
   pub soundcloud: bool,
   #[serde(default)]
   pub audiomack: bool,
+  #[serde(default)]
+  pub pandora: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -385,10 +387,39 @@ fn default_amk_search_limit() -> usize {
   20
 }
 
+
 impl Default for AudiomackConfig {
   fn default() -> Self {
     Self {
       search_limit: default_amk_search_limit(),
+    }
+  }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PandoraConfig {
+  pub proxy: Option<HttpProxyConfig>,
+  pub csrf_token: Option<String>,
+  #[serde(default = "default_pd_search_limit")]
+  pub search_limit: usize,
+  #[serde(default = "default_pd_playlist_load_limit")]
+  pub playlist_load_limit: usize,
+}
+
+fn default_pd_search_limit() -> usize {
+  10
+}
+fn default_pd_playlist_load_limit() -> usize {
+  100
+}
+
+impl Default for PandoraConfig {
+  fn default() -> Self {
+    Self {
+      proxy: None,
+      csrf_token: None,
+      search_limit: default_pd_search_limit(),
+      playlist_load_limit: default_pd_playlist_load_limit(),
     }
   }
 }

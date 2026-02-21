@@ -216,7 +216,13 @@ impl AppleMusicSource {
         name,
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({
+        "type": "album",
+        "url": album.pointer("/attributes/url").and_then(|v| v.as_str()),
+        "artworkUrl": artwork,
+        "author": album.pointer("/attributes/artistName").and_then(|v| v.as_str()),
+        "totalTracks": album.pointer("/attributes/trackCount").and_then(|v| v.as_u64()).unwrap_or(tracks.len() as u64)
+      }),
       tracks,
     })
   }
@@ -265,7 +271,13 @@ impl AppleMusicSource {
         name,
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({
+        "type": "playlist",
+        "url": playlist.pointer("/attributes/url").and_then(|v| v.as_str()),
+        "artworkUrl": artwork,
+        "author": playlist.pointer("/attributes/curatorName").and_then(|v| v.as_str()),
+        "totalTracks": playlist.pointer("/attributes/trackCount").and_then(|v| v.as_u64()).unwrap_or(tracks.len() as u64)
+      }),
       tracks,
     })
   }
@@ -320,7 +332,13 @@ impl AppleMusicSource {
         name: format!("{}'s Top Tracks", artist_name),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({
+        "type": "artist",
+        "url": format!("https://music.apple.com/artist/{}", id),
+        "artworkUrl": artwork,
+        "author": artist_name,
+        "totalTracks": tracks.len()
+      }),
       tracks,
     })
   }

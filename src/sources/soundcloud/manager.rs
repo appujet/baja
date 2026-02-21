@@ -543,7 +543,7 @@ impl SoundCloudSource {
         name,
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({ "type": json.get("kind").and_then(|v| v.as_str()).unwrap_or("playlist"), "url": url, "artworkUrl": json.get("artwork_url").and_then(|v| v.as_str()).map(|s| s.replace("-large", "-t500x500")), "author": json.get("user").and_then(|u| u.get("username")).and_then(|v| v.as_str()), "totalTracks": json.get("track_count").and_then(|v| v.as_u64()).unwrap_or(complete.len() as u64) }),
       tracks: complete,
     })
   }
@@ -606,7 +606,7 @@ impl SoundCloudSource {
         name: format!("Liked by {}", user_name),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({ "type": "playlist", "url": url, "author": user_name, "totalTracks": tracks.len() }),
       tracks,
     })
   }
@@ -774,7 +774,7 @@ impl SoundCloudSource {
         name: format!("{} {}", playlist_prefix, user_name),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({ "type": match endpoint { "albums" => "album", "playlists" | "sets" => "playlist", _ => "artist" }, "url": format!("https://soundcloud.com/{}/{}", user_name, endpoint), "author": user_name, "totalTracks": tracks.len() }),
       tracks,
     })
   }

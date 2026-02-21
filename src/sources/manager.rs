@@ -12,6 +12,7 @@ use super::{
   local::LocalSource,
   plugin::{BoxedSource, BoxedTrack, PlayableTrack},
   soundcloud::SoundCloudSource,
+  pandora::PandoraSource,
   spotify::manager::SpotifySource,
   tidal::TidalSource,
   youtube::{YouTubeSource, cipher::YouTubeCipherManager},
@@ -74,6 +75,10 @@ impl SourceManager {
     if config.sources.audiomack {
       info!("Registering Audiomack source");
       sources.push(Box::new(AudiomackSource::new(config.audiomack.clone())));
+    }
+    if config.sources.pandora {
+      info!("Registering Pandora source");
+      sources.push(Box::new(PandoraSource::new(config.pandora.clone())));
     }
     if config.sources.http {
       info!("Registering HTTP source");

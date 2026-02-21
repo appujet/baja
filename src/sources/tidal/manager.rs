@@ -228,7 +228,7 @@ impl TidalSource {
         name: title,
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({ "type": type_str, "url": format!("https://tidal.com/browse/{}/{}", type_str, id), "artworkUrl": info_data.get("cover").or_else(|| info_data.get("image")).and_then(|v| v.as_str()).map(|s| format!("https://resources.tidal.com/images/{}/1280x1280.jpg", s.replace("-", "/"))), "author": info_data.get("artist").and_then(|a| a.get("name")).or_else(|| info_data.get("creator").and_then(|c| c.get("name"))).and_then(|v| v.as_str()), "totalTracks": info_data.get("numberOfTracks").or_else(|| info_data.get("numberOfSongs")).and_then(|v| v.as_u64()).unwrap_or(tracks.len() as u64) }),
       tracks,
     })
   }
@@ -267,7 +267,7 @@ impl TidalSource {
         name,
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({ "type": "playlist", "url": format!("https://tidal.com/browse/mix/{}", id), "totalTracks": tracks.len() }),
       tracks,
     })
   }
@@ -359,7 +359,7 @@ impl TidalSource {
         name: format!("{}'s Top Tracks", artist_name),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({ "type": "artist", "url": format!("https://tidal.com/browse/artist/{}", id), "artworkUrl": info_data.get("picture").and_then(|v| v.as_str()).map(|s| format!("https://resources.tidal.com/images/{}/1280x1280.jpg", s.replace("-", "/"))), "author": artist_name, "totalTracks": tracks.len() }),
       tracks,
     })
   }

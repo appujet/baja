@@ -336,7 +336,10 @@ impl JioSaavnSource {
                 name: "JioSaavn Recommendations".to_string(),
                 selected_track: 0,
               },
-              plugin_info: serde_json::json!({ "type": "recommendations" }),
+              plugin_info: serde_json::json!({
+                "type": "recommendations",
+                "totalTracks": tracks.len()
+              }),
               tracks,
             });
           }
@@ -371,7 +374,10 @@ impl JioSaavnSource {
                   name: "JioSaavn Recommendations".to_string(),
                   selected_track: -1,
                 },
-                plugin_info: serde_json::json!({ "type": "recommendations" }),
+                plugin_info: serde_json::json!({
+                  "type": "recommendations",
+                  "totalTracks": tracks.len()
+                }),
                 tracks,
               });
             }
@@ -443,7 +449,13 @@ impl JioSaavnSource {
             name,
             selected_track: -1,
           },
-          plugin_info: serde_json::json!({}),
+          plugin_info: serde_json::json!({
+            "url": data.get("perma_url").and_then(|v| v.as_str()),
+            "type": type_,
+            "artworkUrl": data.get("image").and_then(|v| v.as_str()).map(|s| s.replace("150x150", "500x500")),
+            "author": data.get("subtitle").or_else(|| data.get("header_desc")).and_then(|v| v.as_str()),
+            "totalTracks": data.get("list_count").and_then(|v| v.as_str()).and_then(|s| s.parse::<u64>().ok()).unwrap_or(tracks.len() as u64)
+          }),
           tracks,
         })
       } else {
@@ -664,7 +676,10 @@ impl JioSaavnSource {
       },
       plugin_info: serde_json::json!({
           "url": uri,
-          "type": type_
+          "type": type_,
+          "artworkUrl": json.get("image").and_then(|v| v.as_str()).map(|s| s.replace("150x150", "500x500")),
+          "author": json.get("music").or_else(|| json.get("description")).and_then(|v| v.as_str()),
+          "totalTracks": json.get("more_info").and_then(|m| m.get("song_count").or_else(|| m.get("track_count"))).and_then(|v| v.as_str().and_then(|s| s.parse::<u64>().ok()).or_else(|| v.as_u64())).unwrap_or(0)
       }),
       tracks: Vec::new(),
     })

@@ -642,7 +642,7 @@ impl SpotifySource {
           name,
           selected_track: -1,
         },
-        plugin_info: json!({}),
+        plugin_info: json!({ "type": "album", "url": format!("https://open.spotify.com/album/{}", id), "artworkUrl": album_artwork, "author": album.pointer("/artists/items/0/profile/name").and_then(|v| v.as_str()), "totalTracks": total_count }),
         tracks,
       })
     }
@@ -739,10 +739,16 @@ impl SpotifySource {
     } else {
       LoadResult::Playlist(PlaylistData {
         info: PlaylistInfo {
-          name,
+          name: name.clone(),
           selected_track: -1,
         },
-        plugin_info: json!({}),
+        plugin_info: json!({
+          "type": "playlist",
+          "url": format!("https://open.spotify.com/playlist/{}", id),
+          "artworkUrl": playlist.pointer("/images/items/0/sources/0/url").and_then(|v| v.as_str()),
+          "author": playlist.get("ownerV2").and_then(|v| v.get("name")).and_then(|v| v.as_str()),
+          "totalTracks": total_count
+        }),
         tracks,
       })
     }
@@ -800,7 +806,13 @@ impl SpotifySource {
           name: name.clone(),
           selected_track: -1,
         },
-        plugin_info: json!({}),
+        plugin_info: json!({
+          "type": "artist",
+          "url": format!("https://open.spotify.com/artist/{}", id),
+          "artworkUrl": artist.pointer("/visuals/avatar/sources/0/url").and_then(|v| v.as_str()),
+          "author": name,
+          "totalTracks": tracks.len()
+        }),
         tracks,
       })
     }

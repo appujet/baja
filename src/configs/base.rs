@@ -30,6 +30,8 @@ pub struct Config {
   pub soundcloud: Option<SoundCloudConfig>,
   #[serde(default)]
   pub audiomack: Option<AudiomackConfig>,
+  #[serde(default)]
+  pub pandora: Option<PandoraConfig>,
 }
 
 impl Default for Config {
@@ -50,6 +52,7 @@ impl Default for Config {
       tidal: None,
       soundcloud: None,
       audiomack: None,
+      pandora: None,
     }
   }
 }

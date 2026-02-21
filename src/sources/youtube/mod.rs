@@ -396,7 +396,7 @@ impl YouTubeSource {
         .await
       {
         Ok(Some((tracks, title))) => {
-          let filtered = tracks
+          let filtered: Vec<Track> = tracks
             .into_iter()
             .filter(|t| t.info.identifier != seed_id)
             .collect();
@@ -405,7 +405,10 @@ impl YouTubeSource {
               name: format!("Recommendations: {}", title),
               selected_track: -1,
             },
-            plugin_info: json!({ "type": "recommendations" }),
+            plugin_info: json!({
+              "type": "recommendations",
+              "totalTracks": filtered.len()
+            }),
             tracks: filtered,
           });
         }
@@ -449,7 +452,12 @@ impl YouTubeSource {
                 name: title,
                 selected_track: -1,
               },
-              plugin_info: json!({}),
+              plugin_info: json!({
+                "type": "playlist",
+                "url": format!("https://www.youtube.com/playlist?list={}", playlist_id),
+                "artworkUrl": tracks.first().and_then(|t| t.info.artwork_url.clone()),
+                "totalTracks": tracks.len()
+              }),
               tracks,
             });
           }

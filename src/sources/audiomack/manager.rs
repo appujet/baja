@@ -331,7 +331,7 @@ impl AudiomackSource {
             name,
             selected_track: -1,
           },
-          plugin_info: serde_json::json!({}),
+          plugin_info: serde_json::json!({ "type": type_, "url": results.get("url").and_then(|v| v.as_str()).map(|s| format!("https://audiomack.com{}", s)).or_else(|| Some(format!("https://audiomack.com/{}/{}/{}", artist, type_, slug))), "artworkUrl": results.get("image").and_then(|v| v.as_str()), "author": results.get("artist").and_then(|v| v.as_str()), "totalTracks": tracks.len() }),
           tracks,
         });
       } else {
@@ -393,7 +393,7 @@ impl AudiomackSource {
               name: format!("{}'s Top Tracks", name),
               selected_track: -1,
             },
-            plugin_info: serde_json::json!({}),
+            plugin_info: serde_json::json!({ "type": "artist", "url": results.get("url").and_then(|v| v.as_str()).map(|s| format!("https://audiomack.com{}", s)).or_else(|| Some(format!("https://audiomack.com/{}", artist_slug))), "artworkUrl": results.get("image").and_then(|v| v.as_str()), "author": name, "totalTracks": tracks.len() }),
             tracks,
           });
         }

@@ -213,7 +213,10 @@ impl DeezerSource {
         name: "Deezer Recommendations".to_string(),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({
+        "type": "recommendations",
+        "totalTracks": tracks.len()
+      }),
       tracks,
     })
   }
@@ -298,7 +301,13 @@ impl DeezerSource {
           .to_string(),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({
+        "type": "album",
+        "url": format!("https://www.deezer.com/album/{}", id),
+        "artworkUrl": json.get("cover_xl").and_then(|v| v.as_str()),
+        "author": json.get("artist").and_then(|v| v.get("name")).and_then(|v| v.as_str()),
+        "totalTracks": json.get("nb_tracks").and_then(|v| v.as_u64()).unwrap_or(tracks.len() as u64)
+      }),
       tracks,
     })
   }
@@ -335,7 +344,13 @@ impl DeezerSource {
           .to_string(),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({
+        "type": "playlist",
+        "url": format!("https://www.deezer.com/playlist/{}", id),
+        "artworkUrl": json.get("picture_xl").and_then(|v| v.as_str()),
+        "author": json.get("creator").and_then(|v| v.get("name")).and_then(|v| v.as_str()),
+        "totalTracks": json.get("nb_tracks").and_then(|v| v.as_u64()).unwrap_or(tracks.len() as u64)
+      }),
       tracks,
     })
   }
@@ -380,7 +395,13 @@ impl DeezerSource {
         name: format!("{}'s Top Tracks", author),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({
+        "type": "artist",
+        "url": format!("https://www.deezer.com/artist/{}", id),
+        "artworkUrl": json.get("picture_xl").and_then(|v| v.as_str()),
+        "author": author,
+        "totalTracks": tracks.len()
+      }),
       tracks,
     })
   }

@@ -185,7 +185,7 @@ impl GaanaSource {
         name: name.to_string(),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({ "type": "album", "url": format!("https://gaana.com/album/{}", seokey), "artworkUrl": album.get("atw").or_else(|| album.get("artwork_large")).and_then(|v| v.as_str()), "author": album.get("artist").and_then(|a| a.as_array()).and_then(|arr| arr.first()).and_then(|a| a.get("name")).and_then(|v| v.as_str()), "totalTracks": tracks.len() }),
       tracks,
     })
   }
@@ -221,7 +221,7 @@ impl GaanaSource {
         name: name.to_string(),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({ "type": "playlist", "url": format!("https://gaana.com/playlist/{}", seokey), "artworkUrl": playlist.get("atw").or_else(|| playlist.get("artwork_large")).and_then(|v| v.as_str()), "author": playlist.get("created_by").and_then(|v| v.as_str()), "totalTracks": tracks.len() }),
       tracks,
     })
   }
@@ -284,7 +284,7 @@ impl GaanaSource {
         name: format!("{}'s Top Tracks", artist_name),
         selected_track: -1,
       },
-      plugin_info: serde_json::json!({}),
+      plugin_info: serde_json::json!({ "type": "artist", "url": format!("https://gaana.com/artist/{}", seokey), "artworkUrl": artist_data.get("atw").and_then(|v| v.as_str()), "author": artist_name, "totalTracks": tracks.len() }),
       tracks,
     })
   }
