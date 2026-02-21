@@ -78,6 +78,7 @@ impl WebEmbeddedClient {
             None,
             Some("https://www.youtube.com"),
             None,
+            None,
         )
         .await
     }

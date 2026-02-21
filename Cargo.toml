@@ -46,7 +46,7 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 tokio = { version = "1.49.0", features = ["tracing", "macros", "signal", "rt-multi-thread"] }
 axum = { version = "0.8.1", features = ["ws"] }
 tower-http = { version = "0.6.2", features = ["trace", "cors"] }
-rustypipe-botguard = "0.1.2"
+
 
 
 [profile.release]

@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use std::time::{Instant, Duration};
 
 use crate::{common::types::AnyResult, configs::sources::YouTubeCipherConfig};
 
@@ -138,7 +138,10 @@ impl YouTubeCipherManager {
 
     pub async fn get_signature_timestamp(&self) -> AnyResult<u32> {
         let script = self.get_cached_player_script().await?;
-        script.signature_timestamp.parse::<u32>().map_err(|e| e.into())
+        script
+            .signature_timestamp
+            .parse::<u32>()
+            .map_err(|e| e.into())
     }
 
     pub async fn resolve_url(
