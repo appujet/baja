@@ -569,6 +569,14 @@ impl SpotifySource {
       .and_then(|v| v.as_u64())
       .unwrap_or(0);
 
+    let album_artwork = album
+      .pointer("/coverArt/sources")
+      .and_then(|s| s.as_array())
+      .and_then(|s| s.first())
+      .and_then(|i| i.get("url"))
+      .and_then(|v| v.as_str())
+      .map(|s| s.to_string());
+
     // Collect first page items
     let mut all_items: Vec<Value> = album
       .pointer("/tracksV2/items")
@@ -614,10 +622,11 @@ impl SpotifySource {
       .filter_map(|item| {
         let track_data = item.get("track")?.clone();
         let semaphore = semaphore.clone();
+        let artwork = album_artwork.clone();
 
         Some(async move {
           let _permit = semaphore.acquire().await.unwrap();
-          self.parse_generic_track(&track_data, None).await
+          self.parse_generic_track(&track_data, artwork).await
         })
       })
       .collect();
@@ -743,13 +752,15 @@ impl SpotifySource {
     let variables = json!({
         "uri": format!("spotify:artist:{}", id),
         "locale": "en",
-        "offset": 0,
-        "limit": 10
+        "includePrerelease": true
     });
 
-    let hash = "5f231e3271775196f7c8ec179069695696d55239a5c889a74477813a378af3ec";
+    let hash = "35648a112beb1794e39ab931365f6ae4a8d45e65396d641eeda94e4003d41497";
 
-    let data = match self.partner_api_request("getArtist", variables, hash).await {
+    let data = match self
+      .partner_api_request("queryArtistOverview", variables, hash)
+      .await
+    {
       Some(d) => d,
       None => return LoadResult::Empty {},
     };
