@@ -63,8 +63,8 @@ debug = true
 opt-level = 3        # fully optimize all dependencies in dev mode
 
 [profile.release]
-lto = "fat"
-codegen-units = 1
+lto = "thin"
+codegen-units = 16
 panic = "abort"
 opt-level = 3
 strip = true

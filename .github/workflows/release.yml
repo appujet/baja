@@ -19,6 +19,7 @@ env:
   CARGO_TERM_COLOR: always
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  CARGO_INCREMENTAL: 0
 
 jobs:
   build:
@@ -82,7 +83,7 @@ jobs:
 
       - name: Install C dependencies (Windows)
         if: runner.os == 'Windows'
-        run: choco install vcredist140 cmake pkgconfiglite
+        run: echo "Standard dependencies already installed on runner"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
