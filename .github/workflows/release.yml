@@ -5,11 +5,6 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Manual version tag (overrides tag if set)"
-        required: false
-        default: "manual"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,11 +15,14 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   CARGO_INCREMENTAL: 0
-
+  OPUS_NO_PKG: "1"
+  LIBOPUS_NO_PKG: "1"
+  
 jobs:
   build:
     name: Build - ${{ matrix.platform.os_name }}
     runs-on: ${{ matrix.platform.os }}
+
     strategy:
       fail-fast: false
       matrix:
@@ -34,21 +32,25 @@ jobs:
             os: ubuntu-22.04
             bin: rustalink
             cross: true
+
           - os_name: Linux (aarch64)
             target: aarch64-unknown-linux-musl
             os: ubuntu-22.04
             bin: rustalink
             cross: true
+
           - os_name: macOS (x86_64)
             target: x86_64-apple-darwin
             os: macos-latest
             bin: rustalink
             cross: false
+
           - os_name: macOS (ARM64)
             target: aarch64-apple-darwin
             os: macos-latest
             bin: rustalink
             cross: false
+
           - os_name: Windows (x86_64)
             target: x86_64-pc-windows-msvc
             os: windows-latest
@@ -56,80 +58,43 @@ jobs:
             cross: false
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Determine if cross compilation is needed
-        id: check_cross
-        shell: bash
-        run: |
-          if [ "${{ matrix.platform.cross }}" = "true" ]; then
-            echo "use_cross=true" >> $GITHUB_OUTPUT
-          else
-            echo "use_cross=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Install cross
-        if: steps.check_cross.outputs.use_cross == 'true'
-        uses: taiki-e/install-action@cross
-
-      - name: Install C dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y cmake autoconf automake libtool make pkg-config musl-tools gcc-aarch64-linux-gnu libopus-dev perl libssl-dev
-
-      - name: Install C dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: brew install cmake autoconf automake libtool pkg-config opus
-
-      - name: Install C dependencies (Windows)
-        if: runner.os == 'Windows'
-        run: echo "Standard dependencies already installed on runner"
-
-      - name: Install Rust toolchain
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform.target }}
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.platform.target }}
 
-      - name: Build Binary (Cargo)
-        if: steps.check_cross.outputs.use_cross == 'false'
-        env:
-          CMAKE_CONFIGURE_REDIRECT_STDERR: "1"
-          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-          OPENSSL_STATIC: "1"
-          CFLAGS: "-fno-stack-protector"
-          CXXFLAGS: "-fno-stack-protector"
-          LDFLAGS: "-fno-stack-protector"
+      # Install cross only for musl targets
+      - name: Install cross
+        if: matrix.platform.cross == true
+        uses: taiki-e/install-action@cross
+
+      # Native builds
+      - name: Build (cargo)
+        if: matrix.platform.cross == false
         run: cargo build --release --locked --target ${{ matrix.platform.target }}
 
-      - name: Build Binary (Cross)
-        if: steps.check_cross.outputs.use_cross == 'true'
-        env:
-          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-          OPENSSL_STATIC: "1"
-          AUDIOPUS_STATIC: "1"
-          CROSS_CONTAINER_ENV_CFLAGS: "-fno-stack-protector"
-          CROSS_CONTAINER_ENV_CXXFLAGS: "-fno-stack-protector"
-          CROSS_CONTAINER_ENV_LDFLAGS: "-fno-stack-protector"
-          OPENSSL_DIR: "/usr"
+      # MUSL builds
+      - name: Build (cross)
+        if: matrix.platform.cross == true
         run: cross build --release --locked --target ${{ matrix.platform.target }}
 
-      - name: Rename Output
+      - name: Rename binary
         shell: bash
         run: |
-          mv target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} rustalink-${{ matrix.platform.target }}${{ matrix.platform.bin == 'rustalink.exe' && '.exe' || '' }}
+          mkdir output
+          cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} \
+             output/rustalink-${{ matrix.platform.target }}
 
-      - name: Upload Artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: rustalink-${{ matrix.platform.target }}
-          path: rustalink-${{ matrix.platform.target }}${{ matrix.platform.bin == 'rustalink.exe' && '.exe' || '' }}
-          if-no-files-found: error
-          retention-days: 1
+          path: output/*
 
   release:
     name: Publish Release
@@ -137,15 +102,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
 
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
+    steps:
+      - uses: actions/download-artifact@v4
         with:
           path: output
-          pattern: rustalink-*
           merge-multiple: true
 
       - name: Create GitHub Release
@@ -153,9 +114,6 @@ jobs:
         with:
           files: output/*
           generate_release_notes: true
-          draft: false
-          tag_name: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref_name }}
-          prerelease: ${{ github.event.inputs.version != '' }}
 
   docker:
     name: Build & Push Docker Image
@@ -164,42 +122,25 @@ jobs:
     permissions:
       contents: read
       packages: write
+
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
+      - uses: docker/login-action@v3
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
-            type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event.inputs.version != '' }}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Image
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ghcr.io/${{ github.repository }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
