@@ -1,7 +1,0 @@
-[target.aarch64-apple-darwin]
-linker = "clang"
-rustflags = ["-C", "link-arg=-arch", "-C", "link-arg=arm64"]
-
-[target.x86_64-apple-darwin]
-linker = "clang"
-rustflags = ["-C", "link-arg=-arch", "-C", "link-arg=x86_64"]
