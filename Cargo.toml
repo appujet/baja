@@ -38,6 +38,7 @@ tracing-appender = "0.2"
 openssl = { version = "0.10", features = ["vendored"] }
 tracing-subscriber = { version = "^0.3.20", features = ["env-filter", "registry", "time", "local-time"] }
 serde = { version = "^1.0.145", features = ["derive"] }
+time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
 symphonia = { version = "0.5.5", features = ["all"] }
 tokio-tungstenite = { version = "0.26.2", features = ["rustls-tls-native-roots"] }
 tokio-util = { version = "0.7.13", features = ["codec"] }
