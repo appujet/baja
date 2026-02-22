@@ -63,12 +63,6 @@ jobs:
         with:
           targets: ${{ matrix.platform.target }}
 
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.platform.target }}
-          shared-key: "rustalink-${{ matrix.platform.os }}"
-
       - name: Install dependencies (Ubuntu)
         if: startsWith(matrix.platform.os, 'ubuntu')
         run: |
