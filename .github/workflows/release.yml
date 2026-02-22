@@ -12,12 +12,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
   CARGO_INCREMENTAL: 0
-  OPUS_NO_PKG: "1"
-  LIBOPUS_NO_PKG: "1"
-  
+  LIBOPUS_STATIC: "1"
+
 jobs:
   build:
     name: Build - ${{ matrix.platform.os_name }}
@@ -68,22 +65,31 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      # Install cross only for musl targets
       - name: Install cross
         if: matrix.platform.cross == true
         uses: taiki-e/install-action@cross
 
-      # Native builds
+      # Set CFLAGS for musl targets so audiopus_sys compiles
+      # libopus without stack-protector (unavailable in musl libc)
+      - name: Set musl CFLAGS (x86_64)
+        if: matrix.platform.target == 'x86_64-unknown-linux-musl'
+        run: |
+          echo "CFLAGS_x86_64_unknown_linux_musl=-fno-stack-protector" >> $GITHUB_ENV
+
+      - name: Set musl CFLAGS (aarch64)
+        if: matrix.platform.target == 'aarch64-unknown-linux-musl'
+        run: |
+          echo "CFLAGS_aarch64_unknown_linux_musl=-fno-stack-protector" >> $GITHUB_ENV
+
       - name: Build (cargo)
         if: matrix.platform.cross == false
         run: cargo build --release --locked --target ${{ matrix.platform.target }}
 
-      # MUSL builds
       - name: Build (cross)
         if: matrix.platform.cross == true
         run: cross build --release --locked --target ${{ matrix.platform.target }}
 
-      - name: Rename binary
+      - name: Package binary
         shell: bash
         run: |
           mkdir output
@@ -135,7 +141,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
