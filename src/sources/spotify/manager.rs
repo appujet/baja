@@ -25,14 +25,13 @@ pub struct SpotifySource {
   album_regex: Regex,
   playlist_regex: Regex,
   artist_regex: Regex,
+  mix_regex: Regex,
   isrc_binary_regex: Regex,
   token_tracker: Arc<SpotifyTokenTracker>,
   // Limits
   playlist_load_limit: usize,
   album_load_limit: usize,
   search_limit: usize,
-  // Unused
-  #[allow(dead_code)]
   recommendations_limit: usize,
 
   playlist_page_load_concurrency: usize,
@@ -106,6 +105,7 @@ impl SpotifySource {
         r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?artist/([a-zA-Z0-9]+)",
       )
       .unwrap(),
+      mix_regex: Regex::new(r"mix:(album|artist|track|isrc):([a-zA-Z0-9\-_]+)").unwrap(),
       // Pre-compiled
       isrc_binary_regex: Regex::new(r"[A-Z0-9]{12}").unwrap(),
       token_tracker,
@@ -303,6 +303,10 @@ impl SpotifySource {
       track_val
     } else if let Some(inner) = track_val.get("track") {
       inner
+    } else if let Some(inner) = track_val.get("item") {
+      inner
+    } else if let Some(inner) = track_val.get("data") {
+      inner
     } else {
       debug!(
         "Track data missing uri and no nested track property: {:?}",
@@ -473,6 +477,131 @@ impl SpotifySource {
           .filter(|s| !s.is_empty())
           .map(|s| s.to_string())
       })
+  }
+
+  async fn fetch_recommendations(&self, query: &str) -> LoadResult {
+    let mut seed = query.to_string();
+
+    if let Some(caps) = self.mix_regex.captures(query) {
+      let mut seed_type = caps.get(1).unwrap().as_str().to_string();
+      seed = caps.get(2).unwrap().as_str().to_string();
+
+      if seed_type == "isrc" {
+        if let LoadResult::Search(tracks) = self.search_internal(&format!("isrc:{}", seed)).await {
+          if let Some(track) = tracks.first() {
+            seed = track.info.identifier.clone();
+            seed_type = "track".to_string();
+          } else {
+            return LoadResult::Empty {};
+          }
+        } else {
+          return LoadResult::Empty {};
+        }
+      }
+
+      let token = match self.token_tracker.get_token().await {
+        Some(t) => t,
+        None => return LoadResult::Empty {},
+      };
+
+      let url = format!(
+        "https://spclient.wg.spotify.com/inspiredby-mix/v2/seed_to_playlist/spotify:{}:{}?response-format=json",
+        seed_type, seed
+      );
+
+      let resp = self
+        .client
+        .get(&url)
+        .bearer_auth(token)
+        .header("App-Platform", "WebPlayer")
+        .header("Spotify-App-Version", "1.2.81.104.g225ec0e6")
+        .send()
+        .await
+        .ok();
+
+      if let Some(resp) = resp {
+        if resp.status().is_success() {
+          if let Ok(json) = resp.json::<Value>().await {
+            if let Some(playlist_uri) = json.pointer("/mediaItems/0/uri").and_then(|v| v.as_str()) {
+              if let Some(id) = playlist_uri.split(':').last() {
+                let mut res = self.fetch_playlist(id).await;
+                if let LoadResult::Playlist(ref mut data) = res {
+                  data.tracks.truncate(self.recommendations_limit);
+                }
+                return res;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    let track_id = if seed.starts_with("track:") {
+      &seed["track:".len()..]
+    } else {
+      &seed
+    };
+    self.fetch_pathfinder_recommendations(track_id).await
+  }
+
+  async fn fetch_pathfinder_recommendations(&self, id: &str) -> LoadResult {
+    let variables = json!({
+        "uri": format!("spotify:track:{}", id),
+        "limit": self.recommendations_limit
+    });
+    let hash = "c77098ee9d6ee8ad3eb844938722db60570d040b49f41f5ec6e7be9160a7c86b";
+
+    let data = match self
+      .partner_api_request("internalLinkRecommenderTrack", variables, hash)
+      .await
+    {
+      Some(d) => d,
+      None => return LoadResult::Empty {},
+    };
+
+    let items = data
+      .pointer("/data/internalLinkRecommenderTrack/relatedTracks/items")
+      .or_else(|| data.pointer("/data/seoRecommendedTrack/items"))
+      .and_then(|i| i.as_array())
+      .cloned()
+      .unwrap_or_default();
+
+    if items.is_empty() {
+      return LoadResult::Empty {};
+    }
+
+    let mut tracks = Vec::new();
+    let futs: Vec<_> = items
+      .into_iter()
+      .map(|item| async move { self.parse_generic_track(&item, None).await })
+      .collect();
+
+    let results = join_all(futs).await;
+    for res in results {
+      if let Some(track_info) = res {
+        tracks.push(Track::new(track_info));
+      }
+    }
+
+    if tracks.is_empty() {
+      return LoadResult::Empty {};
+    }
+
+    tracks.truncate(self.recommendations_limit);
+
+    LoadResult::Playlist(PlaylistData {
+      info: PlaylistInfo {
+        name: format!("Spotify Recommendations for {}", id),
+        selected_track: -1,
+      },
+      plugin_info: json!({
+        "type": "recommendations",
+        "url": format!("https://open.spotify.com/track/{}", id),
+        "author": "Spotify",
+        "totalTracks": tracks.len()
+      }),
+      tracks,
+    })
   }
 
   async fn search_internal(&self, query: &str) -> LoadResult {
@@ -857,6 +986,15 @@ impl SourcePlugin for SpotifySource {
     {
       let query = &identifier[prefix.len()..];
       return self.search_internal(query).await;
+    }
+
+    if let Some(prefix) = self
+      .rec_prefixes
+      .iter()
+      .find(|p| identifier.starts_with(*p))
+    {
+      let query = &identifier[prefix.len()..];
+      return self.fetch_recommendations(query).await;
     }
 
     if let Some(caps) = self.url_regex.captures(identifier) {
