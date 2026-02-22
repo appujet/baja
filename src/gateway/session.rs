@@ -396,7 +396,7 @@ impl VoiceGateway {
 
               if let Some(addr) = udp_addr {
                 let (my_ip, my_port) = self.discover_ip(&udp_socket, addr, ssrc).await?;
-                tracing::debug!("Discovered IP: {}:{}", my_ip, my_port);
+                tracing::trace!("Discovered IP: {}:{}", my_ip, my_port);
 
                 let select = VoiceGatewayMessage {
                   op: 1,
@@ -561,7 +561,7 @@ impl VoiceGateway {
               dave_lock.prepare_epoch(epoch, version);
             }
             _ => {
-              tracing::debug!("Received voice op {}: {:?}", msg.op, msg.d);
+              tracing::trace!("Received voice op {}: {:?}", msg.op, msg.d);
             }
           }
         }
