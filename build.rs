@@ -1,4 +1,12 @@
-use std::{fs, path::Path, process::Command, time::SystemTime};
+// Build script: embeds git branch, commit SHA, and build timestamp into the
+// binary via CARGO_PKG_* properties (and custom ENV vars) at compile time.
+//
+// Strategy:
+//   1. Check for CI environment variables (e.g., GITHUB_SHA, GITHUB_REF_NAME).
+//   2. Try `git` commands (e.g., `git rev-parse`, `git log`) via CLI.
+//   3. Fall back to reading `.git/HEAD` directly.
+
+use std::{env, fs, path::Path, process::Command, time::SystemTime};
 
 fn main() {
   let now = SystemTime::now()
@@ -33,19 +41,31 @@ fn get_git_info() -> GitInfo {
     commit_time: 0,
   };
 
-  // Try git command first
-  if let Ok(output) = Command::new("git")
-    .args(["rev-parse", "--abbrev-ref", "HEAD"])
-    .output()
-  {
-    if output.status.success() {
-      info.branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+  // 1. Try CI environment variables first (perfect for GitHub Actions)
+  if let Ok(gh_ref) = env::var("GITHUB_REF_NAME") {
+    info.branch = gh_ref;
+  }
+  if let Ok(gh_sha) = env::var("GITHUB_SHA") {
+    info.commit = gh_sha;
+  }
+
+  // 2. Try git command
+  if info.branch == "unknown" {
+    if let Ok(output) = Command::new("git")
+      .args(["rev-parse", "--abbrev-ref", "HEAD"])
+      .output()
+    {
+      if output.status.success() {
+        info.branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+      }
     }
   }
 
-  if let Ok(output) = Command::new("git").args(["rev-parse", "HEAD"]).output() {
-    if output.status.success() {
-      info.commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
+  if info.commit == "unknown" {
+    if let Ok(output) = Command::new("git").args(["rev-parse", "HEAD"]).output() {
+      if output.status.success() {
+        info.commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
+      }
     }
   }
 
@@ -62,7 +82,7 @@ fn get_git_info() -> GitInfo {
     }
   }
 
-  // Fallback to manual parsing if still unknown
+  // 3. Fallback to manual parsing if we still don't have git CLI or CI envs
   if info.commit == "unknown" || info.branch == "unknown" {
     if let Ok(head) = fs::read_to_string(".git/HEAD") {
       if head.starts_with("ref: ") {

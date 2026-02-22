@@ -1,0 +1,184 @@
+name: Release Platform Binaries
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build - ${{ matrix.platform.os_name }}
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      matrix:
+        platform:
+          - os_name: Linux (x86_64)
+            target: x86_64-unknown-linux-musl
+            os: ubuntu-22.04
+            bin: rustalink
+            cross: true
+          - os_name: Linux (aarch64)
+            target: aarch64-unknown-linux-musl
+            os: ubuntu-22.04
+            bin: rustalink
+            cross: true
+          - os_name: macOS (x86_64)
+            target: x86_64-apple-darwin
+            os: macos-latest
+            bin: rustalink
+            cross: false
+          - os_name: macOS (ARM64)
+            target: aarch64-apple-darwin
+            os: macos-latest
+            bin: rustalink
+            cross: false
+          - os_name: Windows (x86_64)
+            target: x86_64-pc-windows-msvc
+            os: windows-latest
+            bin: rustalink.exe
+            cross: false
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Determine if cross compilation is needed
+        id: check_cross
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform.cross }}" = "true" ]; then
+            echo "use_cross=true" >> $GITHUB_OUTPUT
+          else
+            echo "use_cross=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install cross
+        if: steps.check_cross.outputs.use_cross == 'true'
+        uses: taiki-e/install-action@cross
+
+      - name: Install C dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake autoconf automake libtool make pkg-config musl-tools gcc-aarch64-linux-gnu
+
+      - name: Install C dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake autoconf automake libtool pkg-config
+
+      - name: Install C dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: choco install vcredist140 cmake pkgconfiglite
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.platform.target }}
+
+      - name: Build Binary (Cargo)
+        if: steps.check_cross.outputs.use_cross == 'false'
+        run: cargo build --release --locked --target ${{ matrix.platform.target }}
+
+      - name: Build Binary (Cross)
+        if: steps.check_cross.outputs.use_cross == 'true'
+        run: cross build --release --locked --target ${{ matrix.platform.target }}
+
+      - name: Rename Output
+        shell: bash
+        run: |
+          mv target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} rustalink-${{ matrix.platform.target }}${{ matrix.platform.bin == 'rustalink.exe' && '.exe' || '' }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustalink-${{ matrix.platform.target }}
+          path: rustalink-${{ matrix.platform.target }}${{ matrix.platform.bin == 'rustalink.exe' && '.exe' || '' }}
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: output
+          pattern: rustalink-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: output/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+  docker:
+    name: Build & Push Docker Image
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bin
+          pattern: rustalink-*
+          merge-multiple: true
+
+      - name: Ensure executable
+        run: chmod +x bin/rustalink-*
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

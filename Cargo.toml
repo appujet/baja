@@ -2,6 +2,8 @@
 name = "rustalink"
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0"
+authors = ["appujet", "notdeltaxd"]
 
 [dependencies]
 base64 = "^0.22.1"
@@ -63,4 +65,3 @@ codegen-units = 1
 panic = "abort"
 opt-level = 3
 strip = true
-
