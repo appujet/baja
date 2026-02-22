@@ -93,14 +93,18 @@ impl YandexMusicSource {
                 first = false;
             }
         }
-
+        debug!("Yandex Music API request: {}", url);
         let resp = self.client.get(&url).send().await.ok()?;
-        if !resp.status().is_success() {
-            debug!("Yandex Music API request failed: {} -> {}", url, resp.status());
+        let status = resp.status();
+        debug!("Yandex Music API response status: {} -> {}", url, status);
+
+        if !status.is_success() {
+            debug!("Yandex Music API request failed: {} -> {}", url, status);
             return None;
         }
 
         let body: Value = resp.json().await.ok()?;
+        debug!("Yandex Music API response body: {}", body);
         Some(body["result"].clone())
     }
 

@@ -6,6 +6,10 @@ player_update_interval = 5
 stats_interval = 60
 websocket_ping_interval = 30
 
+
+[player]
+stuck_threshold_ms = 10000
+
 [route_planner]
 enabled = false
 cidrs = []

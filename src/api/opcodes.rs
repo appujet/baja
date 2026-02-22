@@ -59,9 +59,10 @@ pub async fn handle_op(
         .to_string();
 
       if !session.players.contains_key(&guild_id) {
-        session
-          .players
-          .insert(guild_id.clone(), PlayerContext::new(guild_id.clone()));
+        session.players.insert(
+          guild_id.clone(),
+          PlayerContext::new(guild_id.clone(), state.config.player.stuck_threshold_ms),
+        );
       }
 
       if let Some(uid) = session.user_id {
@@ -134,9 +135,10 @@ pub async fn handle_op(
     }
     IncomingMessage::Play { guild_id, track } => {
       if !session.players.contains_key(&guild_id) {
-        session
-          .players
-          .insert(guild_id.clone(), PlayerContext::new(guild_id.clone()));
+        session.players.insert(
+          guild_id.clone(),
+          PlayerContext::new(guild_id.clone(), state.config.player.stuck_threshold_ms),
+        );
       }
 
       let mut player = session.players.get_mut(&guild_id).unwrap();

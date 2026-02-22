@@ -154,6 +154,7 @@ pub async fn start_playback(
   let stop_signal = player.stop_signal.clone();
   let track_data_clone = track_data.clone();
   let ping = player.ping.clone();
+  let stuck_threshold_ms = player.stuck_threshold_ms;
 
   let track_task = tokio::spawn(async move {
     let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
@@ -212,11 +213,11 @@ pub async fn start_playback(
       if current_state == PlaybackState::Playing {
         if current_pos == last_position {
           stuck_ms += 500;
-          if stuck_ms == 10000 {
+          if stuck_ms >= stuck_threshold_ms {
             let stuck_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackStuck {
               guild_id: guild_id.clone(),
               track: track_data_clone.clone(),
-              threshold_ms: 10000,
+              threshold_ms: stuck_threshold_ms,
             });
             session_clone.send_message(&stuck_event).await;
             tracing::warn!("Track {} got stuck!", track_data_clone.info.title);

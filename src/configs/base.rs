@@ -11,6 +11,8 @@ pub struct Config {
   #[serde(default)]
   pub filters: FiltersConfig,
   #[serde(default)]
+  pub player: PlayerConfig,
+  #[serde(default)]
   pub jiosaavn: Option<JioSaavnConfig>,
   #[serde(default)]
   pub mirrors: Option<MirrorsConfig>,
@@ -56,6 +58,7 @@ impl Default for Config {
       sources: SourcesConfig::default(),
       logging: None,
       filters: FiltersConfig::default(),
+      player: PlayerConfig::default(),
       jiosaavn: None,
       mirrors: None,
       spotify: None,
