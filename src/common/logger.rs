@@ -5,7 +5,7 @@ use std::{
   sync::{Arc, Mutex, OnceLock},
 };
 
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use tracing_subscriber::{EnvFilter, fmt::{self, time::LocalTime}, prelude::*};
 
 use crate::configs::Config;
 
@@ -87,6 +87,7 @@ pub fn init(config: &Config) {
 
   // Base console layer
   let stdout_layer = fmt::layer()
+    .with_timer(LocalTime::rfc_3339())
     .with_target(true)
     .with_thread_ids(true)
     .with_line_number(true)
@@ -107,6 +108,7 @@ pub fn init(config: &Config) {
       Some(
         fmt::layer()
           .with_writer(writer)
+          .with_timer(LocalTime::rfc_3339())
           .with_target(true)
           .with_thread_ids(true)
           .with_line_number(true)

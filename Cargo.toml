@@ -36,7 +36,7 @@ hmac = "0.12"
 sha1 = "0.10"
 tracing-appender = "0.2"
 openssl = { version = "0.10", features = ["vendored"] }
-tracing-subscriber = { version = "^0.3.20", features = ["env-filter", "registry"] }
+tracing-subscriber = { version = "^0.3.20", features = ["env-filter", "registry", "time", "local-time"] }
 serde = { version = "^1.0.145", features = ["derive"] }
 symphonia = { version = "0.5.5", features = ["all"] }
 tokio-tungstenite = { version = "0.26.2", features = ["rustls-tls-native-roots"] }
