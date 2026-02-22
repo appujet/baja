@@ -1,4 +1,4 @@
-use std::{io::Read, sync::Arc};
+use std::sync::Arc;
 
 use super::{
   parser::parse_m3u8,
@@ -6,11 +6,11 @@ use super::{
 };
 use crate::{common::types::AnyResult, sources::youtube::cipher::YouTubeCipherManager};
 
-pub fn resolve_playlist(
-  client: &reqwest::blocking::Client,
+pub async fn resolve_playlist(
+  client: &reqwest::Client,
   url: &str,
 ) -> AnyResult<(Vec<Resource>, Option<Resource>)> {
-  let text = fetch_text(client, url)?;
+  let text = fetch_text(client, url).await?;
   let playlist = parse_m3u8(&text, url);
 
   match playlist {
@@ -43,7 +43,7 @@ pub fn resolve_playlist(
 
               if let Some(uri) = rendition {
                 tracing::debug!("HLS: selected audio group {} -> {}", group_id, uri);
-                return resolve_playlist(client, uri);
+                return Box::pin(resolve_playlist(client, uri)).await;
               }
             }
           }
@@ -56,7 +56,7 @@ pub fn resolve_playlist(
             v.audio_group,
             v.url
           );
-          resolve_playlist(client, &v.url)
+          Box::pin(resolve_playlist(client, &v.url)).await
         }
         None => Err("HLS master playlist has no variants".into()),
       }
@@ -65,18 +65,18 @@ pub fn resolve_playlist(
   }
 }
 
-pub fn fetch_text(client: &reqwest::blocking::Client, url: &str) -> AnyResult<String> {
-  let mut res = client
+pub async fn fetch_text(client: &reqwest::Client, url: &str) -> AnyResult<String> {
+  let res = client
     .get(url)
     .header("Accept", "application/x-mpegURL, */*")
-    .send()?;
+    .send()
+    .await?;
 
   if !res.status().is_success() {
     return Err(format!("HLS playlist fetch failed {}: {}", res.status(), url).into());
   }
 
-  let mut text = String::new();
-  res.read_to_string(&mut text)?;
+  let text = res.text().await?;
   Ok(text)
 }
 

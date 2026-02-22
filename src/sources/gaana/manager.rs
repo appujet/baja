@@ -29,7 +29,7 @@ pub struct GaanaSource {
 }
 
 impl GaanaSource {
-  pub fn new(config: Option<crate::configs::GaanaConfig>) -> Self {
+  pub fn new(config: Option<crate::configs::GaanaConfig>) -> Result<Self, String> {
     let mut headers = HeaderMap::new();
     headers.insert("User-Agent", USER_AGENT.parse().unwrap());
     headers.insert(
@@ -89,22 +89,22 @@ impl GaanaSource {
       }
     }
 
-    let client = client_builder.build().unwrap();
+    let client = client_builder.build().map_err(|e| e.to_string())?;
 
-    Self {
-            client,
-            url_regex: Regex::new(
-                r"(?:https?://)?(?:www\.)?gaana\.com/(?P<type>song|album|playlist|artist)/(?P<seokey>[\w-]+)",
-            )
-            .unwrap(),
-            search_prefixes: vec!["gnsearch:".to_string(), "gaanasearch:".to_string()],
-            stream_quality,
-            proxy,
-            search_limit,
-            playlist_load_limit,
-            album_load_limit,
-            artist_load_limit,
-        }
+    Ok(Self {
+      client,
+      url_regex: Regex::new(
+        r"(?:https?://)?(?:www\.)?gaana\.com/(?P<type>song|album|playlist|artist)/(?P<seokey>[\w-]+)",
+      )
+      .unwrap(),
+      search_prefixes: vec!["gnsearch:".to_string(), "gaanasearch:".to_string()],
+      stream_quality,
+      proxy,
+      search_limit,
+      playlist_load_limit,
+      album_load_limit,
+      artist_load_limit,
+    })
   }
 
   async fn get_json(&self, params: &[(&str, &str)], referer_path: &str) -> Option<Value> {

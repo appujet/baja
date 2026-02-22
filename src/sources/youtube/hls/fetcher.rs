@@ -1,8 +1,8 @@
 use super::types::Resource;
 use crate::common::types::AnyResult;
 
-pub fn fetch_segment_into(
-  client: &reqwest::blocking::Client,
+pub async fn fetch_segment_into(
+  client: &reqwest::Client,
   resource: &Resource,
   out: &mut Vec<u8>,
 ) -> AnyResult<()> {
@@ -13,13 +13,14 @@ pub fn fetch_segment_into(
     req = req.header("Range", format!("bytes={}-{}", range.offset, end));
   }
 
-  let mut res = req.send()?;
+  let res = req.send().await?;
 
   if !res.status().is_success() {
     return Err(format!("HLS fetch failed {}: {}", res.status(), resource.url).into());
   }
 
-  let _n = res.copy_to(out)?;
+  let bytes = res.bytes().await?;
+  out.extend_from_slice(&bytes);
 
   Ok(())
 }

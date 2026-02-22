@@ -17,11 +17,11 @@ impl PlayableTrack for AudiomackTrack {
   fn start_decoding(
     &self,
   ) -> (
-    Receiver<i16>,
+    Receiver<Vec<i16>>,
     Sender<DecoderCommand>,
     flume::Receiver<String>,
   ) {
-    let (tx, rx) = flume::bounded::<i16>(4096 * 4);
+    let (tx, rx) = flume::bounded::<Vec<i16>>(64);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
     let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -29,13 +29,9 @@ impl PlayableTrack for AudiomackTrack {
     let client = self.client.clone();
     let local_addr = self.local_addr;
 
+    let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
-      let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
-      runtime.block_on(async {
+      handle.block_on(async move {
         if let Some(url) = fetch_stream_url(&client, &identifier).await {
           let http_track = HttpTrack { url, local_addr };
           let (inner_rx, inner_cmd_tx, inner_err_rx) = http_track.start_decoding();

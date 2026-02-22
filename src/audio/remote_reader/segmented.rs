@@ -6,7 +6,7 @@ use std::{
 };
 
 use symphonia::core::io::MediaSource;
-use tracing::{debug, warn, trace};
+use tracing::{debug, trace, warn};
 
 use crate::common::types::AnyResult;
 
@@ -36,9 +36,10 @@ pub struct SegmentedRemoteReader {
 }
 
 impl SegmentedRemoteReader {
-  pub fn new(client: reqwest::blocking::Client, url: &str) -> AnyResult<Self> {
+  pub fn new(client: reqwest::Client, url: &str) -> AnyResult<Self> {
+    let handle = tokio::runtime::Handle::current();
     // 1. Initial request to get length and first chunk
-    let response = Self::fetch_range(&client, url, 0, CHUNK_SIZE as u64)?;
+    let response = handle.block_on(Self::fetch_range(&client, url, 0, CHUNK_SIZE as u64))?;
 
     let len = response
       .headers()
@@ -60,9 +61,7 @@ impl SegmentedRemoteReader {
       url, len, content_type
     );
 
-    let mut first_chunk = Vec::with_capacity(CHUNK_SIZE);
-    let mut r = response;
-    r.read_to_end(&mut first_chunk)?;
+    let first_chunk = handle.block_on(response.bytes())?.to_vec();
 
     let mut chunks = HashMap::new();
     chunks.insert(0, ChunkState::Ready(Arc::new(first_chunk)));
@@ -82,10 +81,11 @@ impl SegmentedRemoteReader {
       let shared_clone = shared.clone();
       let client_clone = client.clone();
       let url_str = url.to_string();
+      let handle_clone = handle.clone();
       thread::Builder::new()
         .name(format!("segmented-fetch-{}", i))
         .spawn(move || {
-          fetch_worker(shared_clone, client_clone, url_str);
+          fetch_worker(shared_clone, client_clone, url_str, handle_clone);
         })?;
     }
 
@@ -97,19 +97,20 @@ impl SegmentedRemoteReader {
     })
   }
 
-  fn fetch_range(
-    client: &reqwest::blocking::Client,
+  async fn fetch_range(
+    client: &reqwest::Client,
     url: &str,
     offset: u64,
     size: u64,
-  ) -> AnyResult<reqwest::blocking::Response> {
+  ) -> AnyResult<reqwest::Response> {
     let range = format!("bytes={}-{}", offset, offset + size - 1);
     let res = client
       .get(url)
       .header("Range", range)
       .header("Accept", "*/*")
       .header("Connection", "keep-alive")
-      .send()?;
+      .send()
+      .await?;
 
     if !res.status().is_success() && res.status() != reqwest::StatusCode::PARTIAL_CONTENT {
       return Err(format!("Fetch failed: {}", res.status()).into());
@@ -124,8 +125,9 @@ impl SegmentedRemoteReader {
 
 fn fetch_worker(
   shared: Arc<(Mutex<ReaderState>, Condvar)>,
-  client: reqwest::blocking::Client,
+  client: reqwest::Client,
   url: String,
+  handle: tokio::runtime::Handle,
 ) {
   let (lock, cvar) = &*shared;
 
@@ -133,7 +135,7 @@ fn fetch_worker(
     let mut target_chunk_idx = None;
 
     {
-      let mut state = lock.lock().unwrap();
+      let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
       if state.is_terminated {
         break;
       }
@@ -175,14 +177,19 @@ fn fetch_worker(
 
     if let Some(idx) = target_chunk_idx {
       let offset = (idx * CHUNK_SIZE) as u64;
-      let stream_len = lock.lock().unwrap().total_len;
+      let stream_len = lock.lock().unwrap_or_else(|e| e.into_inner()).total_len;
       let size = CHUNK_SIZE.min((stream_len - offset) as usize);
 
-      match SegmentedRemoteReader::fetch_range(&client, &url, offset, size as u64) {
-        Ok(mut res) => {
-          let mut data = Vec::with_capacity(size);
-          if let Ok(_) = res.read_to_end(&mut data) {
-            let mut state = lock.lock().unwrap();
+      match handle.block_on(SegmentedRemoteReader::fetch_range(
+        &client,
+        &url,
+        offset,
+        size as u64,
+      )) {
+        Ok(res) => {
+          if let Ok(data) = handle.block_on(res.bytes()) {
+            let data = data.to_vec();
+            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
             let actual_len = data.len();
             state.chunks.insert(idx, ChunkState::Ready(Arc::new(data)));
             trace!(
@@ -191,14 +198,14 @@ fn fetch_worker(
             );
             cvar.notify_all();
           } else {
-            let mut state = lock.lock().unwrap();
+            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
             state.chunks.insert(idx, ChunkState::Empty);
             cvar.notify_all();
           }
         }
         Err(e) => {
           warn!("SegmentedRemoteReader fetch error for chunk {}: {}", idx, e);
-          let mut state = lock.lock().unwrap();
+          let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
           state.chunks.insert(idx, ChunkState::Empty);
           cvar.notify_all();
           thread::sleep(std::time::Duration::from_millis(500));
@@ -215,7 +222,7 @@ impl Read for SegmentedRemoteReader {
     }
 
     let (lock, cvar) = &*self.shared;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
 
     // Sync our position with the background workers
     state.current_pos = self.pos;
@@ -290,7 +297,7 @@ impl Seek for SegmentedRemoteReader {
     }
 
     let (lock, cvar) = &*self.shared;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
     state.current_pos = self.pos;
     cvar.notify_all();
 
@@ -311,7 +318,7 @@ impl MediaSource for SegmentedRemoteReader {
 impl Drop for SegmentedRemoteReader {
   fn drop(&mut self) {
     let (lock, cvar) = &*self.shared;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
     state.is_terminated = true;
     cvar.notify_all();
   }

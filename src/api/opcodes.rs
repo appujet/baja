@@ -13,27 +13,27 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 pub enum IncomingMessage {
   VoiceUpdate {
-    guild_id: String,
+    guild_id: crate::common::types::GuildId,
     session_id: String,
     channel_id: Option<String>,
     event: Value,
   },
   Play {
-    guild_id: String,
+    guild_id: crate::common::types::GuildId,
     track: String,
   },
   Stop {
-    guild_id: String,
+    guild_id: crate::common::types::GuildId,
   },
   Destroy {
-    guild_id: String,
+    guild_id: crate::common::types::GuildId,
   },
 }
 
 pub async fn handle_op(
   op: IncomingMessage,
   state: &Arc<AppState>,
-  session_id: &String,
+  session_id: &crate::common::types::SessionId,
 ) -> Result<(), String> {
   let session: Arc<Session> = match state.sessions.get(session_id) {
     Some(s) => s.clone(),

@@ -21,11 +21,11 @@ impl PlayableTrack for GaanaTrack {
   fn start_decoding(
     &self,
   ) -> (
-    Receiver<i16>,
+    Receiver<Vec<i16>>,
     Sender<DecoderCommand>,
     flume::Receiver<String>,
   ) {
-    let (tx, rx) = flume::bounded::<i16>(4096 * 4);
+    let (tx, rx) = flume::bounded::<Vec<i16>>(64);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
     let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -35,14 +35,11 @@ impl PlayableTrack for GaanaTrack {
     let local_addr = self.local_addr;
     let proxy = self.proxy.clone();
 
+    let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
-      let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
-      let hls_url =
-        runtime.block_on(async { fetch_stream_url_internal(&client, &track_id, &quality).await });
+      let track_id_for_log = track_id.clone();
+      let hls_url = handle
+        .block_on(async move { fetch_stream_url_internal(&client, &track_id, &quality).await });
 
       if let Some(url) = hls_url {
         let reader = if url.contains(".m3u8") || url.contains("/api/manifest/hls_") {
@@ -79,7 +76,10 @@ impl PlayableTrack for GaanaTrack {
           tracing::error!("GaanaTrack failed to create reader for {}", url);
         }
       } else {
-        warn!("GaanaTrack: Failed to fetch stream URL for {}", track_id);
+        warn!(
+          "GaanaTrack: Failed to fetch stream URL for {}",
+          track_id_for_log
+        );
       }
     });
 

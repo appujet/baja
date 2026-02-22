@@ -1,7 +1,3 @@
-use flume::Sender;
-
-use crate::common::types::AnyResult;
-
 pub struct Resampler {
   ratio: f64,
   index: f64,
@@ -19,7 +15,16 @@ impl Resampler {
     }
   }
 
-  pub fn process(&mut self, input: &[i16], tx: &Sender<i16>) -> AnyResult<()> {
+  /// Resample `input` and **append** output samples into `output`.
+  ///
+  /// # Why no channel here?
+  /// Previously `process` sent each sample directly through a `Sender<i16>`,
+  /// producing ~96 000 atomic channel operations per second at 48 kHz stereo.
+  /// Now it writes into a pre-allocated `Vec<i16>` owned by `AudioProcessor`.
+  /// The caller drains it through the existing channel in a single tight loop,
+  /// letting the compiler better vectorise the interpolation arithmetic and
+  /// removing the `flume` dependency from the hot path entirely.
+  pub fn process(&mut self, input: &[i16], output: &mut Vec<i16>) {
     let num_frames = input.len() / self.channels;
 
     while self.index < num_frames as f64 {
@@ -39,11 +44,7 @@ impl Resampler {
           input[(num_frames - 1) * self.channels + c] as f64
         };
 
-        let s = s1 * (1.0 - fract) + s2 * fract;
-
-        if tx.send(s as i16).is_err() {
-          return Ok(());
-        }
+        output.push((s1 * (1.0 - fract) + s2 * fract) as i16);
       }
 
       self.index += self.ratio;
@@ -56,7 +57,14 @@ impl Resampler {
         self.last_samples[c] = input[(num_frames - 1) * self.channels + c];
       }
     }
+  }
 
-    Ok(())
+  /// Reset resampler state in-place after a seek.
+  ///
+  /// Zeroes `last_samples` and the fractional index without deallocating,
+  /// avoiding a heap allocation on every user seek command.
+  pub fn reset(&mut self) {
+    self.index = 0.0;
+    self.last_samples.fill(0);
   }
 }

@@ -9,11 +9,11 @@ pub enum OutgoingMessage {
   Ready {
     resumed: bool,
     #[serde(rename = "sessionId")]
-    session_id: String,
+    session_id: crate::common::types::SessionId,
   },
   #[serde(rename_all = "camelCase")]
   PlayerUpdate {
-    guild_id: String,
+    guild_id: crate::common::types::GuildId,
     state: PlayerState,
   },
   Stats(super::stats::Stats),
@@ -26,12 +26,15 @@ pub enum OutgoingMessage {
 pub enum LavalinkEvent {
   #[serde(rename = "TrackStartEvent")]
   #[serde(rename_all = "camelCase")]
-  TrackStart { guild_id: String, track: Track },
+  TrackStart {
+    guild_id: crate::common::types::GuildId,
+    track: Track,
+  },
 
   #[serde(rename = "TrackEndEvent")]
   #[serde(rename_all = "camelCase")]
   TrackEnd {
-    guild_id: String,
+    guild_id: crate::common::types::GuildId,
     track: Track,
     reason: TrackEndReason,
   },
@@ -39,7 +42,7 @@ pub enum LavalinkEvent {
   #[serde(rename = "TrackExceptionEvent")]
   #[serde(rename_all = "camelCase")]
   TrackException {
-    guild_id: String,
+    guild_id: crate::common::types::GuildId,
     track: Track,
     exception: TrackException,
   },
@@ -47,7 +50,7 @@ pub enum LavalinkEvent {
   #[serde(rename = "TrackStuckEvent")]
   #[serde(rename_all = "camelCase")]
   TrackStuck {
-    guild_id: String,
+    guild_id: crate::common::types::GuildId,
     track: Track,
     threshold_ms: u64,
   },
@@ -55,7 +58,7 @@ pub enum LavalinkEvent {
   #[serde(rename = "WebSocketClosedEvent")]
   #[serde(rename_all = "camelCase")]
   WebSocketClosed {
-    guild_id: String,
+    guild_id: crate::common::types::GuildId,
     code: u16,
     reason: String,
     by_remote: bool,

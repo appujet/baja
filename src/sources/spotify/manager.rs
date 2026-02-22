@@ -41,19 +41,19 @@ pub struct SpotifySource {
 }
 
 impl SpotifySource {
-  pub fn new(config: Option<crate::configs::SpotifyConfig>) -> Self {
+  pub fn new(config: Option<crate::configs::SpotifyConfig>) -> Result<Self, String> {
     let mut headers = HeaderMap::new();
     headers.insert(
-            USER_AGENT,
-            HeaderValue::from_static(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.178 Spotify/1.2.65.255 Safari/537.36",
-            ),
-        );
+      USER_AGENT,
+      HeaderValue::from_static(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.178 Spotify/1.2.65.255 Safari/537.36",
+      ),
+    );
 
     let client = reqwest::Client::builder()
       .default_headers(headers)
       .build()
-      .unwrap();
+      .map_err(|e| e.to_string())?;
 
     let (
       playlist_load_limit,
@@ -82,42 +82,42 @@ impl SpotifySource {
     ));
     token_tracker.clone().init();
 
-    Self {
-            client,
-            search_prefixes: vec!["spsearch:".to_string()],
-            rec_prefixes: vec!["sprec:".to_string()],
-            url_regex: Regex::new(
-                r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?(track|album|playlist|artist)/([a-zA-Z0-9]+)",
-            )
-            .unwrap(),
-            track_regex: Regex::new(
-                r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?track/([a-zA-Z0-9]+)",
-            )
-            .unwrap(),
-            album_regex: Regex::new(
-                r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?album/([a-zA-Z0-9]+)",
-            )
-            .unwrap(),
-            playlist_regex: Regex::new(
-                r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?playlist/([a-zA-Z0-9]+)",
-            )
-            .unwrap(),
-            artist_regex: Regex::new(
-                r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?artist/([a-zA-Z0-9]+)",
-            )
-            .unwrap(),
-            // Pre-compiled
-            isrc_binary_regex: Regex::new(r"[A-Z0-9]{12}").unwrap(),
-            token_tracker,
-            // Limits
-            playlist_load_limit,
-            album_load_limit,
-            search_limit,
-            recommendations_limit,
-            playlist_page_load_concurrency,
-            album_page_load_concurrency,
-            track_resolve_concurrency,
-        }
+    Ok(Self {
+      client,
+      search_prefixes: vec!["spsearch:".to_string()],
+      rec_prefixes: vec!["sprec:".to_string()],
+      url_regex: Regex::new(
+        r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?(track|album|playlist|artist)/([a-zA-Z0-9]+)",
+      )
+      .unwrap(),
+      track_regex: Regex::new(
+        r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?track/([a-zA-Z0-9]+)",
+      )
+      .unwrap(),
+      album_regex: Regex::new(
+        r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?album/([a-zA-Z0-9]+)",
+      )
+      .unwrap(),
+      playlist_regex: Regex::new(
+        r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?playlist/([a-zA-Z0-9]+)",
+      )
+      .unwrap(),
+      artist_regex: Regex::new(
+        r"https?://(?:open\.)?spotify\.com/(?:intl-[a-z]{2}/)?artist/([a-zA-Z0-9]+)",
+      )
+      .unwrap(),
+      // Pre-compiled
+      isrc_binary_regex: Regex::new(r"[A-Z0-9]{12}").unwrap(),
+      token_tracker,
+      // Limits
+      playlist_load_limit,
+      album_load_limit,
+      search_limit,
+      recommendations_limit,
+      playlist_page_load_concurrency,
+      album_page_load_concurrency,
+      track_resolve_concurrency,
+    })
   }
 
   fn base62_to_hex(&self, id: &str) -> String {

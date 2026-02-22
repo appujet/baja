@@ -34,14 +34,14 @@ pub struct SoundCloudSource {
 }
 
 impl SoundCloudSource {
-  pub fn new(config: crate::configs::SoundCloudConfig) -> Self {
+  pub fn new(config: crate::configs::SoundCloudConfig) -> Result<Self, String> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
-            "User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-                .parse()
-                .unwrap(),
-        );
+      "User-Agent",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        .parse()
+        .unwrap(),
+    );
 
     let mut client_builder = reqwest::Client::builder()
       .default_headers(headers)
@@ -60,43 +60,41 @@ impl SoundCloudSource {
       }
     }
 
-    let client = client_builder
-      .build()
-      .expect("Failed to build reqwest client");
+    let client = client_builder.build().map_err(|e| e.to_string())?;
 
     let token_tracker = Arc::new(SoundCloudTokenTracker::new(client.clone(), &config));
     token_tracker.clone().init();
 
-    Self {
-            client,
-            config,
-            token_tracker,
-            track_url_re: Regex::new(
-                r"^https?://(?:www\.|m\.)?soundcloud\.com/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)(?:/s-[a-zA-Z0-9_-]+)?/?(?:\?.*)?$"
-            ).unwrap(),
-            playlist_url_re: Regex::new(
-                r"^https?://(?:www\.|m\.)?soundcloud\.com/([a-zA-Z0-9_-]+)/sets/([a-zA-Z0-9_:-]+)(?:/[a-zA-Z0-9_-]+)?/?(?:\?.*)?$"
-            ).unwrap(),
-            liked_url_re: Regex::new(
-                r"^https?://(?:www\.|m\.)?soundcloud\.com/([a-zA-Z0-9_-]+)/likes/?(?:\?.*)?$"
-            ).unwrap(),
-            short_url_re: Regex::new(
-                r"^https://on\.soundcloud\.com/[a-zA-Z0-9_-]+/?(?:\?.*)?$"
-            ).unwrap(),
-            mobile_url_re: Regex::new(
-                r"^https://soundcloud\.app\.goo\.gl/[a-zA-Z0-9_-]+/?(?:\?.*)?$"
-            ).unwrap(),
-            liked_user_urn_re: Regex::new(
-                r#""urn":"soundcloud:users:(\d+)","username":"([^"]+)""#
-            ).unwrap(),
-            user_url_re: Regex::new(
-                r"^https?://(?:www\.|m\.)?soundcloud\.com/([a-zA-Z0-9_-]+)(?:/(tracks|popular-tracks|albums|sets|reposts|spotlight))?/?(?:\?.*)?$"
-            ).unwrap(),
-            search_url_re: Regex::new(
-                r"^https?://(?:www\.|m\.)?soundcloud\.com/search(?:/(?:sounds|people|albums|sets))?/?(?:\?.*)?$"
-            ).unwrap(),
-            search_prefixes: vec!["scsearch:".to_string()],
-        }
+    Ok(Self {
+      client,
+      config,
+      token_tracker,
+      track_url_re: Regex::new(
+        r"^https?://(?:www\.|m\.)?soundcloud\.com/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)(?:/s-[a-zA-Z0-9_-]+)?/?(?:\?.*)?$"
+      ).unwrap(),
+      playlist_url_re: Regex::new(
+        r"^https?://(?:www\.|m\.)?soundcloud\.com/([a-zA-Z0-9_-]+)/sets/([a-zA-Z0-9_:-]+)(?:/[a-zA-Z0-9_-]+)?/?(?:\?.*)?$"
+      ).unwrap(),
+      liked_url_re: Regex::new(
+        r"^https?://(?:www\.|m\.)?soundcloud\.com/([a-zA-Z0-9_-]+)/likes/?(?:\?.*)?$"
+      ).unwrap(),
+      short_url_re: Regex::new(
+        r"^https://on\.soundcloud\.com/[a-zA-Z0-9_-]+/?(?:\?.*)?$"
+      ).unwrap(),
+      mobile_url_re: Regex::new(
+        r"^https://soundcloud\.app\.goo\.gl/[a-zA-Z0-9_-]+/?(?:\?.*)?$"
+      ).unwrap(),
+      liked_user_urn_re: Regex::new(
+        r#""urn":"soundcloud:users:(\d+)","username":"([^"]+)""#
+      ).unwrap(),
+      user_url_re: Regex::new(
+        r"^https?://(?:www\.|m\.)?soundcloud\.com/([a-zA-Z0-9_-]+)(?:/(tracks|popular-tracks|albums|sets|reposts|spotlight))?/?(?:\?.*)?$"
+      ).unwrap(),
+      search_url_re: Regex::new(
+        r"^https?://(?:www\.|m\.)?soundcloud\.com/search(?:/(?:sounds|people|albums|sets))?/?(?:\?.*)?$"
+      ).unwrap(),
+      search_prefixes: vec!["scsearch:".to_string()],
+    })
   }
 
   /// Resolve a URL via the SoundCloud resolve API.

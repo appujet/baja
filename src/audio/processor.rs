@@ -8,14 +8,21 @@ use symphonia::core::{
   meta::MetadataOptions,
   probe::Hint,
 };
-use tracing::{Level, debug, span, warn};
+use tracing::{Level, debug, info, span, warn};
 
 use crate::audio::pipeline::resampler::Resampler;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DecoderCommand {
   Seek(u64), // Position in milliseconds
   Stop,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum CommandOutcome {
+  Stop,
+  Seeked,
+  None,
 }
 
 /// Audio processor that handles decoding and resampling.
@@ -24,13 +31,16 @@ pub struct AudioProcessor {
   decoder: Box<dyn Decoder>,
   resampler: Resampler,
   track_id: u32,
-  tx: Sender<i16>,
+  tx: Sender<Vec<i16>>,
   cmd_rx: Receiver<DecoderCommand>,
   /// When set, fatal mid-playback errors are forwarded here so the
   /// playback loop can emit a `TrackExceptionEvent` instead of a
   /// silent `TrackEnd(Finished)`.
   error_tx: Option<flume::Sender<String>>,
   sample_buf: Option<SampleBuffer<i16>>,
+  /// Scratch buffer for resampler output — reused each packet to avoid
+  /// allocating a new Vec per decoded frame (H1 fix).
+  resample_buf: Vec<i16>,
 
   // Audio specs
   source_rate: u32,
@@ -43,7 +53,7 @@ impl AudioProcessor {
   pub fn new(
     source: Box<dyn MediaSource>,
     kind: Option<crate::common::types::AudioKind>,
-    tx: Sender<i16>,
+    tx: Sender<Vec<i16>>,
     cmd_rx: Receiver<DecoderCommand>,
     error_tx: Option<flume::Sender<String>>,
   ) -> Result<Self, Error> {
@@ -90,6 +100,7 @@ impl AudioProcessor {
       cmd_rx,
       error_tx,
       sample_buf: None,
+      resample_buf: Vec::with_capacity(4096), // pre-allocated; reused each packet
       source_rate,
       target_rate,
       channels,
@@ -99,17 +110,15 @@ impl AudioProcessor {
   /// The main execution loop.
   pub fn run(&mut self) -> Result<(), Error> {
     let _span = span!(Level::DEBUG, "audio_processor").entered();
-    debug!(
+    info!(
       "Starting playback loop: {}Hz {}ch -> {}Hz",
       self.source_rate, self.channels, self.target_rate
     );
 
     loop {
       // 1. Handle External Commands
-      if let Some(cmd) = self.check_commands() {
-        if matches!(cmd, DecoderCommand::Stop) {
-          break;
-        }
+      if self.check_commands() == CommandOutcome::Stop {
+        break;
       }
 
       // 2. Fetch Next Packet
@@ -141,18 +150,19 @@ impl AudioProcessor {
           let samples = buf.samples();
 
           if self.source_rate != self.target_rate {
-            let tx = self.tx.clone();
-            self.resampler.process(samples, &tx).map_err(|e| {
-              Error::IoError(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                e.to_string(),
-              ))
-            })?;
-          } else {
-            for &s in samples {
-              if self.tx.send(s).is_err() {
+            // H1: resampler fills resample_buf.
+            // H2: send the whole buffer as one Vec<i16> — one channel op per packet.
+            self.resample_buf.clear();
+            self.resampler.process(samples, &mut self.resample_buf);
+            if !self.resample_buf.is_empty() {
+              if self.tx.send(self.resample_buf.clone()).is_err() {
                 return Ok(()); // Mixer disconnected
               }
+            }
+          } else {
+            // H2: one channel op per decoded packet instead of per sample.
+            if !samples.is_empty() && self.tx.send(samples.to_vec()).is_err() {
+              return Ok(()); // Mixer disconnected
             }
           }
           self.sample_buf = Some(buf);
@@ -175,7 +185,7 @@ impl AudioProcessor {
     Ok(())
   }
 
-  fn check_commands(&mut self) -> Option<DecoderCommand> {
+  fn check_commands(&mut self) -> CommandOutcome {
     match self.cmd_rx.try_recv() {
       Ok(DecoderCommand::Seek(ms)) => {
         let time = symphonia::core::units::Time::from(ms as f64 / 1000.0);
@@ -186,15 +196,14 @@ impl AudioProcessor {
             track_id: Some(self.track_id),
           },
         ) {
-          self.resampler = Resampler::new(self.source_rate, self.target_rate, self.channels);
+          self.resampler.reset(); // zero in-place — no heap allocation on seek
           self.decoder.reset();
           self.sample_buf = None;
         }
-        Some(DecoderCommand::Seek(ms))
+        CommandOutcome::Seeked
       }
-      Ok(DecoderCommand::Stop) => Some(DecoderCommand::Stop),
-      Err(flume::TryRecvError::Disconnected) => Some(DecoderCommand::Stop),
-      _ => None,
+      Ok(DecoderCommand::Stop) | Err(flume::TryRecvError::Disconnected) => CommandOutcome::Stop,
+      _ => CommandOutcome::None,
     }
   }
 }

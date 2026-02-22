@@ -14,10 +14,88 @@ pub type AnyError = Box<dyn std::error::Error + Send + Sync>;
 /// A convenient Result alias returning `AnyError`.
 pub type AnyResult<T> = std::result::Result<T, AnyError>;
 
-/// Strongly typed identifiers.
-pub type GuildId = String;
-pub type SessionId = String;
-pub type UserId = u64;
+/// Strongly typed identifiers (M1).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct GuildId(pub String);
+
+impl From<String> for GuildId {
+  fn from(s: String) -> Self {
+    Self(s)
+  }
+}
+
+impl std::ops::Deref for GuildId {
+  type Target = str;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl std::fmt::Display for GuildId {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct SessionId(pub String);
+
+impl From<String> for SessionId {
+  fn from(s: String) -> Self {
+    Self(s)
+  }
+}
+
+impl std::ops::Deref for SessionId {
+  type Target = str;
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl std::fmt::Display for SessionId {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}
+
+#[derive(
+  Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
+pub struct UserId(pub u64);
+
+impl From<u64> for UserId {
+  fn from(u: u64) -> Self {
+    Self(u)
+  }
+}
+
+impl std::fmt::Display for UserId {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}
+
+#[derive(
+  Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
+pub struct ChannelId(pub u64);
+
+impl From<u64> for ChannelId {
+  fn from(u: u64) -> Self {
+    Self(u)
+  }
+}
+
+impl std::fmt::Display for ChannelId {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}
 
 /// Supported audio formats/extensions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

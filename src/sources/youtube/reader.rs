@@ -20,7 +20,7 @@ impl YoutubeReader {
   ) -> AnyResult<Self> {
     let user_agent = get_youtube_ua(url)
       .map(str::to_string)
-      .unwrap_or_else(crate::common::http::HttpClient::default_user_agent);
+      .unwrap_or_else(crate::common::http::default_user_agent);
 
     let client = create_client(user_agent, local_addr, proxy, None)?;
     let inner = SegmentedRemoteReader::new(client, url)?;

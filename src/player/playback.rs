@@ -53,6 +53,7 @@ pub async fn start_playback(
     mixer.stop_all();
   }
 
+  player.track_info = api::tracks::Track::decode(&track);
   player.track = Some(track.clone());
   player.position = 0;
   player.paused = false;
@@ -61,8 +62,8 @@ pub async fn start_playback(
   player.stop_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
   // Decode the Lavalink track format to extract the actual playback URI
-  let track_info = if let Some(decoded_track) = api::tracks::Track::decode(&track) {
-    decoded_track.info
+  let track_info = if let Some(decoded_track) = &player.track_info {
+    decoded_track.info.clone()
   } else {
     // If decoding fails, treat the raw string as a direct identifier
     api::tracks::TrackInfo {

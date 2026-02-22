@@ -181,7 +181,7 @@ impl io::Write for CircularFileWriter {
 
     file.write_all(buf)?;
 
-    let mut state = self.state.lock().unwrap();
+    let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
     let new_lines = buf.iter().filter(|&&b| b == b'\n').count() as u32;
     state.lines_since_prune += new_lines;
 

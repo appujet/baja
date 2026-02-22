@@ -1,6 +1,6 @@
-use std::{
-  net::UdpSocket,
-  sync::atomic::{AtomicU16, AtomicU32, Ordering},
+use std::sync::{
+  Arc,
+  atomic::{AtomicU16, AtomicU32, Ordering},
 };
 
 use davey::{AeadInPlace as AesAeadInPlace, Aes256Gcm, KeyInit as AesKeyInit};
@@ -12,7 +12,7 @@ pub enum EncryptionMode {
 }
 
 pub struct UdpBackend {
-  socket: UdpSocket,
+  socket: Arc<tokio::net::UdpSocket>,
   ssrc: u32,
   address: std::net::SocketAddr,
   mode: EncryptionMode,
@@ -27,7 +27,7 @@ pub struct UdpBackend {
 
 impl UdpBackend {
   pub fn new(
-    socket: UdpSocket,
+    socket: Arc<tokio::net::UdpSocket>,
     address: std::net::SocketAddr,
     ssrc: u32,
     secret_key: [u8; 32],
@@ -64,7 +64,10 @@ impl UdpBackend {
     })
   }
 
-  pub fn send_opus_packet(&mut self, payload: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+  pub async fn send_opus_packet(
+    &mut self,
+    payload: &[u8],
+  ) -> Result<(), Box<dyn std::error::Error>> {
     let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
     let timestamp = self.timestamp.fetch_add(960, Ordering::SeqCst);
 
@@ -99,7 +102,7 @@ impl UdpBackend {
           .map_err(|e| format!("Salsa encryption error: {:?}", e))?;
 
         self.packet_buf.extend_from_slice(&tag);
-        self.socket.send_to(&self.packet_buf, self.address)?;
+        self.socket.send_to(&self.packet_buf, self.address).await?;
       }
       EncryptionMode::Aes256Gcm => {
         let counter_bytes = current_nonce.to_be_bytes();
@@ -124,7 +127,7 @@ impl UdpBackend {
         self.packet_buf.extend_from_slice(&tag);
         self.packet_buf.extend_from_slice(&counter_bytes);
 
-        self.socket.send_to(&self.packet_buf, self.address)?;
+        self.socket.send_to(&self.packet_buf, self.address).await?;
       }
     }
     Ok(())

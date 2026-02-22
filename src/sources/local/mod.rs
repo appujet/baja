@@ -219,11 +219,11 @@ impl PlayableTrack for LocalTrack {
   fn start_decoding(
     &self,
   ) -> (
-    flume::Receiver<i16>,
+    flume::Receiver<Vec<i16>>,
     flume::Sender<DecoderCommand>,
     flume::Receiver<String>,
   ) {
-    let (tx, rx) = flume::bounded::<i16>(4096 * 4);
+    let (tx, rx) = flume::bounded::<Vec<i16>>(64);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
     let (err_tx, err_rx) = flume::bounded::<String>(1);
 

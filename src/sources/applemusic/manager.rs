@@ -31,7 +31,7 @@ pub struct AppleMusicSource {
 }
 
 impl AppleMusicSource {
-  pub fn new(config: Option<crate::configs::AppleMusicConfig>) -> Self {
+  pub fn new(config: Option<crate::configs::AppleMusicConfig>) -> Result<Self, String> {
     let mut headers = HeaderMap::new();
     headers.insert(USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"));
 
@@ -39,7 +39,7 @@ impl AppleMusicSource {
       .default_headers(headers)
       .gzip(true)
       .build()
-      .unwrap();
+      .map_err(|e| e.to_string())?;
 
     let (country, p_limit, a_limit, p_conc, a_conc) = if let Some(c) = config {
       (
@@ -57,17 +57,17 @@ impl AppleMusicSource {
       Arc::new(crate::sources::applemusic::token::AppleMusicTokenTracker::new(client.clone()));
     token_tracker.clone().init();
 
-    Self {
-            token_tracker,
-            client,
-            country_code: country,
-            playlist_load_limit: p_limit,
-            album_load_limit: a_limit,
-            playlist_page_load_concurrency: p_conc,
-            album_page_load_concurrency: a_conc,
-            search_prefixes: vec!["amsearch:".to_string()],
-            url_regex: Regex::new(r"https?://(?:www\.)?music\.apple\.com/(?:[a-zA-Z]{2}/)?(album|playlist|artist|song)/[^/]+/([a-zA-Z0-9\-.]+)(?:\?i=(\d+))?").unwrap(),
-        }
+    Ok(Self {
+      token_tracker,
+      client,
+      country_code: country,
+      playlist_load_limit: p_limit,
+      album_load_limit: a_limit,
+      playlist_page_load_concurrency: p_conc,
+      album_page_load_concurrency: a_conc,
+      search_prefixes: vec!["amsearch:".to_string()],
+      url_regex: Regex::new(r"https?://(?:www\.)?music\.apple\.com/(?:[a-zA-Z]{2}/)?(album|playlist|artist|song)/[^/]+/([a-zA-Z0-9\-.]+)(?:\?i=(\d+))?").unwrap(),
+    })
   }
 
   async fn api_request(&self, path: &str) -> Option<Value> {

@@ -7,14 +7,14 @@ use crate::audio::processor::DecoderCommand;
 
 /// A track that can start its own decoding and return PCM samples.
 /// Returns `(pcm_rx, cmd_tx, error_rx)` where:
-/// - `pcm_rx`   — i16 PCM samples produced by the decoder
+/// - `pcm_rx`   — batched i16 PCM sample frames from the decoder
 /// - `cmd_tx`   — send seek/stop commands to the decoder
 /// - `error_rx` — receives a single `String` if a fatal decode/IO error occurs
 pub trait PlayableTrack: Send + Sync {
   fn start_decoding(
     &self,
   ) -> (
-    Receiver<i16>,
+    Receiver<Vec<i16>>,
     Sender<DecoderCommand>,
     flume::Receiver<String>,
   );

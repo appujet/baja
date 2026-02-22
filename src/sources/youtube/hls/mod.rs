@@ -85,7 +85,7 @@ impl Drop for HlsReader {
     // Signal the background thread to stop.
     {
       let (lock, cvar) = &*self.shared;
-      let mut state = lock.lock().unwrap();
+      let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
       state.command = PrefetchCommand::Stop;
       state.need_data = true;
       cvar.notify_one();
@@ -104,7 +104,8 @@ impl HlsReader {
     player_url: Option<String>,
     proxy: Option<HttpProxyConfig>,
   ) -> AnyResult<Self> {
-    let mut builder = reqwest::blocking::Client::builder()
+    let handle = tokio::runtime::Handle::current();
+    let mut builder = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
             .timeout(std::time::Duration::from_secs(15));
 
@@ -123,8 +124,9 @@ impl HlsReader {
       }
     }
 
-    let client = builder.build()?;
-    let (segment_urls, map_url) = resolve_playlist(&client, manifest_url)?;
+    let client: reqwest::Client = builder.build()?;
+    let (segment_urls, map_url) =
+      handle.block_on(async { resolve_playlist(&client, manifest_url).await })?;
 
     if segment_urls.is_empty() {
       return Err("HLS playlist contained no segments".into());
@@ -146,7 +148,7 @@ impl HlsReader {
     if let Some(map_res) = &map_url {
       let resolved = resolve_resource_static(map_res, &cipher_manager, &player_url)?;
       let mut map_data = Vec::new();
-      fetch_segment_into(&client, &resolved, &mut map_data)?;
+      handle.block_on(fetch_segment_into(&client, &resolved, &mut map_data))?;
       initial_buf.extend_from_slice(&map_data);
       cached_map_data = Some(map_data);
     }
@@ -166,7 +168,7 @@ impl HlsReader {
 
     for res in &first_batch {
       let resolved = resolve_resource_static(res, &cipher_manager, &player_url)?;
-      fetch_and_demux_into(&client, &resolved, &mut initial_buf)?;
+      handle.block_on(fetch_and_demux_into(&client, &resolved, &mut initial_buf))?;
     }
 
     let current_segment_index = first_batch.len();
@@ -202,6 +204,7 @@ impl HlsReader {
           bg_player_url,
           bg_cached_map,
           bg_all_segments,
+          handle,
         );
       })
       .expect("failed to spawn HLS prefetch thread");
@@ -257,7 +260,7 @@ impl HlsReader {
     // Tell background thread to seek.
     {
       let (lock, cvar) = &*self.shared;
-      let mut state = lock.lock().unwrap();
+      let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
       state.command = PrefetchCommand::Seek(target_index);
       state.need_data = true;
       state.seek_done = false;
@@ -304,7 +307,7 @@ impl Read for HlsReader {
 
     // Active buffer exhausted — swap with the pre-filled next buffer.
     let (lock, cvar) = &*self.shared;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
 
     // If the background thread hasn't finished yet, wait for it.
     // But first signal that we need data if not already signalled.
@@ -364,17 +367,18 @@ impl MediaSource for HlsReader {
 
 fn prefetch_loop(
   shared: Arc<(Mutex<SharedState>, Condvar)>,
-  client: reqwest::blocking::Client,
+  client: reqwest::Client,
   cipher_manager: Option<Arc<YouTubeCipherManager>>,
   player_url: Option<String>,
   cached_map_data: Option<Vec<u8>>,
   all_segments: Vec<Resource>,
+  handle: tokio::runtime::Handle,
 ) {
   let (lock, cvar) = &*shared;
 
   loop {
     // Wait until the reader signals it needs data.
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
     while !state.need_data {
       state = cvar.wait(state).unwrap();
     }
@@ -408,14 +412,15 @@ fn prefetch_loop(
         let mut tmp_buf = Vec::with_capacity(256 * 1024);
         for res in &batch {
           if let Ok(resolved) = resolve_resource_static(res, &cipher_manager, &player_url) {
-            if let Err(e) = fetch_and_demux_into(&client, &resolved, &mut tmp_buf) {
+            if let Err(e) = handle.block_on(fetch_and_demux_into(&client, &resolved, &mut tmp_buf))
+            {
               tracing::warn!("HLS prefetch: segment fetch error during seek: {}", e);
             }
           }
         }
 
         // Re-acquire lock and store data.
-        let mut state = lock.lock().unwrap();
+        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
         state.next_buf.extend_from_slice(&tmp_buf);
         state.current_segment_index += batch.len();
         state.need_data = false;
@@ -458,7 +463,7 @@ fn prefetch_loop(
     for res in &batch {
       // Check for abort (stop or seek) between segments.
       {
-        let s = lock.lock().unwrap();
+        let s = lock.lock().unwrap_or_else(|e| e.into_inner());
         match &s.command {
           PrefetchCommand::Stop => return,
           PrefetchCommand::Seek(_) => {
@@ -474,14 +479,14 @@ fn prefetch_loop(
       }
 
       if let Ok(resolved) = resolve_resource_static(res, &cipher_manager, &player_url) {
-        if let Err(e) = fetch_and_demux_into(&client, &resolved, &mut tmp_buf) {
+        if let Err(e) = handle.block_on(fetch_and_demux_into(&client, &resolved, &mut tmp_buf)) {
           tracing::warn!("HLS prefetch: segment fetch error: {}", e);
         }
       }
     }
 
     // Re-acquire lock and store the fetched data.
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
     if !matches!(state.command, PrefetchCommand::Continue) {
       // Re-enter the loop to immediately handle the new command (e.g. Seek)
       // without resetting need_data to false, which would cause a deadlock
@@ -508,13 +513,13 @@ fn resolve_resource_static(
 }
 
 /// Fetch a media segment and demux TS → ADTS if it appears to be MPEG-TS.
-fn fetch_and_demux_into(
-  client: &reqwest::blocking::Client,
+async fn fetch_and_demux_into(
+  client: &reqwest::Client,
   res: &Resource,
   out: &mut Vec<u8>,
 ) -> AnyResult<()> {
   let mut raw = Vec::new();
-  fetch_segment_into(client, res, &mut raw)?;
+  fetch_segment_into(client, res, &mut raw).await?;
 
   let is_ts = raw.first() == Some(&0x47);
   if is_ts {

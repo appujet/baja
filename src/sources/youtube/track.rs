@@ -28,11 +28,11 @@ impl PlayableTrack for YoutubeTrack {
   fn start_decoding(
     &self,
   ) -> (
-    Receiver<i16>,
+    Receiver<Vec<i16>>,
     Sender<DecoderCommand>,
     flume::Receiver<String>,
   ) {
-    let (tx, rx) = flume::bounded::<i16>(4096 * 4);
+    let (tx, rx) = flume::bounded::<Vec<i16>>(64);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
     let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -45,12 +45,8 @@ impl PlayableTrack for YoutubeTrack {
     let local_addr = self.local_addr;
     let proxy = self.proxy.clone();
 
+    let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
-      let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
       let context = serde_json::json!({ "visitorData": visitor_data });
       let mut success = false;
 
@@ -61,7 +57,7 @@ impl PlayableTrack for YoutubeTrack {
           identifier, client_name
         );
 
-        let playback_result = runtime.block_on(async {
+        let playback_result = handle.block_on(async {
           client
             .get_track_url(&identifier, &context, cipher_manager.clone(), oauth.clone())
             .await
@@ -145,7 +141,11 @@ impl PlayableTrack for YoutubeTrack {
           Some(err_tx.clone()),
         ) {
           Ok(mut processor) => {
-            debug!("YoutubeTrack: Playback session started for {}", client_name);
+            debug!(
+              "YoutubeTrack: Playback session started for {} using {}",
+              identifier,
+              client_name
+            );
             success = true;
             if let Err(e) = processor.run() {
               error!("YoutubeTrack: Decoding session finished with error: {}", e);

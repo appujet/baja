@@ -1,12 +1,12 @@
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use reqwest::Url;
 use serde_json::{Value, json};
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
 use crate::configs::Config;
-use crate::sources::{plugin::BoxedTrack, SourcePlugin};
+use crate::sources::{SourcePlugin, plugin::BoxedTrack};
 use tracing::debug;
 
 const BASE_URL: &str = "https://api.anghami.com/gateway.php";
@@ -20,7 +20,7 @@ pub struct AnghamiSource {
 }
 
 impl AnghamiSource {
-  pub fn new(config: &Config) -> Self {
+  pub fn new(config: &Config) -> Result<Self, String> {
     let ag_config = config.anghami.clone().unwrap_or_default();
 
     let mut headers = reqwest::header::HeaderMap::new();
@@ -37,11 +37,11 @@ impl AnghamiSource {
       .gzip(true)
       .timeout(std::time::Duration::from_secs(15))
       .build()
-      .expect("Failed to build Anghami reqwest client");
+      .map_err(|e| e.to_string())?;
 
     let udid = uuid::Uuid::new_v4().simple().to_string();
 
-    Self {
+    Ok(Self {
       client,
       udid,
       search_limit: ag_config.search_limit,
@@ -49,11 +49,14 @@ impl AnghamiSource {
       url_regex: regex::Regex::new(
         r"^https?://(?:play\.|www\.)?anghami\.com/(?P<type>song|album|playlist|artist)/(?P<id>[0-9]+)"
       ).unwrap(),
-    }
+    })
   }
 
   fn unix_ts(&self) -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+    SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .unwrap_or_default()
+      .as_secs()
   }
 
   async fn api_request(&self, params: Vec<(&str, &str)>) -> Option<Value> {
@@ -65,10 +68,14 @@ impl AnghamiSource {
       }
     }
 
-    let resp = self.client.get(url)
+    let resp = self
+      .client
+      .get(url)
       .header("X-ANGH-UDID", &self.udid)
       .header("X-ANGH-TS", self.unix_ts().to_string())
-      .send().await.ok()?;
+      .send()
+      .await
+      .ok()?;
 
     if !resp.status().is_success() {
       return None;
@@ -78,11 +85,17 @@ impl AnghamiSource {
   }
 
   fn build_artwork_url(json: &Value) -> Option<String> {
-    let art_id = json["coverArt"].as_str()
+    let art_id = json["coverArt"]
+      .as_str()
       .or_else(|| json["AlbumArt"].as_str())
       .or_else(|| json["cover"].as_str())?;
-    if art_id.is_empty() { return None; }
-    Some(format!("https://artwork.anghcdn.co/?id={}&size=640", art_id))
+    if art_id.is_empty() {
+      return None;
+    }
+    Some(format!(
+      "https://artwork.anghcdn.co/?id={}&size=640",
+      art_id
+    ))
   }
 
   fn parse_track(&self, json: &Value) -> Option<Track> {
@@ -94,18 +107,25 @@ impl AnghamiSource {
       },
     };
 
-    let title = json["title"].as_str()
+    let title = json["title"]
+      .as_str()
       .or_else(|| json["name"].as_str())
       .filter(|s| !s.is_empty())?
       .to_string();
 
-    let author = json["artist"].as_str()
+    let author = json["artist"]
+      .as_str()
       .or_else(|| json["artistName"].as_str())
       .unwrap_or("Unknown Artist")
       .to_string();
 
-    let duration_secs = json["duration"].as_f64()
-      .or_else(|| json["duration"].as_str().and_then(|s| s.parse::<f64>().ok()))
+    let duration_secs = json["duration"]
+      .as_f64()
+      .or_else(|| {
+        json["duration"]
+          .as_str()
+          .and_then(|s| s.parse::<f64>().ok())
+      })
       .unwrap_or(0.0);
     let length = (duration_secs * 1000.0).round() as u64;
     let artwork_url = Self::build_artwork_url(json);
@@ -131,7 +151,9 @@ impl AnghamiSource {
       let mut song_map: std::collections::HashMap<String, Track> = std::collections::HashMap::new();
       for buffer_base64 in songbuffers {
         if let Some(s) = buffer_base64.as_str() {
-          if let Ok(decoded) = base64::Engine::decode(&base64::prelude::BASE64_STANDARD, s.as_bytes()) {
+          if let Ok(decoded) =
+            base64::Engine::decode(&base64::prelude::BASE64_STANDARD, s.as_bytes())
+          {
             let songs = super::reader::decode_song_batch(&decoded);
             for (id, track_info) in songs {
               song_map.insert(id, Track::new(track_info));
@@ -146,13 +168,18 @@ impl AnghamiSource {
           body["_attributes"]["songorder"].as_str(),
           body["playlist"]["songorder"].as_str(),
           body["album"]["songorder"].as_str(),
-        ].iter().find_map(|o| *o);
+        ]
+        .iter()
+        .find_map(|o| *o);
 
         if let Some(order) = order_str {
-          let tracks: Vec<Track> = order.split(',')
+          let tracks: Vec<Track> = order
+            .split(',')
             .filter_map(|id| song_map.remove(id.trim()))
             .collect();
-          if !tracks.is_empty() { return tracks; }
+          if !tracks.is_empty() {
+            return tracks;
+          }
         }
 
         return song_map.into_values().collect();
@@ -166,47 +193,73 @@ impl AnghamiSource {
         if type_ == "song" || group == "songs" || group == "album_songs" {
           if let Some(data) = section["data"].as_array() {
             let tracks: Vec<Track> = data.iter().filter_map(|s| self.parse_track(s)).collect();
-            if !tracks.is_empty() { return tracks; }
+            if !tracks.is_empty() {
+              return tracks;
+            }
           }
         }
       }
     }
 
-    for songs in &[&body["songs"], &body["playlist"]["songs"], &body["album"]["songs"]] {
-      if songs.is_null() { continue; }
-      let mut song_map: std::collections::HashMap<String, &Value> = std::collections::HashMap::new();
+    for songs in &[
+      &body["songs"],
+      &body["playlist"]["songs"],
+      &body["album"]["songs"],
+    ] {
+      if songs.is_null() {
+        continue;
+      }
+      let mut song_map: std::collections::HashMap<String, &Value> =
+        std::collections::HashMap::new();
       if let Some(obj) = songs.as_object() {
         for (_k, v) in obj {
-          let s = if !v["_attributes"].is_null() { &v["_attributes"] } else { v };
-          let id = s["id"].as_str().map(|s| s.to_string())
+          let s = if !v["_attributes"].is_null() {
+            &v["_attributes"]
+          } else {
+            v
+          };
+          let id = s["id"]
+            .as_str()
+            .map(|s| s.to_string())
             .or_else(|| s["id"].as_i64().map(|n| n.to_string()));
           if let Some(id) = id {
             song_map.insert(id, s);
           }
         }
       }
-      if song_map.is_empty() { continue; }
+      if song_map.is_empty() {
+        continue;
+      }
 
       let order_str = [
         body["songorder"].as_str(),
         body["_attributes"]["songorder"].as_str(),
         body["playlist"]["songorder"].as_str(),
         body["album"]["songorder"].as_str(),
-      ].iter().find_map(|o| *o);
+      ]
+      .iter()
+      .find_map(|o| *o);
 
       let tracks: Vec<Track> = if let Some(order) = order_str {
-        order.split(',')
+        order
+          .split(',')
           .filter_map(|id| song_map.get(id.trim()))
           .filter_map(|s| self.parse_track(s))
           .collect()
       } else {
-        song_map.values().filter_map(|s| self.parse_track(s)).collect()
+        song_map
+          .values()
+          .filter_map(|s| self.parse_track(s))
+          .collect()
       };
 
-      if !tracks.is_empty() { return tracks; }
+      if !tracks.is_empty() {
+        return tracks;
+      }
     }
 
-    body["data"].as_array()
+    body["data"]
+      .as_array()
       .map(|data| data.iter().filter_map(|s| self.parse_track(s)).collect())
       .unwrap_or_default()
   }
@@ -239,13 +292,20 @@ impl AnghamiSource {
     candidates.push(body["_attributes"]["title"].as_str());
     candidates.push(body["_attributes"]["name"].as_str());
 
-    if let Some(title) = candidates.into_iter().find_map(|s| s.filter(|v| !v.is_empty()).map(str::to_string)) {
+    if let Some(title) = candidates
+      .into_iter()
+      .find_map(|s| s.filter(|v| !v.is_empty()).map(str::to_string))
+    {
       return title;
     }
 
     if let Some(sections) = body["sections"].as_array() {
       for sec in sections {
-        if let Some(t) = sec["title"].as_str().or(sec["name"].as_str()).filter(|s| !s.is_empty()) {
+        if let Some(t) = sec["title"]
+          .as_str()
+          .or(sec["name"].as_str())
+          .filter(|s| !s.is_empty())
+        {
           return t.to_string();
         }
       }
@@ -255,37 +315,56 @@ impl AnghamiSource {
   }
 
   async fn get_search(&self, query: &str) -> LoadResult {
-    if query.is_empty() { return LoadResult::Empty {}; }
+    if query.is_empty() {
+      return LoadResult::Empty {};
+    }
 
-    let body = match self.api_request(vec![
-      ("type", "GETtabsearch"),
-      ("query", query),
-      ("web2", "true"),
-      ("language", "en"),
-      ("output", "json"),
-    ]).await {
+    let body = match self
+      .api_request(vec![
+        ("type", "GETtabsearch"),
+        ("query", query),
+        ("web2", "true"),
+        ("language", "en"),
+        ("output", "json"),
+      ])
+      .await
+    {
       Some(b) => b,
       None => return LoadResult::Empty {},
     };
 
-    let tracks: Vec<Track> = body["sections"].as_array()
-      .and_then(|secs| secs.iter().find(|s| {
-        s["type"].as_str() == Some("genericitem") && s["group"].as_str() == Some("songs")
-      }))
+    let tracks: Vec<Track> = body["sections"]
+      .as_array()
+      .and_then(|secs| {
+        secs.iter().find(|s| {
+          s["type"].as_str() == Some("genericitem") && s["group"].as_str() == Some("songs")
+        })
+      })
       .and_then(|s| s["data"].as_array())
-      .map(|data| data.iter().take(self.search_limit).filter_map(|item| self.parse_track(item)).collect())
+      .map(|data| {
+        data
+          .iter()
+          .take(self.search_limit)
+          .filter_map(|item| self.parse_track(item))
+          .collect()
+      })
       .unwrap_or_default();
 
-    if tracks.is_empty() { return LoadResult::Empty {}; }
+    if tracks.is_empty() {
+      return LoadResult::Empty {};
+    }
     LoadResult::Search(tracks)
   }
 
   async fn get_song(&self, id: &str) -> LoadResult {
-    if let Some(body) = self.api_request(vec![
-      ("type", "GETsongdata"),
-      ("songId", id),
-      ("output", "jsonhp"),
-    ]).await {
+    if let Some(body) = self
+      .api_request(vec![
+        ("type", "GETsongdata"),
+        ("songId", id),
+        ("output", "jsonhp"),
+      ])
+      .await
+    {
       if body["status"].as_str() == Some("ok") {
         if let Some(track) = self.parse_track(&body) {
           return LoadResult::Track(track);
@@ -293,13 +372,16 @@ impl AnghamiSource {
       }
     }
 
-    if let Some(body) = self.api_request(vec![
-      ("type", "GETtabsearch"),
-      ("query", id),
-      ("web2", "true"),
-      ("language", "en"),
-      ("output", "json"),
-    ]).await {
+    if let Some(body) = self
+      .api_request(vec![
+        ("type", "GETtabsearch"),
+        ("query", id),
+        ("web2", "true"),
+        ("language", "en"),
+        ("output", "json"),
+      ])
+      .await
+    {
       if let Some(sections) = body["sections"].as_array() {
         for section in sections {
           if let Some(data) = section["data"].as_array() {
@@ -329,7 +411,9 @@ impl AnghamiSource {
         ("language", "en"),
         ("output", "json"),
       ];
-      if *buffered { params.push(("buffered", "1")); }
+      if *buffered {
+        params.push(("buffered", "1"));
+      }
 
       let body = match self.api_request(params).await {
         Some(b) if b["error"].is_null() => b,
@@ -337,15 +421,25 @@ impl AnghamiSource {
       };
 
       let tracks = self.extract_tracks(&body);
-      if tracks.is_empty() { continue; }
+      if tracks.is_empty() {
+        continue;
+      }
 
       let mut name = Self::collection_title(&body, "album", "Unknown Album");
       if name == "Unknown Album" {
-        if let Some(first_album) = body["data"].as_array().and_then(|a| a.first()).and_then(|t| t["album"].as_str().or(t["albumName"].as_str())) {
+        if let Some(first_album) = body["data"]
+          .as_array()
+          .and_then(|a| a.first())
+          .and_then(|t| t["album"].as_str().or(t["albumName"].as_str()))
+        {
           name = first_album.to_string();
         } else if let Some(sections) = body["sections"].as_array() {
           for sec in sections {
-            if let Some(first_album) = sec["data"].as_array().and_then(|a| a.first()).and_then(|t| t["album"].as_str().or(t["albumName"].as_str())) {
+            if let Some(first_album) = sec["data"]
+              .as_array()
+              .and_then(|a| a.first())
+              .and_then(|t| t["album"].as_str().or(t["albumName"].as_str()))
+            {
               name = first_album.to_string();
               break;
             }
@@ -356,7 +450,10 @@ impl AnghamiSource {
       let author = tracks.first().map(|t| t.info.author.clone());
 
       return LoadResult::Playlist(PlaylistData {
-        info: PlaylistInfo { name, selected_track: -1 },
+        info: PlaylistInfo {
+          name,
+          selected_track: -1,
+        },
         plugin_info: json!({
           "type": "album",
           "url": format!("https://play.anghami.com/album/{}", id),
@@ -380,7 +477,9 @@ impl AnghamiSource {
         ("language", "en"),
         ("output", "json"),
       ];
-      if *buffered { params.push(("buffered", "1")); }
+      if *buffered {
+        params.push(("buffered", "1"));
+      }
 
       let body = match self.api_request(params).await {
         Some(b) if b["error"].is_null() => b,
@@ -388,18 +487,26 @@ impl AnghamiSource {
       };
 
       let tracks = self.extract_tracks(&body);
-      if tracks.is_empty() { continue; }
+      if tracks.is_empty() {
+        continue;
+      }
 
       let mut name = Self::collection_title(&body, "playlist", "Unknown Playlist");
       if name == "Unknown Playlist" {
-        if let Some(alt_name) = body["playlist"]["name"].as_str().or(body["playlist"]["title"].as_str()) {
+        if let Some(alt_name) = body["playlist"]["name"]
+          .as_str()
+          .or(body["playlist"]["title"].as_str())
+        {
           name = alt_name.to_string();
         }
       }
       let artwork_url = tracks.first().and_then(|t| t.info.artwork_url.clone());
 
       return LoadResult::Playlist(PlaylistData {
-        info: PlaylistInfo { name, selected_track: -1 },
+        info: PlaylistInfo {
+          name,
+          selected_track: -1,
+        },
         plugin_info: json!({
           "type": "playlist",
           "url": format!("https://play.anghami.com/playlist/{}", id),
@@ -414,32 +521,40 @@ impl AnghamiSource {
   }
 
   async fn get_artist(&self, id: &str) -> LoadResult {
-    let body = match self.api_request(vec![
-      ("type", "GETartistprofile"),
-      ("artistId", id),
-      ("web2", "true"),
-      ("language", "en"),
-      ("output", "json"),
-    ]).await {
+    let body = match self
+      .api_request(vec![
+        ("type", "GETartistprofile"),
+        ("artistId", id),
+        ("web2", "true"),
+        ("language", "en"),
+        ("output", "json"),
+      ])
+      .await
+    {
       Some(b) => b,
       None => return LoadResult::Empty {},
     };
 
     let tracks: Vec<Track> = if let Some(sections) = body["sections"].as_array() {
-      sections.iter()
+      sections
+        .iter()
         .find(|s| s["group"].as_str() == Some("songs") || s["type"].as_str() == Some("song"))
         .and_then(|s| s["data"].as_array())
         .map(|data| data.iter().filter_map(|s| self.parse_track(s)).collect())
         .unwrap_or_default()
     } else {
-      body["data"].as_array()
+      body["data"]
+        .as_array()
         .map(|data| data.iter().filter_map(|s| self.parse_track(s)).collect())
         .unwrap_or_default()
     };
 
-    if tracks.is_empty() { return LoadResult::Empty {}; }
+    if tracks.is_empty() {
+      return LoadResult::Empty {};
+    }
 
-    let name = body["name"].as_str()
+    let name = body["name"]
+      .as_str()
       .or_else(|| body["title"].as_str())
       .unwrap_or("Unknown Artist")
       .to_string();
@@ -469,7 +584,10 @@ impl SourcePlugin for AnghamiSource {
   }
 
   fn can_handle(&self, identifier: &str) -> bool {
-    self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+    self
+      .search_prefixes
+      .iter()
+      .any(|p| identifier.starts_with(p))
       || self.url_regex.is_match(identifier)
   }
 
@@ -482,7 +600,11 @@ impl SourcePlugin for AnghamiSource {
     identifier: &str,
     _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
   ) -> LoadResult {
-    if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+    if let Some(prefix) = self
+      .search_prefixes
+      .iter()
+      .find(|p| identifier.starts_with(*p))
+    {
       return self.get_search(&identifier[prefix.len()..]).await;
     }
 

@@ -1,7 +1,4 @@
-use std::{
-  num::NonZeroU64,
-  sync::{Arc, atomic::Ordering::Relaxed},
-};
+use std::sync::{Arc, atomic::Ordering::Relaxed};
 
 use axum::{
   extract::{
@@ -47,8 +44,8 @@ pub async fn websocket_handler(
     .get("user-id")
     .and_then(|h| h.to_str().ok())
     .and_then(|s| s.parse::<u64>().ok())
-    .and_then(NonZeroU64::new)
-    .map(UserId::from);
+    .and_then(std::num::NonZeroU64::new)
+    .map(|n| UserId(n.get()));
 
   let user_id = match user_id {
     Some(uid) => uid,
@@ -67,7 +64,7 @@ pub async fn websocket_handler(
   let client_session_id = headers
     .get("session-id")
     .and_then(|h| h.to_str().ok())
-    .map(String::from);
+    .map(|s| SessionId(s.to_string()));
 
   let resuming = if let Some(ref sid) = client_session_id {
     state.resumable_sessions.contains_key(sid)
@@ -112,14 +109,14 @@ pub async fn handle_socket(
       (existing, true)
     } else {
       // Session ID provided but not found -> New Session
-      let session_id = uuid::Uuid::new_v4().to_string();
+      let session_id = SessionId(uuid::Uuid::new_v4().to_string());
       let session = create_session(session_id.clone(), Some(user_id), tx.clone());
       state.sessions.insert(session_id, session.clone());
       (session, false)
     }
   } else {
     // No Session ID provided -> New Session
-    let session_id = uuid::Uuid::new_v4().to_string();
+    let session_id = SessionId(uuid::Uuid::new_v4().to_string());
     let session = create_session(session_id.clone(), Some(user_id), tx.clone());
     state.sessions.insert(session_id, session.clone());
     (session, false)

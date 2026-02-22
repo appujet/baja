@@ -15,7 +15,10 @@ use crate::{
 
 /// PATCH /v4/sessions/{sessionId}/players/{guildId}
 pub async fn update_player(
-  Path((session_id, guild_id)): Path<(String, String)>,
+  Path((session_id, guild_id)): Path<(
+    crate::common::types::SessionId,
+    crate::common::types::GuildId,
+  )>,
   Query(params): Query<std::collections::HashMap<String, String>>,
   State(state): State<Arc<AppState>>,
   Json(body): Json<PlayerUpdate>,
@@ -107,9 +110,11 @@ pub async fn update_player(
     }
   }
 
-  // end_time is passed into start_playback below; mid-play update handled separately
-  let requested_end_time: Option<u64> = body.end_time.flatten();
-  // Also update end_time on existing player if no track change incoming (handled after track logic)
+  // end_time is passed into start_playback below
+  let end_time_val = match body.end_time {
+    Some(crate::player::state::EndTime::Set(val)) => Some(val),
+    _ => None,
+  };
 
   // Apply filters
   if let Some(filters) = body.filters {
@@ -233,7 +238,7 @@ pub async fn update_player(
 
     if let Some(encoded) = track_update.encoded {
       match encoded {
-        None => {
+        crate::player::state::TrackEncoded::Clear => {
           // encoded: null → stop the player
           let track_data = player.track.clone();
           if let Some(handle) = &player.track_handle {
@@ -277,7 +282,7 @@ pub async fn update_player(
             session.send_message(&end_event).await;
           }
         }
-        Some(track_data) => {
+        crate::player::state::TrackEncoded::Set(track_data) => {
           let is_playing = if let Some(handle) = &player.track_handle {
             handle.get_state() == crate::audio::playback::handle::PlaybackState::Playing
           } else {
@@ -293,7 +298,7 @@ pub async fn update_player(
               state.routeplanner.clone(),
               state.config.server.player_update_interval,
               track_update.user_data.clone(),
-              requested_end_time,
+              end_time_val,
             )
             .await;
           }
@@ -315,17 +320,20 @@ pub async fn update_player(
           state.routeplanner.clone(),
           state.config.server.player_update_interval,
           track_update.user_data.clone(),
-          requested_end_time,
+          end_time_val,
         )
         .await;
       }
     }
   }
 
-  // If no track was changed but endTime was provided, update it on the active player
+  // If no track was changed but endTime was provided (even null), update it on the active player
   if no_track_change {
-    if let Some(et) = requested_end_time {
-      player.end_time = Some(et);
+    if let Some(et) = body.end_time {
+      player.end_time = match et {
+        crate::player::state::EndTime::Clear => None,
+        crate::player::state::EndTime::Set(val) => Some(val),
+      };
     }
   }
 
@@ -339,7 +347,7 @@ pub async fn update_player(
 
 /// PATCH /v4/sessions/{sessionId}
 pub async fn update_session(
-  Path(session_id): Path<String>,
+  Path(session_id): Path<crate::common::types::SessionId>,
   State(state): State<Arc<AppState>>,
   Json(body): Json<api::SessionUpdate>,
 ) -> impl IntoResponse {

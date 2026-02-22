@@ -10,7 +10,10 @@ use crate::{api, server::AppState};
 
 /// DELETE /v4/sessions/{sessionId}/players/{guildId}
 pub async fn destroy_player(
-  Path((session_id, guild_id)): Path<(String, String)>,
+  Path((session_id, guild_id)): Path<(
+    crate::common::types::SessionId,
+    crate::common::types::GuildId,
+  )>,
   State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
   tracing::debug!("Destroy player: session={} guild={}", session_id, guild_id);

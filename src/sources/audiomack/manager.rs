@@ -27,7 +27,7 @@ pub struct AudiomackSource {
 }
 
 impl AudiomackSource {
-  pub fn new(config: Option<crate::configs::AudiomackConfig>) -> Self {
+  pub fn new(config: Option<crate::configs::AudiomackConfig>) -> Result<Self, String> {
     let mut headers = HeaderMap::new();
 
     headers.insert(
@@ -50,10 +50,9 @@ impl AudiomackSource {
     let search_limit = config.map(|c| c.search_limit).unwrap_or(20);
 
     let client_builder = reqwest::Client::builder().default_headers(headers);
+    let client = client_builder.build().map_err(|e| e.to_string())?;
 
-    let client = client_builder.build().unwrap();
-
-    Self {
+    Ok(Self {
       client,
       song_regex: Regex::new(
         r"https?://(?:www\.)?audiomack\.com/(?P<artist>[^/]+)/song/(?P<slug>[^/?#]+)",
@@ -75,7 +74,7 @@ impl AudiomackSource {
         .unwrap(),
       search_prefixes: vec!["amksearch:".to_string()],
       search_limit,
-    }
+    })
   }
 
   fn generate_nonce(&self) -> String {

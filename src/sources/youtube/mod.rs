@@ -131,6 +131,13 @@ impl YouTubeSource {
       resolve_clients.push(Arc::new(WebClient::new()));
     }
 
+    tracing::info!(
+      "YouTube source initialized with {} search, {} playback, and {} resolve clients.",
+      search_clients.len(),
+      playback_clients.len(),
+      resolve_clients.len()
+    );
+
     Self {
       search_prefixes: vec!["ytsearch:".to_string(), "ytmsearch:".to_string()],
       rec_prefixes: vec!["ytrec:".to_string()],

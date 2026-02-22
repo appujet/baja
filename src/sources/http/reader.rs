@@ -17,7 +17,7 @@ impl HttpReader {
     local_addr: Option<std::net::IpAddr>,
     proxy: Option<crate::configs::HttpProxyConfig>,
   ) -> AnyResult<Self> {
-    let user_agent = crate::common::http::HttpClient::default_user_agent();
+    let user_agent = crate::common::http::default_user_agent();
 
     let client = create_client(user_agent, local_addr, proxy, None)?;
     let inner = BaseRemoteReader::new(client, url)?;

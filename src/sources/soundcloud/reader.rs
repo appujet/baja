@@ -105,8 +105,9 @@ impl SoundCloudHlsReader {
     local_addr: Option<std::net::IpAddr>,
     proxy: Option<HttpProxyConfig>,
   ) -> AnyResult<Self> {
+    let handle = tokio::runtime::Handle::current();
     let client = create_client(USER_AGENT.to_string(), local_addr, proxy, None)?;
-    let (segment_urls, _map_url) = resolve_playlist(&client, manifest_url)?;
+    let (segment_urls, _map_url) = handle.block_on(resolve_playlist(&client, manifest_url))?;
     if segment_urls.is_empty() {
       return Err("SoundCloud HLS: playlist contained no segments".into());
     }
@@ -127,7 +128,7 @@ impl SoundCloudHlsReader {
     let first_batch: Vec<Resource> = pending.drain(..first_batch_count).collect();
 
     for res in &first_batch {
-      let _ = fetch_and_demux_into(&client, res, &mut initial_buf);
+      let _ = handle.block_on(fetch_and_demux_into(&client, res, &mut initial_buf));
     }
 
     debug!(
@@ -152,10 +153,11 @@ impl SoundCloudHlsReader {
     let bg_client = client;
     let bg_all = all_segments.clone();
 
+    let handle_clone = handle.clone();
     let bg_thread = thread::Builder::new()
       .name("sc-hls-prefetch".into())
       .spawn(move || {
-        prefetch_loop(shared_bg, bg_client, bg_all);
+        prefetch_loop(shared_bg, bg_client, bg_all, handle_clone);
       })?;
 
     Ok(Self {
@@ -224,7 +226,7 @@ impl SoundCloudHlsReader {
     // Signal prefetcher
     {
       let (lock, cvar) = &*self.shared;
-      let mut state = lock.lock().unwrap();
+      let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
       state.command = PrefetchCommand::Seek(target_index);
       state.need_data = true;
       state.seek_done = false;
@@ -281,7 +283,7 @@ impl Read for SoundCloudHlsReader {
     }
 
     let (lock, cvar) = &*self.shared;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
 
     if !state.need_data && state.next_buf.is_empty() && !state.eos {
       state.need_data = true;
@@ -344,7 +346,7 @@ impl MediaSource for SoundCloudHlsReader {
 impl Drop for SoundCloudHlsReader {
   fn drop(&mut self) {
     let (lock, cvar) = &*self.shared;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
     state.command = PrefetchCommand::Stop;
     state.need_data = true;
     cvar.notify_one();
@@ -356,13 +358,14 @@ impl Drop for SoundCloudHlsReader {
 
 fn prefetch_loop(
   shared: Arc<(Mutex<SharedState>, Condvar)>,
-  client: reqwest::blocking::Client,
+  client: reqwest::Client,
   all_segments: Vec<Resource>,
+  handle: tokio::runtime::Handle,
 ) {
   let (lock, cvar) = &*shared;
 
   loop {
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
     while !state.need_data {
       state = cvar.wait(state).unwrap();
     }
@@ -385,14 +388,14 @@ fn prefetch_loop(
             "SoundCloud HLS prefetcher: fetching seek target segment {}",
             target_index
           );
-          let _ = fetch_and_demux_into(&client, res, &mut tmp_buf);
+          let _ = handle.block_on(fetch_and_demux_into(&client, res, &mut tmp_buf));
         }
         debug!(
           "SoundCloud HLS prefetcher: seek target fetched ({} bytes)",
           tmp_buf.len()
         );
 
-        let mut state = lock.lock().unwrap();
+        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
         state.next_buf.extend_from_slice(&tmp_buf);
         state.current_segment_index += batch.len();
         state.need_data = false;
@@ -419,15 +422,15 @@ fn prefetch_loop(
     let mut tmp_buf = Vec::with_capacity(256 * 1024);
     for res in &batch {
       {
-        let s = lock.lock().unwrap();
+        let s = lock.lock().unwrap_or_else(|e| e.into_inner());
         if !matches!(s.command, PrefetchCommand::Continue) {
           break;
         }
       }
-      let _ = fetch_and_demux_into(&client, res, &mut tmp_buf);
+      let _ = handle.block_on(fetch_and_demux_into(&client, res, &mut tmp_buf));
     }
 
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
     if !matches!(state.command, PrefetchCommand::Continue) {
       // Re-enter the loop to immediately handle the new command (e.g. Seek)
       // without resetting need_data to false, which would cause a deadlock
@@ -442,13 +445,13 @@ fn prefetch_loop(
   }
 }
 
-fn fetch_and_demux_into(
-  client: &reqwest::blocking::Client,
+async fn fetch_and_demux_into(
+  client: &reqwest::Client,
   res: &Resource,
   out: &mut Vec<u8>,
 ) -> AnyResult<()> {
   let mut raw = Vec::new();
-  fetch_segment_into(client, res, &mut raw)?;
+  fetch_segment_into(client, res, &mut raw).await?;
 
   // If segment is MPEG-TS (starts with sync byte 0x47), demux to ADTS/MP3
   if raw.first() == Some(&0x47) {

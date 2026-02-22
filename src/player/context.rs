@@ -12,10 +12,11 @@ use crate::{
 };
 
 pub struct PlayerContext {
-  pub guild_id: String,
+  pub guild_id: crate::common::types::GuildId,
   pub volume: i32,
   pub paused: bool,
   pub track: Option<String>,
+  pub track_info: Option<crate::api::tracks::Track>,
   pub track_handle: Option<TrackHandle>,
   pub position: u64,
   pub voice: VoiceConnectionState,
@@ -33,12 +34,13 @@ pub struct PlayerContext {
 }
 
 impl PlayerContext {
-  pub fn new(guild_id: String) -> Self {
+  pub fn new(guild_id: crate::common::types::GuildId) -> Self {
     Self {
       guild_id,
       volume: 100,
       paused: false,
       track: None,
+      track_info: None,
       track_handle: None,
       position: 0,
       voice: VoiceConnectionState::default(),
@@ -57,11 +59,7 @@ impl PlayerContext {
   }
 
   pub fn to_player_response(&self) -> Player {
-    let track = if let Some(t) = &self.track {
-      crate::api::tracks::Track::decode(t)
-    } else {
-      None
-    };
+    let track = self.track_info.clone();
 
     Player {
       guild_id: self.guild_id.clone(),

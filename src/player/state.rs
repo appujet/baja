@@ -6,7 +6,7 @@ use crate::api::tracks::Track;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Player {
-  pub guild_id: String,
+  pub guild_id: crate::common::types::GuildId,
   pub track: Option<Track>,
   pub volume: i32,
   pub paused: bool,
@@ -53,12 +53,25 @@ pub struct VoiceConnectionState {
   pub channel_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum EndTime {
+  Clear,    // JSON: null
+  Set(u64), // JSON: number
+}
+
+impl Default for EndTime {
+  fn default() -> Self {
+    Self::Clear
+  }
+}
+
 /// Request body for PATCH /v4/sessions/{sessionId}/players/{guildId}.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerUpdate {
   #[serde(default)]
-  pub encoded_track: Option<Option<String>>,
+  pub encoded_track: Option<TrackEncoded>,
   #[serde(default)]
   pub identifier: Option<String>,
   #[serde(default)]
@@ -66,7 +79,7 @@ pub struct PlayerUpdate {
   #[serde(default)]
   pub position: Option<u64>,
   #[serde(default)]
-  pub end_time: Option<Option<u64>>,
+  pub end_time: Option<EndTime>,
   #[serde(default)]
   pub volume: Option<i32>,
   #[serde(default)]
@@ -82,17 +95,21 @@ pub struct PlayerUpdate {
 #[serde(rename_all = "camelCase")]
 pub struct PlayerUpdateTrack {
   /// Base64-encoded track. Null to stop. Omit to keep current.
-  #[serde(
-    default,
-    deserialize_with = "crate::api::deserialize_optional_optional"
-  )]
-  pub encoded: Option<Option<String>>,
+  #[serde(default)]
+  pub encoded: Option<TrackEncoded>,
   /// Track identifier to resolve. Mutually exclusive with `encoded`.
   #[serde(default)]
   pub identifier: Option<String>,
   /// User data to attach to the track.
   #[serde(default)]
   pub user_data: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum TrackEncoded {
+  Clear,       // JSON: null
+  Set(String), // JSON: string
 }
 
 macro_rules! define_filters {

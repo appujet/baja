@@ -36,9 +36,10 @@ pub struct BaseRemoteReader {
 }
 
 impl BaseRemoteReader {
-  pub fn new(client: reqwest::blocking::Client, url: &str) -> AnyResult<Self> {
+  pub fn new(client: reqwest::Client, url: &str) -> AnyResult<Self> {
+    let handle = tokio::runtime::Handle::current();
     // Request just the first byte to get headers and total length safely and instantly.
-    let response = Self::fetch_stream(&client, url, 0, Some(1))?;
+    let response = handle.block_on(Self::fetch_stream(&client, url, 0, Some(1)))?;
 
     let content_range_len = response
       .headers()
@@ -70,10 +71,20 @@ impl BaseRemoteReader {
     let shared_clone = shared.clone();
     let url_clone = url.to_string();
 
+    let handle = tokio::runtime::Handle::current();
+    let handle_clone = handle.clone();
     thread::Builder::new()
       .name("remote-prefetch".to_string())
       .spawn(move || {
-        prefetch_loop(shared_clone, client, url_clone, 0, Some(response), len);
+        prefetch_loop(
+          shared_clone,
+          client,
+          url_clone,
+          0,
+          Some(response),
+          len,
+          handle_clone,
+        );
       })?;
 
     Ok(Self {
@@ -87,12 +98,12 @@ impl BaseRemoteReader {
   }
 
   /// Internal helper to perform a Range request.
-  fn fetch_stream(
-    client: &reqwest::blocking::Client,
+  async fn fetch_stream(
+    client: &reqwest::Client,
     url: &str,
     offset: u64,
     limit: Option<u64>,
-  ) -> AnyResult<reqwest::blocking::Response> {
+  ) -> AnyResult<reqwest::Response> {
     let mut req = client
       .get(url)
       .header("Accept", "*/*")
@@ -105,7 +116,7 @@ impl BaseRemoteReader {
     };
     req = req.header("Range", range);
 
-    let res = req.send()?;
+    let res = req.send().await?;
     if !res.status().is_success() {
       return Err(format!("Stream fetch failed ({}): {}", res.status(), url).into());
     }
@@ -122,8 +133,8 @@ pub fn create_client(
   local_addr: Option<std::net::IpAddr>,
   proxy: Option<crate::configs::HttpProxyConfig>,
   headers: Option<reqwest::header::HeaderMap>,
-) -> AnyResult<reqwest::blocking::Client> {
-  let mut builder = reqwest::blocking::Client::builder()
+) -> AnyResult<reqwest::Client> {
+  let mut builder = reqwest::Client::builder()
     .user_agent(user_agent)
     .timeout(std::time::Duration::from_secs(15));
   if let Some(headers) = headers {
@@ -149,21 +160,20 @@ pub fn create_client(
 
 fn prefetch_loop(
   shared: Arc<(Mutex<SharedState>, Condvar)>,
-  client: reqwest::blocking::Client,
+  client: reqwest::Client,
   url: String,
   mut current_pos: u64,
-  mut current_response: Option<reqwest::blocking::Response>,
+  mut current_response: Option<reqwest::Response>,
   total_len: Option<u64>,
+  handle: tokio::runtime::Handle,
 ) {
-  let mut chunk = vec![0u8; 512 * 1024];
-
   loop {
     let mut target_seek = None;
 
     // 1. Check commands
     {
       let (lock, cvar) = &*shared;
-      let mut state = lock.lock().unwrap();
+      let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
 
       match std::mem::replace(&mut state.command, PrefetchCommand::Continue) {
         PrefetchCommand::Seek(pos) => {
@@ -210,15 +220,34 @@ fn prefetch_loop(
           "BaseRemoteReader prefetch thread socket-skipping {} bytes",
           forward_jump
         );
-        let mut discard = std::io::sink();
         let mut res = current_response.take().unwrap();
+        let mut leftovers = Vec::new();
 
-        if let Ok(copied) = std::io::copy(&mut (&mut res).take(forward_jump), &mut discard) {
-          if copied == forward_jump {
-            current_pos = pos;
-            current_response = Some(res); // Keep it alive
-          } else {
-            current_response = None; // Failed to skip, force reconnect
+        let res_result = handle.block_on(async {
+          let mut skipped = 0;
+          while skipped < forward_jump {
+            match res.chunk().await {
+              Ok(Some(c)) => {
+                let take = (forward_jump - skipped).min(c.len() as u64);
+                skipped += take;
+                if take < c.len() as u64 {
+                  leftovers.extend_from_slice(&c[take as usize..]);
+                }
+              }
+              _ => return Err(()),
+            }
+          }
+          Ok(res)
+        });
+
+        if let Ok(fixed_res) = res_result {
+          current_pos = pos;
+          current_response = Some(fixed_res);
+          if !leftovers.is_empty() {
+            let (lock, cvar) = &*shared;
+            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+            state.next_buf.extend_from_slice(&leftovers);
+            cvar.notify_all();
           }
         } else {
           current_response = None;
@@ -233,7 +262,12 @@ fn prefetch_loop(
     if current_response.is_none() {
       // Request in 5MB chunks to avoid YouTube throttling giant streams
       let chunk_limit = 5 * 1024 * 1024;
-      match BaseRemoteReader::fetch_stream(&client, &url, current_pos, Some(chunk_limit)) {
+      match handle.block_on(BaseRemoteReader::fetch_stream(
+        &client,
+        &url,
+        current_pos,
+        Some(chunk_limit),
+      )) {
         Ok(res) => current_response = Some(res),
         Err(e) => {
           warn!("BaseRemoteReader prefetch fetch failed: {}", e);
@@ -243,13 +277,31 @@ fn prefetch_loop(
       }
     }
 
-    // 3. Read up to Chunk size
-    let mut read_bytes = 0;
+    // 3. Read chunk
     if let Some(res) = &mut current_response {
-      match res.read(&mut chunk) {
-        Ok(0) => {
+      let res_data = handle.block_on(res.chunk());
+
+      match res_data {
+        Ok(Some(bytes)) => {
+          let n = bytes.len();
           let (lock, cvar) = &*shared;
-          let mut state = lock.lock().unwrap();
+          let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+
+          // If interrupted by a seek, drop this batch
+          if matches!(state.command, PrefetchCommand::Continue) {
+            state.next_buf.extend_from_slice(&bytes);
+            current_pos += n as u64;
+
+            // Pause fetching if we have 8MB buffered ahead
+            if state.next_buf.len() >= 8 * 1024 * 1024 {
+              state.need_data = false;
+            }
+            cvar.notify_all();
+          }
+        }
+        Ok(None) => {
+          let (lock, cvar) = &*shared;
+          let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
 
           let is_eof = if let Some(l) = total_len {
             current_pos >= l
@@ -272,10 +324,6 @@ fn prefetch_loop(
           }
           continue;
         }
-        Ok(n) => {
-          read_bytes = n;
-          current_pos += n as u64;
-        }
         Err(e) => {
           warn!("BaseRemoteReader prefetch read failed: {}", e);
           current_response = None;
@@ -283,25 +331,6 @@ fn prefetch_loop(
           continue;
         }
       }
-    }
-
-    // 4. Push to shared buffer
-    if read_bytes > 0 {
-      let (lock, cvar) = &*shared;
-      let mut state = lock.lock().unwrap();
-
-      // If interrupted by a seek, drop this batch
-      if !matches!(state.command, PrefetchCommand::Continue) {
-        continue;
-      }
-
-      state.next_buf.extend_from_slice(&chunk[..read_bytes]);
-
-      // Pause fetching if we have 8MB buffered ahead
-      if state.next_buf.len() >= 8 * 1024 * 1024 {
-        state.need_data = false;
-      }
-      cvar.notify_all();
     }
   }
 }
@@ -319,7 +348,7 @@ impl Read for BaseRemoteReader {
 
     // Active buffer exhausted — pull from background thread
     let (lock, cvar) = &*self.shared;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
 
     state.need_data = true;
     cvar.notify_one();
@@ -366,7 +395,7 @@ impl Seek for BaseRemoteReader {
       };
 
       let (lock, cvar) = &*self.shared;
-      let mut state = lock.lock().unwrap();
+      let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
 
       let buf_remaining = self.buf.len() as u64 - self.buf_pos as u64;
       let next_buf_remaining = state.next_buf.len() as u64;
@@ -422,7 +451,7 @@ impl MediaSource for BaseRemoteReader {
 impl Drop for BaseRemoteReader {
   fn drop(&mut self) {
     let (lock, cvar) = &*self.shared;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
     state.command = PrefetchCommand::Stop;
     state.need_data = true;
     cvar.notify_all();

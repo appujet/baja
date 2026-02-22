@@ -73,8 +73,8 @@ impl BalancingIpRoutePlanner {
   }
 
   fn next_ip(&self) -> IpAddr {
-    let mut b_idx = self.block_index.lock().unwrap();
-    let mut indices = self.ip_indices.lock().unwrap();
+    let mut b_idx = self.block_index.lock().unwrap_or_else(|e| e.into_inner());
+    let mut indices = self.ip_indices.lock().unwrap_or_else(|e| e.into_inner());
 
     // Pick current block
     let block_idx = *b_idx % self.parsed_blocks.len();
@@ -137,7 +137,10 @@ impl BalancingIpRoutePlanner {
       let ip = self.next_ip();
       let ip_str = ip.to_string();
       let is_failing = {
-        let mut failing = self.failing_addresses.lock().unwrap();
+        let mut failing = self
+          .failing_addresses
+          .lock()
+          .unwrap_or_else(|e| e.into_inner());
         if let Some(&timestamp) = failing.get(&ip_str) {
           let now = crate::server::app_state::now_ms();
           if now > timestamp + 604800000 {
@@ -161,7 +164,10 @@ impl BalancingIpRoutePlanner {
 #[async_trait]
 impl RoutePlanner for BalancingIpRoutePlanner {
   fn get_status(&self) -> RoutePlannerStatus {
-    let failing = self.failing_addresses.lock().unwrap();
+    let failing = self
+      .failing_addresses
+      .lock()
+      .unwrap_or_else(|e| e.into_inner());
     let failing_vec: Vec<FailingAddress> = failing
       .iter()
       .map(|(addr, ts)| FailingAddress {
@@ -173,7 +179,7 @@ impl RoutePlanner for BalancingIpRoutePlanner {
 
     // If only 1 block, return Rotating details for compatibility
     if self.ip_blocks.len() == 1 {
-      let index = self.ip_indices.lock().unwrap()[0];
+      let index = self.ip_indices.lock().unwrap_or_else(|e| e.into_inner())[0];
       let block = &self.parsed_blocks[0];
       let current_ip = match block {
         IpNet::V4(net) => {
@@ -206,11 +212,19 @@ impl RoutePlanner for BalancingIpRoutePlanner {
   }
 
   fn free_address(&self, address: &str) {
-    self.failing_addresses.lock().unwrap().remove(address);
+    self
+      .failing_addresses
+      .lock()
+      .unwrap_or_else(|e| e.into_inner())
+      .remove(address);
   }
 
   fn free_all_addresses(&self) {
-    self.failing_addresses.lock().unwrap().clear();
+    self
+      .failing_addresses
+      .lock()
+      .unwrap_or_else(|e| e.into_inner())
+      .clear();
   }
 
   fn mark_failed(&self, address: &str) {
@@ -218,7 +232,7 @@ impl RoutePlanner for BalancingIpRoutePlanner {
     self
       .failing_addresses
       .lock()
-      .unwrap()
+      .unwrap_or_else(|e| e.into_inner())
       .insert(address.to_string(), now);
   }
 

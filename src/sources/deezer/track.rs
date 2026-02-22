@@ -23,11 +23,11 @@ impl PlayableTrack for DeezerTrack {
   fn start_decoding(
     &self,
   ) -> (
-    Receiver<i16>,
+    Receiver<Vec<i16>>,
     Sender<DecoderCommand>,
     flume::Receiver<String>,
   ) {
-    let (tx, rx) = flume::bounded::<i16>(4096 * 4);
+    let (tx, rx) = flume::bounded::<Vec<i16>>(64);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
     let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -38,13 +38,13 @@ impl PlayableTrack for DeezerTrack {
     let local_addr = self.local_addr;
     let proxy = self.proxy.clone();
 
+    let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
-      let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
+      // Clone for use after block_on (async move consumes track_id)
+      let track_id_for_log = track_id.clone();
 
-      let playback_url = runtime.block_on(async {
+      let playback_url = handle.block_on(async move {
+
                 let mut retry_count = 0;
                 let max_retries = 3;
 
@@ -193,7 +193,7 @@ impl PlayableTrack for DeezerTrack {
       } else {
         error!(
           "DeezerTrack: Failed to resolve playback URL for {}",
-          track_id
+          track_id_for_log
         );
       }
     });

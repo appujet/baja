@@ -25,7 +25,7 @@ impl PlayableTrack for JioSaavnTrack {
   fn start_decoding(
     &self,
   ) -> (
-    Receiver<i16>,
+    Receiver<Vec<i16>>,
     Sender<DecoderCommand>,
     flume::Receiver<String>,
   ) {
@@ -37,7 +37,7 @@ impl PlayableTrack for JioSaavnTrack {
       playback_url = playback_url.replace("_96.mp4", "_320.mp4");
     }
 
-    let (tx, rx) = flume::bounded::<i16>(4096 * 4);
+    let (tx, rx) = flume::bounded::<Vec<i16>>(64);
     let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
     let (err_tx, err_rx) = flume::bounded::<String>(1);
 

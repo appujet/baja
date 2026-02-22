@@ -13,7 +13,7 @@ use crate::{
 
 /// GET /v4/sessions/{sessionId}/players
 pub async fn get_players(
-  Path(session_id): Path<String>,
+  Path(session_id): Path<crate::common::types::SessionId>,
   State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
   tracing::info!("GET /v4/sessions/{}/players", session_id);
@@ -42,7 +42,10 @@ pub async fn get_players(
 
 /// GET /v4/sessions/{sessionId}/players/{guildId}
 pub async fn get_player(
-  Path((session_id, guild_id)): Path<(String, String)>,
+  Path((session_id, guild_id)): Path<(
+    crate::common::types::SessionId,
+    crate::common::types::GuildId,
+  )>,
   State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
   tracing::info!("GET /v4/sessions/{}/players/{}", session_id, guild_id);

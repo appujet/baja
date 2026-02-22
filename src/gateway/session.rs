@@ -1,6 +1,6 @@
 use std::{
   collections::HashSet,
-  net::{SocketAddr, UdpSocket},
+  net::SocketAddr,
   sync::{
     Arc,
     atomic::{AtomicI64, Ordering},
@@ -10,7 +10,7 @@ use std::{
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::{net::UdpSocket as TokioUdpSocket, sync::Mutex};
+use tokio::sync::Mutex;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -32,19 +32,31 @@ fn is_reconnectable_close(code: u16) -> bool {
   matches!(code, 1006 | 4015 | 4009)
 }
 
+/// Close codes that require a fresh Identify (Op 0) instead of Resume (Op 7).
+fn is_reidentify_close(code: u16) -> bool {
+  matches!(code, 4006)
+}
+
+/// Close codes that mean the session is dead and shouldn't be retried.
+fn is_fatal_close(code: u16) -> bool {
+  matches!(code, 4004 | 4014)
+}
+
 /// Outcome of a single WS session — tells the outer loop what to do next.
 enum SessionOutcome {
   /// Reconnectable disconnect — try Op 7 resume.
   Reconnect,
+  /// Session invalid — start over with fresh Op 0 Identify.
+  Identify,
   /// Fatal close or max errors — stop entirely.
   Shutdown,
 }
 
 pub struct VoiceGateway {
-  guild_id: String,
-  user_id: u64,
-  channel_id: u64,
-  session_id: String,
+  guild_id: crate::common::types::GuildId,
+  user_id: crate::common::types::UserId,
+  channel_id: crate::common::types::ChannelId,
+  session_id: crate::common::types::SessionId,
   token: String,
   endpoint: String,
   mixer: Shared<Mixer>,
@@ -73,10 +85,10 @@ impl Drop for VoiceGateway {
 
 impl VoiceGateway {
   pub fn new(
-    guild_id: String,
-    user_id: u64,
-    channel_id: u64,
-    session_id: String,
+    guild_id: crate::common::types::GuildId,
+    user_id: crate::common::types::UserId,
+    channel_id: crate::common::types::ChannelId,
+    session_id: crate::common::types::SessionId,
     token: String,
     endpoint: String,
     mixer: Shared<Mixer>,
@@ -133,10 +145,23 @@ impl VoiceGateway {
           let backoff = std::time::Duration::from_millis(1000 * 2u64.pow((attempt - 1).min(3)));
           tracing::debug!(
             "Voice gateway reconnecting (attempt {}/{}) in {:?} for guild {}",
-            attempt, MAX_RECONNECT_ATTEMPTS, backoff, self.guild_id
+            attempt,
+            MAX_RECONNECT_ATTEMPTS,
+            backoff,
+            self.guild_id
           );
           tokio::time::sleep(backoff).await;
           is_resume = true;
+        }
+        Ok(SessionOutcome::Identify) => {
+          attempt = 0;
+          is_resume = false;
+          seq_ack.store(-1, Ordering::Relaxed);
+          tracing::debug!(
+            "Voice gateway session invalid; identifying fresh for guild {}",
+            self.guild_id
+          );
+          tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
         Err(e) => {
           // Connection-level errors (e.g. DNS failure, TLS handshake) — retry
@@ -203,7 +228,7 @@ impl VoiceGateway {
             "user_id": self.user_id.to_string(),
             "session_id": self.session_id,
             "token": self.token,
-            "max_dave_protocol_version": if self.channel_id > 0 { 1 } else { 0 },
+            "max_dave_protocol_version": if self.channel_id.0 > 0 { 1 } else { 0 },
         }),
       };
       write
@@ -231,16 +256,18 @@ impl VoiceGateway {
     let mut ssrc = 0;
     let mut udp_addr: Option<SocketAddr> = None;
     let mut selected_mode = "xsalsa20_poly1305".to_string();
-    let mut connected_users = HashSet::<u64>::new();
+    let mut connected_users = HashSet::<crate::common::types::UserId>::new();
     connected_users.insert(self.user_id);
 
-    let udp_socket = UdpSocket::bind("0.0.0.0:0").map_err(map_boxed_err)?;
-    udp_socket.set_nonblocking(true).map_err(map_boxed_err)?;
+    let udp_socket = tokio::net::UdpSocket::bind("0.0.0.0:0")
+      .await
+      .map_err(map_boxed_err)?;
+    let udp_socket = Arc::new(udp_socket);
 
     let dave = Arc::new(Mutex::new(DaveHandler::new(self.user_id, self.channel_id)));
     let tx_hb = tx.clone();
     let mut heartbeat_handle = None;
-    let last_heartbeat = Arc::new(AtomicI64::new(0));
+    let last_heartbeat = Arc::new(Mutex::new(None::<tokio::time::Instant>));
 
     let outcome = loop {
       let msg = match read.next().await {
@@ -318,7 +345,12 @@ impl VoiceGateway {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_millis() as u64;
-                  last_hb_inner.store(now as i64, Ordering::SeqCst);
+
+                  {
+                    let mut lb = last_hb_inner.lock().await;
+                    *lb = Some(tokio::time::Instant::now());
+                  }
+
                   let hb = VoiceGatewayMessage {
                     op: 3,
                     d: serde_json::json!({
@@ -351,7 +383,9 @@ impl VoiceGateway {
               }
               tracing::debug!(
                 "Voice Ready (Op 2). SSRC: {}, UDP: {:?}, Mode: {}",
-                ssrc, udp_addr, selected_mode
+                ssrc,
+                udp_addr,
+                selected_mode
               );
 
               if let Some(addr) = udp_addr {
@@ -396,7 +430,7 @@ impl VoiceGateway {
                 if let Some(addr) = udp_addr {
                   let mixer = self.mixer.clone();
                   let dave_clone = dave.clone();
-                  let socket_clone = udp_socket.try_clone().map_err(map_boxed_err)?;
+                  let socket_clone = udp_socket.clone();
                   let mode_clone = selected_mode.clone();
                   let cancel_clone = self.cancel_token.clone();
 
@@ -444,7 +478,7 @@ impl VoiceGateway {
                 }
               }
 
-              if self.channel_id > 0 {
+              if self.channel_id.0 > 0 {
                 let mut dave_lock = dave.lock().await;
                 match dave_lock.setup_session(1) {
                   Ok(kp) => {
@@ -459,13 +493,9 @@ impl VoiceGateway {
             }
             6 => {
               // Heartbeat ACK — measure ping
-              let sent = last_heartbeat.load(Ordering::SeqCst);
-              if sent > 0 {
-                let now = std::time::SystemTime::now()
-                  .duration_since(std::time::UNIX_EPOCH)
-                  .unwrap()
-                  .as_millis() as i64;
-                let latency = now - sent;
+              let mut hb_lock = last_heartbeat.lock().await;
+              if let Some(sent) = hb_lock.take() {
+                let latency = sent.elapsed().as_millis() as i64;
                 self.ping.store(latency, Ordering::Relaxed);
                 tracing::trace!("Voice heartbeat ACK. Ping: {}ms", latency);
               }
@@ -482,7 +512,7 @@ impl VoiceGateway {
               if let Some(ids) = msg.d["user_ids"].as_array() {
                 for id in ids {
                   if let Some(uid) = id.as_str().and_then(|s| s.parse::<u64>().ok()) {
-                    connected_users.insert(uid);
+                    connected_users.insert(crate::common::types::UserId(uid));
                   }
                 }
               }
@@ -493,7 +523,7 @@ impl VoiceGateway {
                 .as_str()
                 .and_then(|s| s.parse::<u64>().ok())
               {
-                connected_users.remove(&id);
+                connected_users.remove(&crate::common::types::UserId(id));
               }
             }
             21 => {
@@ -698,8 +728,14 @@ impl VoiceGateway {
 
           if is_reconnectable_close(code) {
             break SessionOutcome::Reconnect;
-          } else {
+          } else if is_reidentify_close(code) {
+            break SessionOutcome::Identify;
+          } else if is_fatal_close(code) {
+            tracing::error!("Voice gateway fatal close: {}", code);
             break SessionOutcome::Shutdown;
+          } else {
+            // Default to reconnect for safety on unknown codes
+            break SessionOutcome::Reconnect;
           }
         }
         _ => {}
@@ -721,7 +757,7 @@ impl VoiceGateway {
 
   async fn discover_ip(
     &self,
-    socket: &UdpSocket,
+    socket: &tokio::net::UdpSocket,
     addr: SocketAddr,
     ssrc: u32,
   ) -> AnyResult<(String, u16)> {
@@ -730,14 +766,11 @@ impl VoiceGateway {
     packet[2..4].copy_from_slice(&70u16.to_be_bytes());
     packet[4..8].copy_from_slice(&ssrc.to_be_bytes());
 
-    socket.send_to(&packet, addr).map_err(map_boxed_err)?;
+    socket.send_to(&packet, addr).await.map_err(map_boxed_err)?;
 
     let mut buf = [0u8; 74];
-    let tokio_socket = TokioUdpSocket::from_std(socket.try_clone().map_err(map_boxed_err)?)
-      .map_err(map_boxed_err)?;
-
     let timeout = tokio::time::Duration::from_secs(2);
-    match tokio::time::timeout(timeout, tokio_socket.recv(&mut buf)).await {
+    match tokio::time::timeout(timeout, socket.recv(&mut buf)).await {
       Ok(Ok(n)) => {
         if n < 74 {
           return Err(map_boxed_err(std::io::Error::new(
@@ -763,7 +796,7 @@ impl VoiceGateway {
 
 async fn speak_loop(
   mixer: Shared<Mixer>,
-  socket: UdpSocket,
+  socket: Arc<tokio::net::UdpSocket>,
   addr: SocketAddr,
   ssrc: u32,
   key: [u8; 32],
@@ -778,8 +811,8 @@ async fn speak_loop(
   let mut encoder = Encoder::new().map_err(map_boxed_err)?;
   let mut udp = UdpBackend::new(socket, addr, ssrc, key, &mode).map_err(map_boxed_err)?;
   let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(20));
-  // Use Burst to catch up if we fall behind, preventing perceived packet loss gaps
-  interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+  // Use Skip to avoid flooding the socket with old packets after a pause (H6).
+  interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
   let mut pcm_buf = vec![0i16; 1920];
   let mut opus_buf = vec![0u8; 4000];
@@ -822,16 +855,19 @@ async fn speak_loop(
                         let size = encoder.encode(&ts_frame_buf, &mut opus_buf).map_err(map_boxed_err)?;
                         drop(fc);
                         if size > 0 {
-                            let mut dave_lock = dave.lock().await;
-                            match dave_lock.encrypt_opus(&opus_buf[..size]) {
-                                Ok(encrypted_opus) => {
-                                    if let Err(e) = udp.send_opus_packet(&encrypted_opus) {
+                            // Encrypt under lock, then drop it immediately before UDP I/O.
+                            // Holding a Mutex across send_opus_packet blocks other guild players.
+                            let encrypted = {
+                                let mut dave_lock = dave.lock().await;
+                                dave_lock.encrypt_opus(&opus_buf[..size])
+                            }; // ← dave lock released here, before any I/O
+                            match encrypted {
+                                Ok(packet) => {
+                                    if let Err(e) = udp.send_opus_packet(&packet).await {
                                         tracing::warn!("Failed to send UDP packet: {}", e);
                                     }
                                 }
-                                Err(e) => {
-                                    tracing::error!("DAVE encryption failed: {}", e);
-                                }
+                                Err(e) => tracing::error!("DAVE encryption failed: {}", e),
                             }
                         }
                     } else {
@@ -845,18 +881,21 @@ async fn speak_loop(
 
             let size = encoder.encode(&pcm_buf, &mut opus_buf).map_err(map_boxed_err)?;
             if size > 0 {
-                let mut dave_lock = dave.lock().await;
-                match dave_lock.encrypt_opus(&opus_buf[..size]) {
-                    Ok(encrypted_opus) => {
-                        if let Err(e) = udp.send_opus_packet(&encrypted_opus) {
+                // Same pattern: encrypt under lock, drop lock, then send.
+                let encrypted = {
+                    let mut dave_lock = dave.lock().await;
+                    dave_lock.encrypt_opus(&opus_buf[..size])
+                }; // ← dave lock released here
+                match encrypted {
+                    Ok(packet) => {
+                        if let Err(e) = udp.send_opus_packet(&packet).await {
                             tracing::warn!("Failed to send UDP packet: {}", e);
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("DAVE encryption failed: {}", e);
-                    }
+                    Err(e) => tracing::error!("DAVE encryption failed: {}", e),
                 }
             }
+
         }
     }
   }

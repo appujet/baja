@@ -15,7 +15,7 @@ serde_json = "^1.0.145"
 byteorder = "^1.5.0"
 regex = "^1.12.2"
 ipnet = "2.11.0"
-rand = "0.8.5"
+rand = "^0.8"
 toml = "1.0.2"
 davey = "0.1.1"
 audiopus = "0.3.0-rc.0"
@@ -32,23 +32,30 @@ cbc = "0.1"
 urlencoding = "2.1.3"
 hmac = "0.12"
 sha1 = "0.10"
+tracing-appender = "0.2"
 
 
 tracing-subscriber = { version = "^0.3.20", features = ["env-filter", "registry"] }
-tracing-appender = "0.2"
-
 serde = { version = "^1.0.145", features = ["derive"] }
 symphonia = { version = "0.5.5", features = ["all"] }
 tokio-tungstenite = { version = "0.26.2", features = ["rustls-tls-native-roots"] }
 tokio-util = { version = "0.7.13", features = ["codec"] }
 rustypipe = { version = "0.11.4", features = ["rustls-tls-native-roots"] }
-uuid = { version = "1.21.0", features = ["v4", "v7", "serde"] }
+uuid = { version = "1.21.0", features = ["v4", "serde"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "stream", "cookies"] }
 tokio = { version = "1.49.0", features = ["tracing", "macros", "signal", "rt-multi-thread"] }
 axum = { version = "0.8.1", features = ["ws"] }
 tower-http = { version = "0.6.2", features = ["trace", "cors"] }
 
 
+
+[profile.dev]
+opt-level = 1        # avoid 0-opt pain in debug builds
+incremental = true
+debug = true
+
+[profile.dev.package."*"]
+opt-level = 3        # fully optimize all dependencies in dev mode
 
 [profile.release]
 lto = "fat"

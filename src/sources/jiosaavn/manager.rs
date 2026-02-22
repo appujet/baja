@@ -30,15 +30,15 @@ pub struct JioSaavnSource {
 }
 
 impl JioSaavnSource {
-  pub fn new(config: Option<crate::configs::JioSaavnConfig>) -> Self {
+  pub fn new(config: Option<crate::configs::JioSaavnConfig>) -> Result<Self, String> {
     let mut headers = HeaderMap::new();
 
     headers.insert(
-            "User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-                .parse()
-                .unwrap(),
-        );
+      "User-Agent",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        .parse()
+        .unwrap(),
+    );
 
     headers.insert("Accept", "application/json".parse().unwrap());
     headers.insert("Accept-Language", "en-US,en;q=0.9".parse().unwrap());
@@ -85,21 +85,21 @@ impl JioSaavnSource {
       }
     }
 
-    let client = client_builder.build().unwrap();
+    let client = client_builder.build().map_err(|e| e.to_string())?;
 
-    Self {
-            client,
-            url_regex: Regex::new(r"https?://(?:www\.)?jiosaavn\.com/(?:(?<type>album|featured|song|s/playlist|artist)/)(?:[^/]+/)(?<id>[A-Za-z0-9_,-]+)").unwrap(),
-            search_prefixes: vec!["jssearch:".to_string()],
-            rec_prefixes: vec!["jsrec:".to_string()],
-            secret_key: secret_key.into_bytes(),
-            proxy,
-            search_limit,
-            recommendations_limit,
-            playlist_load_limit,
-            album_load_limit,
-            artist_load_limit,
-        }
+    Ok(Self {
+      client,
+      url_regex: Regex::new(r"https?://(?:www\.)?jiosaavn\.com/(?:(?<type>album|featured|song|s/playlist|artist)/)(?:[^/]+/)(?<id>[A-Za-z0-9_,-]+)").unwrap(),
+      search_prefixes: vec!["jssearch:".to_string()],
+      rec_prefixes: vec!["jsrec:".to_string()],
+      secret_key: secret_key.into_bytes(),
+      proxy,
+      search_limit,
+      recommendations_limit,
+      playlist_load_limit,
+      album_load_limit,
+      artist_load_limit,
+    })
   }
 
   async fn get_json(&self, params: &[(&str, &str)]) -> Option<Value> {

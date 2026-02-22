@@ -10,8 +10,8 @@ use crate::common::types::{AnyError, AnyResult};
 
 pub struct DaveHandler {
   session: Option<DaveSession>,
-  user_id: u64,
-  channel_id: u64,
+  user_id: crate::common::types::UserId,
+  channel_id: crate::common::types::ChannelId,
   protocol_version: u16,
   pending_transitions: HashMap<u16, u16>,
   external_sender_set: bool,
@@ -27,7 +27,10 @@ fn map_boxed_err<E: std::fmt::Display>(e: E) -> AnyError {
 }
 
 impl DaveHandler {
-  pub fn new(user_id: u64, channel_id: u64) -> Self {
+  pub fn new(
+    user_id: crate::common::types::UserId,
+    channel_id: crate::common::types::ChannelId,
+  ) -> Self {
     Self {
       session: None,
       user_id,
@@ -46,11 +49,12 @@ impl DaveHandler {
 
     if let Some(session) = &mut self.session {
       session
-        .reinit(nz_version, self.user_id, self.channel_id, None)
+        .reinit(nz_version, self.user_id.0, self.channel_id.0, None)
         .map_err(map_boxed_err)?;
     } else {
       self.session = Some(
-        DaveSession::new(nz_version, self.user_id, self.channel_id, None).map_err(map_boxed_err)?,
+        DaveSession::new(nz_version, self.user_id.0, self.channel_id.0, None)
+          .map_err(map_boxed_err)?,
       );
     }
 
@@ -90,8 +94,8 @@ impl DaveHandler {
       // Try to re-init with version 0 (passthrough)
       let _ = session.reinit(
         NonZeroU16::new(1).unwrap(),
-        self.user_id,
-        self.channel_id,
+        self.user_id.0,
+        self.channel_id.0,
         None,
       );
     }
@@ -118,7 +122,7 @@ impl DaveHandler {
   pub fn process_external_sender(
     &mut self,
     data: &[u8],
-    connected_users: &HashSet<u64>,
+    connected_users: &HashSet<crate::common::types::UserId>,
   ) -> AnyResult<Vec<Vec<u8>>> {
     let mut responses = Vec::new();
 
@@ -183,7 +187,7 @@ impl DaveHandler {
   pub fn process_proposals(
     &mut self,
     data: &[u8],
-    connected_users: &HashSet<u64>,
+    connected_users: &HashSet<crate::common::types::UserId>,
   ) -> AnyResult<Option<Vec<u8>>> {
     if data.is_empty() {
       return Err(map_boxed_err(std::io::Error::new(
@@ -214,7 +218,7 @@ impl DaveHandler {
     };
 
     if let Some(session) = &mut self.session {
-      let user_ids: Vec<u64> = connected_users.iter().cloned().collect();
+      let user_ids: Vec<u64> = connected_users.iter().map(|u| u.0).collect();
       let result = session
         .process_proposals(op_type, &data[1..], Some(&user_ids))
         .map_err(map_boxed_err)?;

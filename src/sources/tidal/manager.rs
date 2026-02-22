@@ -32,17 +32,18 @@ pub struct TidalSource {
 }
 
 impl TidalSource {
-  pub fn new(config: Option<crate::configs::TidalConfig>) -> Self {
+  pub fn new(config: Option<crate::configs::TidalConfig>) -> Result<Self, String> {
     let mut headers = HeaderMap::new();
     headers.insert(
       USER_AGENT,
       HeaderValue::from_static("TIDAL/3704 CFNetwork/1220.1 Darwin/20.3.0"),
     );
+    headers.insert("Accept-Language", HeaderValue::from_static("en-US"));
 
     let client = reqwest::Client::builder()
       .default_headers(headers)
       .build()
-      .unwrap();
+      .map_err(|e| e.to_string())?;
 
     let (country, p_limit, a_limit, art_limit, token) = if let Some(c) = config {
       (
@@ -59,17 +60,17 @@ impl TidalSource {
     let token_tracker = Arc::new(TidalTokenTracker::new(client.clone(), token));
     token_tracker.clone().init();
 
-    Self {
-            token_tracker,
-            client,
-            country_code: country,
-            playlist_load_limit: p_limit,
-            album_load_limit: a_limit,
-            artist_load_limit: art_limit,
-            search_prefixes: vec!["tdsearch:".to_string()],
-            rec_prefixes: vec!["tdrec:".to_string()],
-            url_regex: Regex::new(r"https?://(?:(?:listen|www)\.)?tidal\.com/(?:browse/)?(album|track|playlist|mix|artist)/([a-zA-Z0-9\-]+)(?:/.*)?(?:\?.*)?").unwrap(),
-        }
+    Ok(Self {
+      token_tracker,
+      client,
+      country_code: country,
+      playlist_load_limit: p_limit,
+      album_load_limit: a_limit,
+      artist_load_limit: art_limit,
+      search_prefixes: vec!["tdsearch:".to_string()],
+      rec_prefixes: vec!["tdrec:".to_string()],
+      url_regex: Regex::new(r"https?://(?:(?:listen|www)\.)?tidal\.com/(?:browse/)?(album|track|playlist|mix|artist)/([a-zA-Z0-9\-]+)(?:/.*)?(?:\?.*)?").unwrap(),
+    })
   }
 
   async fn api_request(&self, path: &str) -> Option<Value> {

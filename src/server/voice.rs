@@ -2,13 +2,13 @@ use tracing::error;
 
 use crate::{
   audio::filters::FilterChain, common::types::Shared, gateway::VoiceGateway,
-  player::VoiceConnectionState, server::UserId,
+  player::VoiceConnectionState,
 };
 
 pub async fn connect_voice(
   engine: Shared<crate::gateway::VoiceEngine>,
-  guild_id: String,
-  user_id: UserId,
+  guild_id: crate::common::types::GuildId,
+  user_id: crate::common::types::UserId,
   voice: VoiceConnectionState,
   filter_chain: Shared<FilterChain>,
   ping: std::sync::Arc<std::sync::atomic::AtomicI64>,
@@ -22,13 +22,14 @@ pub async fn connect_voice(
     .as_ref()
     .and_then(|id: &String| id.parse::<u64>().ok())
     .unwrap_or_else(|| guild_id.parse::<u64>().unwrap_or(0));
+  let channel_id = crate::common::types::ChannelId(channel_id);
 
   let mixer = engine_lock.mixer.clone();
   let gateway = VoiceGateway::new(
     guild_id,
     user_id,
     channel_id,
-    voice.session_id,
+    voice.session_id.into(),
     voice.token,
     voice.endpoint,
     mixer,

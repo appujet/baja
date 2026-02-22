@@ -19,38 +19,38 @@ use crate::{
 
 /// Validate if the requested filters are allowed by the server configuration.
 /// Returns a list of disabled filter names that were requested.
-pub fn validate_filters(filters: &Filters, config: &FiltersConfig) -> Vec<String> {
+pub fn validate_filters(filters: &Filters, config: &FiltersConfig) -> Vec<&'static str> {
   let mut invalid = Vec::new();
 
   if filters.volume.is_some() && !config.volume {
-    invalid.push("volume".to_string());
+    invalid.push("volume");
   }
   if filters.equalizer.is_some() && !config.equalizer {
-    invalid.push("equalizer".to_string());
+    invalid.push("equalizer");
   }
   if filters.karaoke.is_some() && !config.karaoke {
-    invalid.push("karaoke".to_string());
+    invalid.push("karaoke");
   }
   if filters.timescale.is_some() && !config.timescale {
-    invalid.push("timescale".to_string());
+    invalid.push("timescale");
   }
   if filters.tremolo.is_some() && !config.tremolo {
-    invalid.push("tremolo".to_string());
+    invalid.push("tremolo");
   }
   if filters.vibrato.is_some() && !config.vibrato {
-    invalid.push("vibrato".to_string());
+    invalid.push("vibrato");
   }
   if filters.distortion.is_some() && !config.distortion {
-    invalid.push("distortion".to_string());
+    invalid.push("distortion");
   }
   if filters.rotation.is_some() && !config.rotation {
-    invalid.push("rotation".to_string());
+    invalid.push("rotation");
   }
   if filters.channel_mix.is_some() && !config.channel_mix {
-    invalid.push("channelMix".to_string());
+    invalid.push("channelMix");
   }
   if filters.low_pass.is_some() && !config.low_pass {
-    invalid.push("lowPass".to_string());
+    invalid.push("lowPass");
   }
 
   invalid
@@ -67,9 +67,55 @@ pub trait AudioFilter: Send {
   fn reset(&mut self);
 }
 
+/// Concrete enum of all supported in-place audio filters.
+/// This enables the compiler to inline the `process` calls and avoid vtable
+/// dispatch overhead (H5).
+pub enum ConcreteFilter {
+  Volume(volume::VolumeFilter),
+  Equalizer(equalizer::EqualizerFilter),
+  Karaoke(karaoke::KaraokeFilter),
+  Tremolo(tremolo::TremoloFilter),
+  Vibrato(vibrato::VibratoFilter),
+  Rotation(rotation::RotationFilter),
+  Distortion(distortion::DistortionFilter),
+  ChannelMix(channel_mix::ChannelMixFilter),
+  LowPass(low_pass::LowPassFilter),
+}
+
+impl ConcreteFilter {
+  #[inline(always)]
+  pub fn process(&mut self, samples: &mut [i16]) {
+    match self {
+      Self::Volume(f) => f.process(samples),
+      Self::Equalizer(f) => f.process(samples),
+      Self::Karaoke(f) => f.process(samples),
+      Self::Tremolo(f) => f.process(samples),
+      Self::Vibrato(f) => f.process(samples),
+      Self::Rotation(f) => f.process(samples),
+      Self::Distortion(f) => f.process(samples),
+      Self::ChannelMix(f) => f.process(samples),
+      Self::LowPass(f) => f.process(samples),
+    }
+  }
+
+  pub fn reset(&mut self) {
+    match self {
+      Self::Volume(f) => f.reset(),
+      Self::Equalizer(f) => f.reset(),
+      Self::Karaoke(f) => f.reset(),
+      Self::Tremolo(f) => f.reset(),
+      Self::Vibrato(f) => f.reset(),
+      Self::Rotation(f) => f.reset(),
+      Self::Distortion(f) => f.reset(),
+      Self::ChannelMix(f) => f.reset(),
+      Self::LowPass(f) => f.reset(),
+    }
+  }
+}
+
 /// An ordered chain of audio filters, constructed from Lavalink API `Filters`.
 pub struct FilterChain {
-  filters: Vec<Box<dyn AudioFilter>>,
+  filters: Vec<ConcreteFilter>,
   /// Timescale filter handled separately (changes buffer length).
   timescale: Option<timescale::TimescaleFilter>,
   /// Residual buffer for timescale output (feeds fixed-size 1920-sample frames).
@@ -79,13 +125,13 @@ pub struct FilterChain {
 impl FilterChain {
   /// Build a filter chain from the Lavalink API `Filters` config.
   pub fn from_config(config: &Filters) -> Self {
-    let mut filters: Vec<Box<dyn AudioFilter>> = Vec::new();
+    let mut filters: Vec<ConcreteFilter> = Vec::new();
 
     // Volume (applied first)
     if let Some(vol) = config.volume {
       let f = volume::VolumeFilter::new(vol);
       if f.is_enabled() {
-        filters.push(Box::new(f));
+        filters.push(ConcreteFilter::Volume(f));
       }
     }
 
@@ -94,7 +140,7 @@ impl FilterChain {
       let band_tuples: Vec<(u8, f32)> = bands.iter().map(|b: &EqBand| (b.band, b.gain)).collect();
       let f = equalizer::EqualizerFilter::new(&band_tuples);
       if f.is_enabled() {
-        filters.push(Box::new(f));
+        filters.push(ConcreteFilter::Equalizer(f));
       }
     }
 
@@ -107,7 +153,7 @@ impl FilterChain {
         k.filter_width.unwrap_or(100.0),
       );
       if f.is_enabled() {
-        filters.push(Box::new(f));
+        filters.push(ConcreteFilter::Karaoke(f));
       }
     }
 
@@ -115,7 +161,7 @@ impl FilterChain {
     if let Some(ref t) = config.tremolo {
       let f = tremolo::TremoloFilter::new(t.frequency.unwrap_or(2.0), t.depth.unwrap_or(0.5));
       if f.is_enabled() {
-        filters.push(Box::new(f));
+        filters.push(ConcreteFilter::Tremolo(f));
       }
     }
 
@@ -123,7 +169,7 @@ impl FilterChain {
     if let Some(ref v) = config.vibrato {
       let f = vibrato::VibratoFilter::new(v.frequency.unwrap_or(2.0), v.depth.unwrap_or(0.5));
       if f.is_enabled() {
-        filters.push(Box::new(f));
+        filters.push(ConcreteFilter::Vibrato(f));
       }
     }
 
@@ -131,7 +177,7 @@ impl FilterChain {
     if let Some(ref r) = config.rotation {
       let f = rotation::RotationFilter::new(r.rotation_hz.unwrap_or(0.0));
       if f.is_enabled() {
-        filters.push(Box::new(f));
+        filters.push(ConcreteFilter::Rotation(f));
       }
     }
 
@@ -148,7 +194,7 @@ impl FilterChain {
         d.scale.unwrap_or(1.0),
       );
       if f.is_enabled() {
-        filters.push(Box::new(f));
+        filters.push(ConcreteFilter::Distortion(f));
       }
     }
 
@@ -161,7 +207,7 @@ impl FilterChain {
         cm.right_to_right.unwrap_or(1.0),
       );
       if f.is_enabled() {
-        filters.push(Box::new(f));
+        filters.push(ConcreteFilter::ChannelMix(f));
       }
     }
 
@@ -169,7 +215,7 @@ impl FilterChain {
     if let Some(ref lp) = config.low_pass {
       let f = low_pass::LowPassFilter::new(lp.smoothing.unwrap_or(20.0));
       if f.is_enabled() {
-        filters.push(Box::new(f));
+        filters.push(ConcreteFilter::LowPass(f));
       }
     }
 
@@ -207,6 +253,12 @@ impl FilterChain {
     if let Some(ref mut ts) = self.timescale {
       let resampled = ts.process_resample(samples);
       self.timescale_buffer.extend_from_slice(&resampled);
+
+      const MAX_TS_SAMPLES: usize = 1920 * 64;
+      if self.timescale_buffer.len() > MAX_TS_SAMPLES {
+        let excess = self.timescale_buffer.len() - MAX_TS_SAMPLES;
+        self.timescale_buffer.drain(..excess);
+      }
     }
   }
 
