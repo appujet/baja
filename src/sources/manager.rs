@@ -3,7 +3,7 @@ use std::sync::Arc;
 use super::{
   anghami::AnghamiSource,
   applemusic::AppleMusicSource,
-  audiomack::manager::AudiomackSource,
+  audiomack::AudiomackSource,
   deezer::DeezerSource,
   gaana::GaanaSource,
   http::HttpSource,
