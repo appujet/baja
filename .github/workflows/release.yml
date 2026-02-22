@@ -5,6 +5,15 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual version tag (overrides tag if set)"
+        required: false
+        default: "manual"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -128,7 +137,8 @@ jobs:
           files: output/*
           generate_release_notes: true
           draft: false
-          prerelease: false
+          tag_name: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref_name }}
+          prerelease: ${{ github.event.inputs.version != '' }}
 
   docker:
     name: Build & Push Docker Image
@@ -166,6 +176,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event.inputs.version != '' }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
