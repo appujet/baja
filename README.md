@@ -61,6 +61,14 @@ The following table outlines the current implementation status of various featur
 
 ---
 
+## 📖 Getting Started
+
+Ready to use **rustalink**? Check out our comprehensive setup guide:
+
+👉 **[Setup & Usage Guide (Docker, Windows, Linux, macOS)](./guide.md)**
+
+---
+
 ## 🛠️ Performance
 rustalink is designed to be extremely lightweight, leveraging Rust's zero-cost abstractions and asynchronous runtime (**Tokio**) to handle hundreds of concurrent streams with minimal CPU and memory footprint.
 

@@ -25,6 +25,7 @@ jobs:
     name: Build - ${{ matrix.platform.os_name }}
     runs-on: ${{ matrix.platform.os }}
     strategy:
+      fail-fast: false
       matrix:
         platform:
           - os_name: Linux (x86_64)
@@ -73,11 +74,11 @@ jobs:
 
       - name: Install C dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y cmake autoconf automake libtool make pkg-config musl-tools gcc-aarch64-linux-gnu
+        run: sudo apt-get update && sudo apt-get install -y cmake autoconf automake libtool make pkg-config musl-tools gcc-aarch64-linux-gnu libopus-dev
 
       - name: Install C dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install cmake autoconf automake libtool pkg-config
+        run: brew install cmake autoconf automake libtool pkg-config opus
 
       - name: Install C dependencies (Windows)
         if: runner.os == 'Windows'
@@ -95,10 +96,15 @@ jobs:
 
       - name: Build Binary (Cargo)
         if: steps.check_cross.outputs.use_cross == 'false'
+        env:
+          CMAKE_CONFIGURE_REDIRECT_STDERR: "1"
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         run: cargo build --release --locked --target ${{ matrix.platform.target }}
 
       - name: Build Binary (Cross)
         if: steps.check_cross.outputs.use_cross == 'true'
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         run: cross build --release --locked --target ${{ matrix.platform.target }}
 
       - name: Rename Output
