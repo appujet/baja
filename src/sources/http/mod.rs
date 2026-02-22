@@ -209,7 +209,9 @@ impl PlayableTrack for HttpTrack {
     let url = self.url.clone();
     let local_addr = self.local_addr;
 
+    let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
+      let _guard = handle.enter();
       let reader = match self::reader::HttpReader::new(&url, local_addr, None) {
         Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
         Err(e) => {

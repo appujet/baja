@@ -37,6 +37,7 @@ impl PlayableTrack for QobuzTrack {
 
     let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
+      let _guard = handle.enter();
       handle.block_on(async move {
         let url = match resolve_media_url(&client, &token_tracker, &info.identifier).await {
           Ok(Some(url)) => Some(url),

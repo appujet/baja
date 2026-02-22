@@ -40,6 +40,7 @@ impl PlayableTrack for DeezerTrack {
 
     let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
+      let _guard = handle.enter();
       // Clone for use after block_on (async move consumes track_id)
       let track_id_for_log = track_id.clone();
 

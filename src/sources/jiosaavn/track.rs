@@ -45,7 +45,9 @@ impl PlayableTrack for JioSaavnTrack {
     let local_addr = self.local_addr;
     let proxy = self.proxy.clone();
 
+    let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
+      let _guard = handle.enter();
       let reader = match super::reader::JioSaavnReader::new(&url, local_addr, proxy) {
         Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
         Err(e) => {

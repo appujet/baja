@@ -229,7 +229,9 @@ impl PlayableTrack for LocalTrack {
 
     let path = self.path.clone();
 
+    let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
+      let _guard = handle.enter();
       let source = match LocalFileSource::open(&path) {
         Ok(s) => Box::new(s) as Box<dyn symphonia::core::io::MediaSource>,
         Err(e) => {

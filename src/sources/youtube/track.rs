@@ -47,6 +47,7 @@ impl PlayableTrack for YoutubeTrack {
 
     let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
+      let _guard = handle.enter();
       let context = serde_json::json!({ "visitorData": visitor_data });
       let mut success = false;
 
@@ -143,8 +144,7 @@ impl PlayableTrack for YoutubeTrack {
           Ok(mut processor) => {
             debug!(
               "YoutubeTrack: Playback session started for {} using {}",
-              identifier,
-              client_name
+              identifier, client_name
             );
             success = true;
             if let Err(e) = processor.run() {

@@ -37,6 +37,7 @@ impl PlayableTrack for GaanaTrack {
 
     let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
+      let _guard = handle.enter();
       let track_id_for_log = track_id.clone();
       let hls_url = handle
         .block_on(async move { fetch_stream_url_internal(&client, &track_id, &quality).await });

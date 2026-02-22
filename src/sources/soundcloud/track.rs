@@ -53,7 +53,9 @@ impl PlayableTrack for SoundCloudTrack {
     let local_addr = self.local_addr;
     let proxy = self.proxy.clone();
 
+    let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
+      let _guard = handle.enter();
       match kind {
         SoundCloudStreamKind::ProgressiveMp3 => {
           let reader = match super::reader::SoundCloudReader::new(&stream_url, local_addr, proxy) {

@@ -31,6 +31,7 @@ impl PlayableTrack for AudiomackTrack {
 
     let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
+      let _guard = handle.enter();
       handle.block_on(async move {
         if let Some(url) = fetch_stream_url(&client, &identifier).await {
           let http_track = HttpTrack { url, local_addr };
