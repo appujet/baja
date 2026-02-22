@@ -14,8 +14,6 @@ env:
   LIBOPUS_STATIC: "1"
   OPUS_STATIC: "1"
   AUDIOPUS_STATIC: "1"
-  SCCACHE_GHA_ENABLED: "true"
-  RUSTC_WRAPPER: "sccache"
 
 jobs:
   build:
@@ -54,9 +52,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Setup sccache
-        uses: mozilla/sccache-action@v0.0.7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
