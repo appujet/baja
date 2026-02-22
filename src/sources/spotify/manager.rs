@@ -591,13 +591,11 @@ impl SpotifySource {
 
     LoadResult::Playlist(PlaylistData {
       info: PlaylistInfo {
-        name: format!("Spotify Recommendations for {}", id),
-        selected_track: -1,
+        name: "Spotify Recommendations".to_string(),
+        selected_track: 0,
       },
       plugin_info: json!({
         "type": "recommendations",
-        "url": format!("https://open.spotify.com/track/{}", id),
-        "author": "Spotify",
         "totalTracks": tracks.len()
       }),
       tracks,
