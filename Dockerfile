@@ -4,13 +4,12 @@ WORKDIR /app
 
 # Install build dependencies
 RUN apk update && \
-    apk add --no-cache musl-dev gcc make cmake g++ pkgconfig perl opus-dev tzdata && \
+    apk add --no-cache musl-dev gcc make cmake g++ pkgconf perl tzdata && \
     addgroup -S rustalink && adduser -S rustalink -G rustalink
 
 # Set build environment variables
-# -lm fixes math symbols (sqrtf, exp, log)
-# -fno-stack-protector fixes __stack_chk_fail issues with bundled C code on musl
-ENV RUSTFLAGS="-C link-arg=-lm" \
+ENV AUDIOPUS_STATIC="1" \
+    RUSTFLAGS="-C link-arg=-lm" \
     CFLAGS="-fno-stack-protector" \
     CXXFLAGS="-fno-stack-protector" \
     LDFLAGS="-fno-stack-protector" \

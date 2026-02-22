@@ -112,10 +112,11 @@ jobs:
         env:
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
           OPENSSL_STATIC: "1"
-          RUSTFLAGS: "-C link-arg=-lm -C link-arg=-fno-stack-protector"
-          CFLAGS: "-fno-stack-protector"
-          CXXFLAGS: "-fno-stack-protector"
-          LDFLAGS: "-fno-stack-protector"
+          AUDIOPUS_STATIC: "1"
+          CROSS_CONTAINER_ENV_RUSTFLAGS: "-C link-arg=-lm -C link-arg=-fno-stack-protector"
+          CROSS_CONTAINER_ENV_CFLAGS: "-fno-stack-protector"
+          CROSS_CONTAINER_ENV_CXXFLAGS: "-fno-stack-protector"
+          CROSS_CONTAINER_ENV_LDFLAGS: "-fno-stack-protector"
           OPENSSL_DIR: "/usr"
         run: cross build --release --locked --target ${{ matrix.platform.target }}
 
