@@ -69,34 +69,102 @@ jobs:
         run: |
           curl -L https://downloads.xiph.org/releases/opus/opus-1.4.tar.gz | tar xz
           cd opus-1.4
-          ./configure --prefix=/tmp/opus-static --disable-shared --enable-static --disable-stack-protector
+          ./configure \
+            --prefix=/tmp/opus-static \
+            --disable-shared \
+            --enable-static \
+            --disable-stack-protector \
+            --disable-doc \
+            --disable-extra-programs \
+            CFLAGS="-O3 -fPIC"
           make -j$(sysctl -n hw.logicalcpu)
           make install
-          ls /tmp/opus-static/lib/  # debug: confirm libopus.a exists
+          
+          # Create pkg-config file
+          mkdir -p /tmp/opus-static/lib/pkgconfig
+          cat > /tmp/opus-static/lib/pkgconfig/opus.pc << 'EOF'
+          prefix=/tmp/opus-static
+          exec_prefix=${prefix}
+          libdir=${prefix}/lib
+          includedir=${prefix}/include/opus
+          
+          Name: Opus
+          Description: Opus IETF audio codec
+          Version: 1.4
+          Libs: -L${libdir} -lopus
+          Cflags: -I${includedir}
+          EOF
+          
           echo "LIBOPUS_LIB_DIR=/tmp/opus-static/lib" >> $GITHUB_ENV
           echo "LIBOPUS_STATIC=1" >> $GITHUB_ENV
           echo "OPUS_NO_PKG=1" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/tmp/opus-static/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
 
       - name: Build static Opus (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $version = "1.4"
+          # FIX: Removed space in URL
           $url = "https://downloads.xiph.org/releases/opus/opus-$version.tar.gz"
           Invoke-WebRequest $url -OutFile opus.tar.gz
           tar -xzf opus.tar.gz
           cd opus-$version
+          
           cmake -B build `
-            "-DCMAKE_BUILD_TYPE=Release" `
-            "-DCMAKE_INSTALL_PREFIX=$HOME/opus-static" `
-            "-DBUILD_SHARED_LIBS=OFF" `
-            "-DOPUS_STACK_PROTECTOR=OFF"
-          cmake --build build --config Release
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="$env:USERPROFILE\opus-static" `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DOPUS_STACK_PROTECTOR=OFF `
+            -DOPUS_BUILD_PROGRAMS=OFF `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>"
+          
+          cmake --build build --config Release --parallel
           cmake --install build --config Release
-          $libDir = "$HOME/opus-static/lib"
-          echo "LIBOPUS_LIB_DIR=$libDir" >> $env:GITHUB_ENV
+          
+          # Create pkg-config file
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\opus-static\lib\pkgconfig"
+          @"
+          prefix=$env:USERPROFILE\opus-static
+          exec_prefix=`${prefix}
+          libdir=`${prefix}/lib
+          includedir=`${prefix}/include/opus
+          
+          Name: Opus
+          Description: Opus IETF audio codec
+          Version: 1.4
+          Libs: -L`${libdir} -lopus
+          Cflags: -I`${includedir}
+          "@ | Set-Content "$env:USERPROFILE\opus-static\lib\pkgconfig\opus.pc" -Encoding UTF8
+          
+          echo "LIBOPUS_LIB_DIR=$env:USERPROFILE\opus-static\lib" >> $env:GITHUB_ENV
           echo "LIBOPUS_STATIC=1" >> $env:GITHUB_ENV
           echo "OPUS_NO_PKG=1" >> $env:GITHUB_ENV
+
+      - name: Configure Cross (Linux)
+        if: matrix.platform.cross == true
+        run: |
+          cat > Cross.toml << 'EOF'
+          [target.x86_64-unknown-linux-musl]
+          image = "ghcr.io/cross-rs/x86_64-unknown-linux-musl:main"
+          pre-build = [
+            "apt-get update && apt-get install -y cmake",
+            "cd /tmp && curl -L https://downloads.xiph.org/releases/opus/opus-1.4.tar.gz | tar xz",
+            "cd /tmp/opus-1.4 && ./configure --prefix=/usr/local --disable-shared --enable-static --disable-stack-protector --disable-doc --disable-extra-programs",
+            "cd /tmp/opus-1.4 && make -j$(nproc) && make install",
+            "rm -rf /tmp/opus-1.4"
+          ]
+          
+          [target.aarch64-unknown-linux-musl]
+          image = "ghcr.io/cross-rs/aarch64-unknown-linux-musl:main"
+          pre-build = [
+            "apt-get update && apt-get install -y cmake",
+            "cd /tmp && curl -L https://downloads.xiph.org/releases/opus/opus-1.4.tar.gz | tar xz",
+            "cd /tmp/opus-1.4 && ./configure --prefix=/usr/local --disable-shared --enable-static --disable-stack-protector --disable-doc --disable-extra-programs",
+            "cd /tmp/opus-1.4 && make -j$(nproc) && make install",
+            "rm -rf /tmp/opus-1.4"
+          ]
+          EOF
 
       - name: Install cross
         if: matrix.platform.cross == true
@@ -104,6 +172,7 @@ jobs:
 
       - name: Build (cargo)
         if: matrix.platform.cross == false
+        shell: bash
         run: cargo build --release --locked --target ${{ matrix.platform.target }}
 
       - name: Build (cross)
@@ -113,9 +182,8 @@ jobs:
       - name: Package binary
         shell: bash
         run: |
-          mkdir output
-          cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} \
-             output/rustalink-${{ matrix.platform.target }}
+          mkdir -p output
+          cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} output/rustalink-${{ matrix.platform.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -152,16 +220,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - uses: docker/build-push-action@v6
         with:
           context: .

@@ -1,5 +1,19 @@
 [target.x86_64-unknown-linux-musl]
-image = "messense/rust-musl-cross:x86_64-musl"
+image = "ghcr.io/cross-rs/x86_64-unknown-linux-musl:main"
+pre-build = [
+    "apt-get update && apt-get install -y cmake",
+    "cd /tmp && curl -L https://downloads.xiph.org/releases/opus/opus-1.4.tar.gz | tar xz",
+    "cd /tmp/opus-1.4 && ./configure --prefix=/usr/local --disable-shared --enable-static --disable-stack-protector --disable-doc --disable-extra-programs",
+    "cd /tmp/opus-1.4 && make -j$(nproc) && make install",
+    "rm -rf /tmp/opus-1.4"
+]
 
 [target.aarch64-unknown-linux-musl]
-image = "messense/rust-musl-cross:aarch64-musl"
+image = "ghcr.io/cross-rs/aarch64-unknown-linux-musl:main"
+pre-build = [
+    "apt-get update && apt-get install -y cmake",
+    "cd /tmp && curl -L https://downloads.xiph.org/releases/opus/opus-1.4.tar.gz | tar xz",
+    "cd /tmp/opus-1.4 && ./configure --prefix=/usr/local --disable-shared --enable-static --disable-stack-protector --disable-doc --disable-extra-programs",
+    "cd /tmp/opus-1.4 && make -j$(nproc) && make install",
+    "rm -rf /tmp/opus-1.4"
+]
