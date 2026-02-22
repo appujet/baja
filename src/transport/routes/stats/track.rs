@@ -49,6 +49,10 @@ pub async fn load_search(
     .split(',')
     .filter(|s| !s.trim().is_empty())
     .map(|s| s.trim().to_string())
+    .filter(|s| match s.as_str() {
+      "track" | "album" | "artist" | "playlist" | "text" => true,
+      _ => false,
+    })
     .collect();
 
   match state
