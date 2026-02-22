@@ -193,7 +193,7 @@ pub struct PlaylistData {
 #[serde(rename_all = "camelCase")]
 pub struct TextData {
   pub text: String,
-  pub plugin_info: serde_json::Value,
+  pub plugin: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,7 +204,7 @@ pub struct SearchResult {
   pub artists: Vec<PlaylistData>,
   pub playlists: Vec<PlaylistData>,
   pub texts: Vec<TextData>,
-  pub plugin_info: serde_json::Value,
+  pub plugin: serde_json::Value,
 }
 
 /// Playlist metadata.

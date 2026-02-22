@@ -13,7 +13,7 @@ use super::{
   plugin::{BoxedSource, BoxedTrack, PlayableTrack},
   qobuz::QobuzSource,
   soundcloud::SoundCloudSource,
-  spotify::manager::SpotifySource,
+  spotify::SpotifySource,
   tidal::TidalSource,
   youtube::{YouTubeSource, cipher::YouTubeCipherManager},
 };

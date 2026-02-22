@@ -609,7 +609,7 @@ impl JioSaavnSource {
           if let Some(text) = item.get("title").and_then(|v| v.as_str()) {
             texts.push(crate::api::tracks::TextData {
               text: self.clean_string(text),
-              plugin_info: serde_json::json!({}),
+              plugin: serde_json::json!({}),
             });
           }
         }
@@ -622,7 +622,7 @@ impl JioSaavnSource {
       artists,
       playlists,
       texts,
-      plugin_info: serde_json::json!({}),
+      plugin: serde_json::json!({}),
     })
   }
 

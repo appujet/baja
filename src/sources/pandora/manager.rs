@@ -808,7 +808,7 @@ impl PandoraSource {
       artists,
       playlists,
       texts: Vec::new(),
-      plugin_info: json!({}),
+      plugin: json!({}),
     })
   }
 }
