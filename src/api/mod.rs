@@ -1,5 +1,3 @@
-use serde::{Deserialize, Deserializer};
-
 pub mod events;
 pub mod info;
 pub mod models;
