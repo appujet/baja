@@ -17,6 +17,7 @@ pub mod shazam;
 pub mod spotify;
 pub mod tidal;
 pub mod youtube;
+pub mod bandcamp;
 
 pub use manager::SourceManager;
 pub use plugin::SourcePlugin;

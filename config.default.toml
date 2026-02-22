@@ -28,6 +28,7 @@ qobuz = true
 anghami = true
 shazam = true
 mixcloud = true
+bandcamp = true
 
 [mirrors]
 providers = [
@@ -164,6 +165,9 @@ search_limit = 10
 search_limit = 10
 
 [shazam]
+search_limit = 10
+
+[bandcamp]
 search_limit = 10
 
 [filters]

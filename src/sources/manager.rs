@@ -18,6 +18,7 @@ use super::{
   spotify::SpotifySource,
   tidal::TidalSource,
   youtube::{YouTubeSource, cipher::YouTubeCipherManager},
+  bandcamp::BandcampSource,
 };
 use crate::audio::processor::DecoderCommand;
 
@@ -111,6 +112,11 @@ impl SourceManager {
       config.sources.mixcloud,
       "Mixcloud",
       MixcloudSource::new(config.mixcloud.clone())
+    );
+    register_source!(
+      config.sources.bandcamp,
+      "Bandcamp",
+      BandcampSource::new(config.bandcamp.clone())
     );
 
     if config.sources.youtube {
