@@ -101,6 +101,10 @@ jobs:
           CMAKE_CONFIGURE_REDIRECT_STDERR: "1"
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
           OPENSSL_STATIC: "1"
+          RUSTFLAGS: "-C link-arg=-lm -C link-arg=-fno-stack-protector"
+          CFLAGS: "-fno-stack-protector"
+          CXXFLAGS: "-fno-stack-protector"
+          LDFLAGS: "-fno-stack-protector"
         run: cargo build --release --locked --target ${{ matrix.platform.target }}
 
       - name: Build Binary (Cross)
@@ -108,9 +112,10 @@ jobs:
         env:
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
           OPENSSL_STATIC: "1"
-          RUSTFLAGS: "-C link-arg=-lm"
+          RUSTFLAGS: "-C link-arg=-lm -C link-arg=-fno-stack-protector"
           CFLAGS: "-fno-stack-protector"
           CXXFLAGS: "-fno-stack-protector"
+          LDFLAGS: "-fno-stack-protector"
           OPENSSL_DIR: "/usr"
         run: cross build --release --locked --target ${{ matrix.platform.target }}
 

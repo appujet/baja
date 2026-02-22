@@ -1,24 +1,25 @@
-# syntax=docker/dockerfile:1.4
-FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:latest-rust-1.85-alpine AS chef
+FROM rust:1.88-alpine AS builder
+
 WORKDIR /app
 
-RUN apk add --no-cache musl-dev gcc make cmake g++ pkgconfig perl opus-dev tzdata
-RUN addgroup -S rustalink && adduser -S rustalink -G rustalink
+# Install build dependencies
+RUN apk update && \
+    apk add --no-cache musl-dev gcc make cmake g++ pkgconfig perl opus-dev tzdata && \
+    addgroup -S rustalink && adduser -S rustalink -G rustalink
 
-FROM chef AS planner
+# Set build environment variables
+# -lm fixes math symbols (sqrtf, exp, log)
+# -fno-stack-protector fixes __stack_chk_fail issues with bundled C code on musl
+ENV RUSTFLAGS="-C link-arg=-lm" \
+    CFLAGS="-fno-stack-protector" \
+    CXXFLAGS="-fno-stack-protector" \
+    LDFLAGS="-fno-stack-protector" \
+    CMAKE_POLICY_VERSION_MINIMUM="3.5" \
+    OPENSSL_STATIC="1"
 
 COPY . .
 
-RUN cargo chef prepare --recipe-json recipe.json
-
-FROM chef AS builder
-
-COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-json recipe.json
-
-COPY . .
-
-ENV RUSTFLAGS="-C link-arg=-lm" CFLAGS="-fno-stack-protector" CXXFLAGS="-fno-stack-protector" CMAKE_POLICY_VERSION_MINIMUM="3.5"
+# Build the application
 RUN cargo build --release --locked
 
 FROM scratch
