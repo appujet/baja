@@ -247,7 +247,10 @@ impl VoiceGateway {
     let write_task = tokio::spawn(async move {
       while let Some(msg) = rx.recv().await {
         if let Err(e) = write.send(msg).await {
-          warn!("Voice WS write error (expected on reconnect): {}", e);
+          warn!(
+            "Voice WebSocket write error (expected during reconnection): {}",
+            e
+          );
           break;
         }
       }
@@ -274,7 +277,10 @@ impl VoiceGateway {
         Some(Ok(msg)) => msg,
         Some(Err(e)) => {
           // IO error on WS read — treat as abnormal closure (1006).
-          warn!("Voice WS read error: {}. Will attempt reconnect.", e);
+          warn!(
+            "Voice WebSocket read error: {}. Attempting to reconnect.",
+            e
+          );
           if let Some(evt_tx) = &self.event_tx {
             let _ = evt_tx.send(crate::api::LavalinkEvent::WebSocketClosed {
               guild_id: self.guild_id.clone(),
@@ -457,7 +463,7 @@ impl VoiceGateway {
                     )
                     .await
                     {
-                      error!("Speak loop error: {}", e);
+                      error!("Voice playback loop encountered an error: {}", e);
                     }
                   });
 
@@ -487,7 +493,7 @@ impl VoiceGateway {
                     bin.extend_from_slice(&kp);
                     let _ = tx.send(Message::Binary(bin.into()));
                   }
-                  Err(e) => error!("Failed to setup DAVE session: {}", e),
+                  Err(e) => error!("Failed to set up DAVE session: {}", e),
                 }
               }
             }
@@ -583,7 +589,7 @@ impl VoiceGateway {
                   }
                 }
                 Err(e) => {
-                  error!("DAVE process external sender error: {}", e);
+                  error!("Failed to process DAVE external sender: {}", e);
                 }
               }
             }
@@ -598,7 +604,10 @@ impl VoiceGateway {
                 Ok(None) => {}
                 Err(e) => {
                   let err_str = e.to_string();
-                  warn!("DAVE process proposals error: {}. Recovering...", err_str);
+                  warn!(
+                    "Failed to process DAVE proposals: {}. Attempting recovery...",
+                    err_str
+                  );
 
                   // Recovery: Reset session -> Op 31 (Invalid) -> Op 26 (Key Package)
                   dave_lock.reset();
@@ -636,7 +645,10 @@ impl VoiceGateway {
                   }
                 }
                 Err(e) => {
-                  warn!("DAVE process welcome error: {}. Recovering...", e);
+                  warn!(
+                    "Failed to process DAVE welcome message: {}. Attempting recovery...",
+                    e
+                  );
 
                   let tid = if payload.len() >= 2 {
                     u16::from_be_bytes([payload[0], payload[1]])
@@ -677,7 +689,10 @@ impl VoiceGateway {
                   }
                 }
                 Err(e) => {
-                  warn!("DAVE process commit error: {}. Recovering...", e);
+                  warn!(
+                    "Failed to process DAVE commit: {}. Attempting recovery...",
+                    e
+                  );
 
                   let tid = if payload.len() >= 2 {
                     u16::from_be_bytes([payload[0], payload[1]])
@@ -731,7 +746,7 @@ impl VoiceGateway {
           } else if is_reidentify_close(code) {
             break SessionOutcome::Identify;
           } else if is_fatal_close(code) {
-            tracing::error!("Voice gateway fatal close: {}", code);
+            tracing::error!("Voice gateway closed fatally with code {}", code);
             break SessionOutcome::Shutdown;
           } else {
             // Default to reconnect for safety on unknown codes

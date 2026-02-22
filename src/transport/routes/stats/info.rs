@@ -6,7 +6,7 @@ use crate::{api, player::Filters, server::AppState};
 
 /// GET /v4/info
 pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<api::Info> {
-  tracing::info!("GET /v4/info");
+  tracing::debug!("GET /v4/info");
   let version_str = env!("CARGO_PKG_VERSION");
   let mut parts = version_str.split('.');
   let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
@@ -53,7 +53,7 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<api::Info> {
 
 /// GET /v4/stats
 pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<api::Stats> {
-  tracing::info!("GET /v4/stats");
+  tracing::debug!("GET /v4/stats");
   let uptime = std::time::SystemTime::now()
     .duration_since(std::time::UNIX_EPOCH)
     .unwrap_or_default()
@@ -63,6 +63,6 @@ pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<api::Stats> {
 
 /// GET /version
 pub async fn get_version() -> String {
-  tracing::info!("GET /version");
+  tracing::debug!("GET /version");
   env!("CARGO_PKG_VERSION").to_string()
 }

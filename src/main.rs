@@ -27,7 +27,7 @@ async fn main() -> AnyResult<()> {
     env!("CARGO_PKG_VERSION")
   );
 
-  info!("Lavalink Server starting...");
+  info!("Rustalink Server starting...");
 
   let routeplanner = if config.route_planner.enabled && !config.route_planner.cidrs.is_empty() {
     Some(
@@ -58,7 +58,7 @@ async fn main() -> AnyResult<()> {
 
   let ip: std::net::IpAddr = config.server.host.parse()?;
   let address = SocketAddr::from((ip, config.server.port));
-  info!("Lavalink Server listening on {}", address);
+  info!("Rustalink Server listening on {}", address);
 
   let listener = tokio::net::TcpListener::bind(address).await?;
   axum::serve(listener, app).await?;

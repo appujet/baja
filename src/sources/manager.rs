@@ -134,12 +134,12 @@ impl SourceManager {
     // Try each source in order
     for source in &self.sources {
       if source.can_handle(identifier) {
-        tracing::debug!("Loading '{}' with source: {}", identifier, source.name());
+        tracing::trace!("Loading '{}' with source: {}", identifier, source.name());
         return source.load(identifier, routeplanner.clone()).await;
       }
     }
 
-    tracing::warn!("No source could handle identifier: {}", identifier);
+    tracing::debug!("No source could handle identifier: {}", identifier);
     crate::api::tracks::LoadResult::Empty {}
   }
   pub async fn load_search(
@@ -151,13 +151,13 @@ impl SourceManager {
     // Try each source in order
     for source in &self.sources {
       if source.can_handle(query) {
-        tracing::debug!("Loading search '{}' with source: {}", query, source.name());
+        tracing::trace!("Loading search '{}' with source: {}", query, source.name());
         // Call load_search on the candidate source
         return source.load_search(query, types, routeplanner.clone()).await;
       }
     }
 
-    tracing::warn!("No source could handle search query: {}", query);
+    tracing::debug!("No source could handle search query: {}", query);
     None
   }
 
@@ -170,7 +170,7 @@ impl SourceManager {
 
     for source in &self.sources {
       if source.can_handle(identifier) {
-        tracing::debug!(
+        tracing::trace!(
           "Resolving playable track for '{}' with source: {}",
           identifier,
           source.name()
@@ -188,7 +188,7 @@ impl SourceManager {
       let query = format!("{} - {}", track_info.title, track_info.author);
 
       if isrc.is_empty() {
-        tracing::debug!("Track has no ISRC");
+        tracing::trace!("Track has no ISRC");
       }
 
       for provider in &mirrors.providers {
@@ -198,7 +198,7 @@ impl SourceManager {
           continue;
         }
 
-        tracing::debug!("Attempting mirror provider: {}", search_query);
+        tracing::trace!("Attempting mirror provider: {}", search_query);
 
         match self.load(&search_query, routeplanner.clone()).await {
           crate::api::tracks::LoadResult::Track(track) => {
@@ -207,7 +207,7 @@ impl SourceManager {
               .resolve_nested_track(nested_id, routeplanner.clone())
               .await
             {
-              tracing::debug!(
+              tracing::trace!(
                 "Mirror success: {} -> {}",
                 search_query,
                 track.info.identifier
@@ -226,7 +226,7 @@ impl SourceManager {
                 .resolve_nested_track(nested_id, routeplanner.clone())
                 .await
               {
-                tracing::debug!(
+                tracing::trace!(
                   "Mirror success (search): {} -> {}",
                   search_query,
                   first_track.info.identifier
@@ -240,7 +240,7 @@ impl SourceManager {
       }
     }
 
-    tracing::warn!("Failed to resolve playable track for: {}", identifier);
+    tracing::debug!("Failed to resolve playable track for: {}", identifier);
     None
   }
 

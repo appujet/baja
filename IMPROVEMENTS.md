@@ -624,7 +624,7 @@ self.ping.store(sent.elapsed().as_millis() as i64, Ordering::Relaxed);
 
 ## 🪵 Logging Hygiene
 
-### L1. Every REST endpoint fires `info!` on every request
+### L1. Every REST endpoint fires `info!` on every request (DONE)
 **Files:** `src/transport/routes/stats/info.rs`, `src/transport/routes/player/get.rs`, etc.
 
 `tower_http::TraceLayer` already traces every HTTP request. Downgrade these
@@ -632,23 +632,23 @@ to `debug!` or remove them. Keeping them at `info!` floods production logs.
 
 ---
 
-### L2. "No source could handle identifier" logs at `warn!`
-**File:** `src/sources/manager.rs` lines 124, 142
+### L2. "No source could handle identifier" logs at `warn!` (DONE)
+**File:** `src/sources/manager.rs` lines 142, 160
 
 This fires during normal routing (e.g. Spotify source checking a YouTube URL).
 It is **not** a warning. Change to `debug!`.
 
 ---
 
-### L3. "Client connected without 'Client-Name'" logs at `warn!`
+### L3. "Client connected without 'Client-Name'" logs at `warn!` (DONE)
 **File:** `src/transport/websocket_server.rs` line 63
 
 `Client-Name` is optional in the Lavalink spec. Downgrade to `debug!`.
 
 ---
 
-### L4. Source loading inner loop logs at `debug!` — should be `trace!`
-**File:** `src/sources/manager.rs` lines 119, 136, 155–158, 183
+### L4. Source loading inner loop logs at `debug!` — should be `trace!` (DONE)
+**File:** `src/sources/manager.rs` lines 137, 154, 173, 191, 201, 210, 229
 
 ```rust
 // Before — fires on every track load, every mirror attempt
@@ -660,8 +660,8 @@ tracing::trace!("Loading '{}' with source: {}", identifier, source.name());
 
 ---
 
-### L5. Session resume timeout should be `warn!`, not `info!`
-**File:** `src/transport/websocket_server.rs`
+### L5. Session resume timeout should be `warn!`, not `info!` (DONE)
+**File:** `src/transport/websocket_server.rs` line 277
 
 A session that times out without resuming means a guild player was silently
 destroyed. This is worth a `warn!` in production.

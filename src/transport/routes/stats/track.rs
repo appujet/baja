@@ -21,7 +21,7 @@ pub async fn load_tracks(
   State(state): State<Arc<AppState>>,
 ) -> Json<LoadResult> {
   let identifier = params.identifier;
-  tracing::info!("GET /v4/loadtracks: identifier='{}'", identifier);
+  tracing::debug!("GET /v4/loadtracks: identifier='{}'", identifier);
 
   Json(
     state
@@ -39,7 +39,7 @@ pub async fn load_search(
   let query = params.query;
   let types_str = params.types.unwrap_or_default();
 
-  tracing::info!(
+  tracing::debug!(
     "GET /v4/loadsearch: query='{}', types='{}'",
     query,
     types_str
@@ -63,7 +63,7 @@ pub async fn load_search(
 
 /// GET /v4/decodetrack?encodedTrack=...
 pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoResponse {
-  tracing::info!("GET /v4/decodetrack");
+  tracing::debug!("GET /v4/decodetrack");
   let encoded = params.encoded_track.or(params.track);
 
   let encoded = match encoded {
@@ -95,7 +95,7 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
 
 /// POST /v4/decodetracks
 pub async fn decode_tracks(Json(body): Json<api::EncodedTracks>) -> impl IntoResponse {
-  tracing::info!("POST /v4/decodetracks: count={}", body.tracks.len());
+  tracing::debug!("POST /v4/decodetracks: count={}", body.tracks.len());
 
   let mut tracks = Vec::with_capacity(body.tracks.len());
   for encoded in &body.tracks {

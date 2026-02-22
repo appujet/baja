@@ -57,7 +57,7 @@ pub async fn websocket_handler(
   if let Some(name) = client_name {
     info!("Incoming connection from client: {}", name);
   } else {
-    warn!("Client connected without 'Client-Name' header");
+    debug!("Client connected without 'Client-Name' header");
   }
 
   // 4. Session Resumption Check
@@ -220,7 +220,7 @@ pub async fn handle_socket(
 
             match msg {
                 Message::Text(_) => {
-                    warn!("Lavalink v4 does not support websocket messages. Please use the REST api.");
+                    warn!("Rustalink v4 does not support WebSocket messages. Please use the REST API.");
                 }
                 Message::Ping(payload) => {
                     if let Err(e) = socket.send(Message::Pong(payload)).await {
@@ -242,7 +242,7 @@ pub async fn handle_socket(
       let current_sender = session.sender.lock().await;
       if !current_sender.same_channel(&tx) {
         info!(
-          "Session {} replaced by new connection, closing old connection cleanup.",
+          "Session {} replaced by a new connection; closing the old connection for cleanup.",
           session_id
         );
         return;
@@ -253,7 +253,7 @@ pub async fn handle_socket(
 
     if let Some((_, removed)) = state.resumable_sessions.remove(&session_id) {
       warn!(
-        "Shutdown resumable session with id {} because it has the same id as a newly disconnected resumable session.",
+        "Shutting down resumable session {} because it shares an ID with a newly disconnected session.",
         removed.session_id
       );
       removed.shutdown();
@@ -276,7 +276,7 @@ pub async fn handle_socket(
       tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)).await;
       // If the session is still in resumable_sessions, it means it wasn't resumed.
       if let Some((_, session)) = state_cleanup.resumable_sessions.remove(&sid) {
-        info!("Session resume timeout expired: {}", sid);
+        warn!("Session resume timeout expired: {}", sid);
         session.shutdown();
       }
     });
