@@ -19,6 +19,7 @@ use super::{
   tidal::TidalSource,
   youtube::{YouTubeSource, cipher::YouTubeCipherManager},
   bandcamp::BandcampSource,
+  audius::AudiusSource,
 };
 use crate::audio::processor::DecoderCommand;
 
@@ -91,6 +92,11 @@ impl SourceManager {
       config.sources.audiomack,
       "Audiomack",
       AudiomackSource::new(config.audiomack.clone())
+    );
+    register_source!(
+      config.sources.audius,
+      "Audius",
+      AudiusSource::new(config.audius.clone())
     );
     register_source!(
       config.sources.pandora,

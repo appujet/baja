@@ -3,7 +3,6 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose};
 use regex::Regex;
 use serde_json::{Value, json};
-use tracing::debug;
 
 use crate::{
     api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
@@ -56,8 +55,9 @@ impl MixcloudSource {
             search_limit: config.map(|c| c.search_limit).unwrap_or(10),
         })
     }
+}
 
-    fn decrypt(&self, ciphertext_b64: &str) -> String {
+pub fn decrypt(ciphertext_b64: &str) -> String {
         let ciphertext: Vec<u8> = match general_purpose::STANDARD.decode(ciphertext_b64) {
             Ok(b) => b,
             Err(_) => return String::new(),
@@ -69,8 +69,9 @@ impl MixcloudSource {
         }
 
         String::from_utf8(decrypted).unwrap_or_default()
-    }
+}
 
+impl MixcloudSource {
     async fn graphql_request(&self, query: &str) -> Option<Value> {
         let url = format!("{}?query={}", GRAPHQL_URL, urlencoding::encode(query));
         let resp = self.client.get(url).send().await.ok()?;
@@ -390,8 +391,9 @@ impl MixcloudSource {
 
         LoadResult::Search(tracks)
     }
+}
 
-    async fn fetch_track_stream_info(&self, url: &str) -> Option<(Option<String>, Option<String>)> {
+pub async fn fetch_track_stream_info(client: &reqwest::Client, url: &str) -> Option<(Option<String>, Option<String>)> {
         let path_parts: Vec<&str> = url
             .split("mixcloud.com/")
             .nth(1)?
@@ -412,7 +414,7 @@ impl MixcloudSource {
             path_parts[0], path_parts[1]
         );
 
-        let body = self.graphql_request(&query).await?;
+        let body = graphql_request_internal(client, &query).await?;
         let data = body["data"]["cloudcastLookup"].as_object()?;
         
         let hls = data.get("streamInfo")?.get("hlsUrl")?.as_str().map(|s| s.to_string());
@@ -420,7 +422,6 @@ impl MixcloudSource {
 
         Some((hls, stream))
     }
-}
 
 #[async_trait]
 impl SourcePlugin for MixcloudSource {
@@ -480,28 +481,35 @@ impl SourcePlugin for MixcloudSource {
         identifier: &str,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> Option<BoxedTrack> {
-        // Fetch track metadata to get the URL
         let url = match self.load(identifier, None).await {
             LoadResult::Track(track) => track.info.uri?,
             _ => return None,
         };
 
-        // Do a fresh lookup to fetch only the stream URLs
-        let (encrypted_hls, encrypted_url) = self.fetch_track_stream_info(&url).await.unwrap_or((None, None));
+        let (enc_hls, enc_url) = fetch_track_stream_info(&self.client, &url).await.unwrap_or((None, None));
+        
+        let hls_url = enc_hls.map(|s| decrypt(&s));
+        let stream_url = enc_url.map(|s| decrypt(&s));
 
-        if encrypted_hls.is_none() && encrypted_url.is_none() {
-            debug!("Mixcloud: no stream URLs found, returning None for mirroring");
+        if hls_url.is_none() && stream_url.is_none() {
             return None;
         }
 
-        let hls_v = encrypted_hls.map(|s| self.decrypt(&s));
-        let stream_v = encrypted_url.map(|s| self.decrypt(&s));
-
         Some(Box::new(track::MixcloudTrack {
-            hls_url: hls_v,
-            stream_url: stream_v,
+            client: self.client.clone(),
+            hls_url,
+            stream_url,
             uri: url,
             local_addr: routeplanner.and_then(|rp| rp.get_address()),
         }))
     }
+}
+
+async fn graphql_request_internal(client: &reqwest::Client, query: &str) -> Option<Value> {
+    let url = format!("{}?query={}", GRAPHQL_URL, urlencoding::encode(query));
+    let resp = client.get(url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.json::<Value>().await.ok()
 }

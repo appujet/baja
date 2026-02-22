@@ -14,6 +14,7 @@ pub struct SourcesConfig {
   pub tidal: bool,
   pub soundcloud: bool,
   pub audiomack: bool,
+  pub audius: bool,
   pub pandora: bool,
   pub qobuz: bool,
   pub anghami: bool,
@@ -46,6 +47,26 @@ pub struct MixcloudConfig {
 pub struct BandcampConfig {
   #[serde(default = "default_search_limit")]
   pub search_limit: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct AudiusConfig {
+  #[serde(default = "default_search_limit")]
+  pub search_limit: usize,
+  #[serde(default = "default_playlist_load_limit")]
+  pub playlist_load_limit: usize,
+  #[serde(default = "default_album_load_limit")]
+  pub album_load_limit: usize,
+  #[serde(default)]
+  pub app_name: Option<String>,
+}
+
+fn default_playlist_load_limit() -> usize {
+  100
+}
+
+fn default_album_load_limit() -> usize {
+  100
 }
 
 fn default_search_limit() -> usize {

@@ -29,6 +29,7 @@ anghami = true
 shazam = true
 mixcloud = true
 bandcamp = true
+audius = true
 
 [mirrors]
 providers = [
@@ -169,6 +170,12 @@ search_limit = 10
 
 [bandcamp]
 search_limit = 10
+
+[audius]
+search_limit = 10
+playlist_load_limit = 100
+album_load_limit = 100
+# app_name = "Rustalink"
 
 [filters]
 volume = true

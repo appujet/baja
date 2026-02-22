@@ -42,6 +42,8 @@ pub struct Config {
   pub mixcloud: Option<MixcloudConfig>,
   #[serde(default)]
   pub bandcamp: Option<BandcampConfig>,
+  #[serde(default)]
+  pub audius: Option<AudiusConfig>,
 }
 
 impl Default for Config {
@@ -68,6 +70,7 @@ impl Default for Config {
       shazam: None,
       mixcloud: None,
       bandcamp: None,
+      audius: None,
     }
   }
 }
