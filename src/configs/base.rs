@@ -37,7 +37,9 @@ pub struct Config {
   #[serde(default)]
   pub anghami: Option<AnghamiConfig>,
   #[serde(default)]
-  pub shazam: bool,
+  pub shazam: Option<ShazamConfig>,
+  #[serde(default)]
+  pub mixcloud: Option<MixcloudConfig>,
 }
 
 impl Default for Config {
@@ -61,7 +63,8 @@ impl Default for Config {
       pandora: None,
       qobuz: None,
       anghami: None,
-      shazam: false,
+      shazam: None,
+      mixcloud: None,
     }
   }
 }

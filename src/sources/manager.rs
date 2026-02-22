@@ -9,6 +9,7 @@ use super::{
   http::HttpSource,
   jiosaavn::JioSaavnSource,
   local::LocalSource,
+  mixcloud::MixcloudSource,
   pandora::PandoraSource,
   plugin::{BoxedSource, BoxedTrack, PlayableTrack},
   qobuz::QobuzSource,
@@ -105,6 +106,11 @@ impl SourceManager {
       config.sources.shazam,
       "Shazam",
       ShazamSource::new(config)
+    );
+    register_source!(
+      config.sources.mixcloud,
+      "Mixcloud",
+      MixcloudSource::new(config.mixcloud.clone())
     );
 
     if config.sources.youtube {

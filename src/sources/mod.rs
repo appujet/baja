@@ -10,6 +10,7 @@ pub mod gaana;
 pub mod manager;
 pub mod plugin;
 pub mod soundcloud;
+pub mod mixcloud;
 pub mod pandora;
 pub mod qobuz;
 pub mod shazam;

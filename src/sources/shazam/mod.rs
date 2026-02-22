@@ -20,7 +20,7 @@ pub struct ShazamSource {
 }
 
 impl ShazamSource {
-  pub fn new(_config: &crate::configs::Config) -> Result<Self, String> {
+  pub fn new(config: &crate::configs::Config) -> Result<Self, String> {
     let mut headers = HeaderMap::new();
     headers.insert(
       USER_AGENT,
@@ -39,7 +39,7 @@ impl ShazamSource {
       client,
       search_prefixes: vec!["shsearch:".to_string(), "szsearch:".to_string()],
       url_regex: Regex::new(r"https?://(?:www\.)?shazam\.com/song/\d+(?:/[^/?#]+)?").unwrap(),
-      search_limit: 10, // Default limit
+      search_limit: config.shazam.as_ref().map(|c| c.search_limit).unwrap_or(10),
     })
   }
 

@@ -26,6 +26,8 @@ audiomack = true
 pandora = true
 qobuz = true
 anghami = true
+shazam = true
+mixcloud = true
 
 [mirrors]
 providers = [
@@ -156,6 +158,12 @@ artist_load_limit = 20
 #password = "mypassword"
 
 [anghami]
+search_limit = 10
+
+[mixcloud]
+search_limit = 10
+
+[shazam]
 search_limit = 10
 
 [filters]

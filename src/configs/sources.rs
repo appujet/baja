@@ -18,6 +18,7 @@ pub struct SourcesConfig {
   pub qobuz: bool,
   pub anghami: bool,
   pub shazam: bool,
+  pub mixcloud: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -32,6 +33,22 @@ pub struct YouTubeConfig {
 pub struct YouTubeCipherConfig {
   pub url: Option<String>,
   pub token: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct MixcloudConfig {
+  #[serde(default = "default_search_limit")]
+  pub search_limit: usize,
+}
+
+fn default_search_limit() -> usize {
+  10
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct ShazamConfig {
+  #[serde(default = "default_search_limit")]
+  pub search_limit: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
