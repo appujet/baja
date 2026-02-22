@@ -1,0 +1,15 @@
+services:
+  rustalink:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rustalink:latest
+    container_name: rustalink
+    restart: unless-stopped
+    ports:
+      - "2333:2333"
+    volumes:
+      - ./config.toml:/app/config.toml
+      - ./logs:/app/logs
+    environment:
+      - RUST_LOG=info

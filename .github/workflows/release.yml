@@ -164,16 +164,6 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: bin
-          pattern: rustalink-*
-          merge-multiple: true
-
-      - name: Ensure executable
-        run: chmod +x bin/rustalink-*
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -202,7 +192,10 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -3,7 +3,8 @@ name = "rustalink"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
-authors = ["appujet", "notdeltaxd"]
+authors = ["appujet", "notdeltaxd", "contributors"]
+repository = "https://github.com/bong-devs/Rustalink"
 
 [dependencies]
 base64 = "^0.22.1"
@@ -35,8 +36,6 @@ hmac = "0.12"
 sha1 = "0.10"
 tracing-appender = "0.2"
 openssl = { version = "0.10", features = ["vendored"] }
-
-
 tracing-subscriber = { version = "^0.3.20", features = ["env-filter", "registry"] }
 serde = { version = "^1.0.145", features = ["derive"] }
 symphonia = { version = "0.5.5", features = ["all"] }
