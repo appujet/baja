@@ -102,7 +102,7 @@ impl MixcloudSource {
         let duration_ms = (data["audioLength"].as_u64().unwrap_or(0)) * 1000;
         let artwork_url = data["picture"]["url"].as_str().map(|s| s.to_string());
 
-        let mut track = Track::new(TrackInfo {
+        let track = Track::new(TrackInfo {
             identifier: id,
             is_seekable: true,
             author,
@@ -114,11 +114,6 @@ impl MixcloudSource {
             artwork_url,
             isrc: None,
             source_name: "mixcloud".to_string(),
-        });
-
-        track.plugin_info = json!({
-            "encryptedHls": data["streamInfo"]["hlsUrl"],
-            "encryptedUrl": data["streamInfo"]["url"]
         });
 
         Some(track)
@@ -395,6 +390,36 @@ impl MixcloudSource {
 
         LoadResult::Search(tracks)
     }
+
+    async fn fetch_track_stream_info(&self, url: &str) -> Option<(Option<String>, Option<String>)> {
+        let path_parts: Vec<&str> = url
+            .split("mixcloud.com/")
+            .nth(1)?
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if path_parts.len() < 2 {
+            return None;
+        }
+
+        let query = format!(
+            "{{
+        cloudcastLookup(lookup: {{username: \"{}\", slug: \"{}\"}}) {{
+          streamInfo {{ hlsUrl url }}
+        }}
+      }}",
+            path_parts[0], path_parts[1]
+        );
+
+        let body = self.graphql_request(&query).await?;
+        let data = body["data"]["cloudcastLookup"].as_object()?;
+        
+        let hls = data.get("streamInfo")?.get("hlsUrl")?.as_str().map(|s| s.to_string());
+        let stream = data.get("streamInfo")?.get("url")?.as_str().map(|s| s.to_string());
+
+        Some((hls, stream))
+    }
 }
 
 #[async_trait]
@@ -455,15 +480,14 @@ impl SourcePlugin for MixcloudSource {
         identifier: &str,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> Option<BoxedTrack> {
-        let mut encrypted_hls = None;
-        let mut encrypted_url = None;
-        let mut uri = None;
+        // Fetch track metadata to get the URL
+        let url = match self.load(identifier, None).await {
+            LoadResult::Track(track) => track.info.uri?,
+            _ => return None,
+        };
 
-        if let LoadResult::Track(track) = self.load(identifier, None).await {
-            encrypted_hls = track.plugin_info.get("encryptedHls").and_then(|v| v.as_str()).map(|s| s.to_string());
-            encrypted_url = track.plugin_info.get("encryptedUrl").and_then(|v| v.as_str()).map(|s| s.to_string());
-            uri = track.info.uri;
-        }
+        // Do a fresh lookup to fetch only the stream URLs
+        let (encrypted_hls, encrypted_url) = self.fetch_track_stream_info(&url).await.unwrap_or((None, None));
 
         if encrypted_hls.is_none() && encrypted_url.is_none() {
             debug!("Mixcloud: no stream URLs found, returning None for mirroring");
@@ -476,7 +500,7 @@ impl SourcePlugin for MixcloudSource {
         Some(Box::new(track::MixcloudTrack {
             hls_url: hls_v,
             stream_url: stream_v,
-            uri: uri.unwrap_or_default(),
+            uri: url,
             local_addr: routeplanner.and_then(|rp| rp.get_address()),
         }))
     }

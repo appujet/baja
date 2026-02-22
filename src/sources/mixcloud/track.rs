@@ -28,15 +28,20 @@ impl PlayableTrack for MixcloudTrack {
         let stream_url = self.stream_url.clone();
         let local_addr = self.local_addr;
 
-
-        tokio::spawn(async move {
+        let handle = tokio::runtime::Handle::current();
+        std::thread::spawn(move || {
+            let _guard = handle.enter();
             let (reader, kind) = if let Some(url) = hls_url {
-                (
-                    crate::sources::youtube::hls::HlsReader::new(&url, local_addr, None, None, None)
-                        .ok()
-                        .map(|r| Box::new(r) as Box<dyn symphonia::core::io::MediaSource>),
-                    Some(crate::common::types::AudioKind::Aac) // HLS in mixcloud is usually ts containing AAC
-                )
+                match crate::sources::youtube::hls::HlsReader::new(&url, local_addr, None, None, None) {
+                    Ok(r) => (
+                        Some(Box::new(r) as Box<dyn symphonia::core::io::MediaSource>),
+                        Some(crate::common::types::AudioKind::Aac) // HLS in mixcloud is usually ts containing AAC
+                    ),
+                    Err(e) => {
+                        tracing::error!("Mixcloud HlsReader failed to initialize: {}", e);
+                        (None, None)
+                    }
+                }
             } else if let Some(url) = stream_url {
                 match super::reader::MixcloudReader::new(&url, local_addr) {
                     Ok(r) => (
@@ -47,7 +52,10 @@ impl PlayableTrack for MixcloudTrack {
                             .and_then(crate::common::types::AudioKind::from_ext)
                             .or(Some(crate::common::types::AudioKind::Mp4))
                     ),
-                    Err(_) => (None, None)
+                    Err(e) => {
+                        tracing::error!("MixcloudReader failed to initialize: {}", e);
+                        (None, None)
+                    }
                 }
             } else {
                 (None, None)
