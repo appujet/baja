@@ -13,7 +13,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  LIBOPUS_STATIC: "1"
+  OPUS_NO_PKG: "1"
 
 jobs:
   build:
@@ -65,21 +65,25 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
+      # macOS: install opus via brew and point audiopus_sys at it
+      - name: Install Opus (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install opus
+          echo "LIBOPUS_LIB_DIR=$(brew --prefix opus)/lib" >> $GITHUB_ENV
+          echo "LIBOPUS_STATIC=1" >> $GITHUB_ENV
+
+      # Windows: install opus via vcpkg and point audiopus_sys at it
+      - name: Install Opus (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          vcpkg install opus:x64-windows-static
+          echo "LIBOPUS_LIB_DIR=C:\vcpkg\installed\x64-windows-static\lib" >> $env:GITHUB_ENV
+          echo "LIBOPUS_STATIC=1" >> $env:GITHUB_ENV
+
       - name: Install cross
         if: matrix.platform.cross == true
         uses: taiki-e/install-action@cross
-
-      # Set CFLAGS for musl targets so audiopus_sys compiles
-      # libopus without stack-protector (unavailable in musl libc)
-      - name: Set musl CFLAGS (x86_64)
-        if: matrix.platform.target == 'x86_64-unknown-linux-musl'
-        run: |
-          echo "CFLAGS_x86_64_unknown_linux_musl=-fno-stack-protector" >> $GITHUB_ENV
-
-      - name: Set musl CFLAGS (aarch64)
-        if: matrix.platform.target == 'aarch64-unknown-linux-musl'
-        run: |
-          echo "CFLAGS_aarch64_unknown_linux_musl=-fno-stack-protector" >> $GITHUB_ENV
 
       - name: Build (cargo)
         if: matrix.platform.cross == false
