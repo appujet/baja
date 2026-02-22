@@ -107,6 +107,10 @@ jobs:
         env:
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
           OPENSSL_STATIC: "1"
+          RUSTFLAGS: "-C link-arg=-lm"
+          CFLAGS: "-fno-stack-protector"
+          CXXFLAGS: "-fno-stack-protector"
+          OPENSSL_DIR: "/usr"
         run: cross build --release --locked --target ${{ matrix.platform.target }}
 
       - name: Rename Output
