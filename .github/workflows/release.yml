@@ -33,7 +33,7 @@ jobs:
             target: aarch64-unknown-linux-gnu
             bin: rustalink
             name: rustalink-linux-arm64
-          - os: macos-13
+          - os: macos-latest
             os_name: macOS Intel
             target: x86_64-apple-darwin
             bin: rustalink
@@ -76,8 +76,7 @@ jobs:
       - name: Install dependencies (macOS)
         if: startsWith(matrix.platform.os, 'macos')
         run: |
-          brew install cmake pkg-config llvm
-          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+          brew install cmake pkg-config
 
       - name: Install dependencies (Windows)
         if: startsWith(matrix.platform.os, 'windows')
