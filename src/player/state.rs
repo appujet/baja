@@ -3,6 +3,18 @@ use serde::{Deserialize, Serialize};
 use crate::api::tracks::Track;
 
 /// Full player state as returned by REST endpoints.
+pub fn deserialize_track_encoded<'de, D>(deserializer: D) -> Result<Option<TrackEncoded>, D::Error>
+where
+  D: serde::Deserializer<'de>,
+{
+  let value: serde_json::Value = serde::Deserialize::deserialize(deserializer)?;
+  match value {
+    serde_json::Value::Null => Ok(Some(TrackEncoded::Clear)),
+    serde_json::Value::String(s) => Ok(Some(TrackEncoded::Set(s))),
+    _ => Err(serde::de::Error::custom("expected string or null")),
+  }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Player {
@@ -70,7 +82,7 @@ impl Default for EndTime {
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerUpdate {
-  #[serde(default)]
+  #[serde(default, deserialize_with = "deserialize_track_encoded")]
   pub encoded_track: Option<TrackEncoded>,
   #[serde(default)]
   pub identifier: Option<String>,
@@ -95,7 +107,7 @@ pub struct PlayerUpdate {
 #[serde(rename_all = "camelCase")]
 pub struct PlayerUpdateTrack {
   /// Base64-encoded track. Null to stop. Omit to keep current.
-  #[serde(default)]
+  #[serde(default, deserialize_with = "deserialize_track_encoded")]
   pub encoded: Option<TrackEncoded>,
   /// Track identifier to resolve. Mutually exclusive with `encoded`.
   #[serde(default)]
@@ -105,7 +117,7 @@ pub struct PlayerUpdateTrack {
   pub user_data: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum TrackEncoded {
   Clear,       // JSON: null
