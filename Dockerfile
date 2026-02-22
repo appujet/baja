@@ -8,8 +8,8 @@ RUN apk update && \
     addgroup -S rustalink && adduser -S rustalink -G rustalink
 
 # Set build environment variables
+# AUDIOPUS_STATIC=1 forces the crate to build its own static libopus
 ENV AUDIOPUS_STATIC="1" \
-    RUSTFLAGS="-C link-arg=-lm" \
     CFLAGS="-fno-stack-protector" \
     CXXFLAGS="-fno-stack-protector" \
     LDFLAGS="-fno-stack-protector" \

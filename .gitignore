@@ -10,20 +10,6 @@
 # LOGS
 logs/*
 
-voice-main
-lavaplayer-main
-Lavalink-master
-lavasrc-github
-LavaSrc-master
-NodeLink-dev
+
 config.toml
-youtube-source-main
-lavalink-client/
-nodelink-voice/
-NodeLink/
-lavaplayer/
-Lavalink/
-LavaSrc/
-lavasrc-github/
-Rustalink-sabr
-Rustalink-TV-Working/
+.env
