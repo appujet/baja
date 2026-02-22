@@ -21,13 +21,9 @@ pub struct AppleMusicSource {
   token_tracker: Arc<AppleMusicTokenTracker>,
   country_code: String,
 
-  #[allow(dead_code)]
   playlist_load_limit: usize,
-  #[allow(dead_code)]
   album_load_limit: usize,
-  #[allow(dead_code)]
   playlist_page_load_concurrency: usize,
-  #[allow(dead_code)]
   album_page_load_concurrency: usize,
   search_prefixes: Vec<String>,
   url_regex: Regex,

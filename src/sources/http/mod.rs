@@ -182,6 +182,7 @@ impl SourcePlugin for HttpSource {
       Some(Box::new(HttpTrack {
         url: clean.to_string(),
         local_addr: routeplanner.and_then(|rp| rp.get_address()),
+        proxy: None,
       }))
     } else {
       None
@@ -192,6 +193,7 @@ impl SourcePlugin for HttpSource {
 pub struct HttpTrack {
   pub url: String,
   pub local_addr: Option<std::net::IpAddr>,
+  pub proxy: Option<crate::configs::HttpProxyConfig>,
 }
 
 impl PlayableTrack for HttpTrack {
@@ -208,11 +210,12 @@ impl PlayableTrack for HttpTrack {
 
     let url = self.url.clone();
     let local_addr = self.local_addr;
+    let proxy = self.proxy.clone();
 
     let handle = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
       let _guard = handle.enter();
-      let reader = match self::reader::HttpReader::new(&url, local_addr, None) {
+      let reader = match self::reader::HttpReader::new(&url, local_addr, proxy) {
         Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
         Err(e) => {
           error!("Failed to create HttpReader for HTTP: {}", e);

@@ -44,6 +44,8 @@ pub struct Config {
   pub bandcamp: Option<BandcampConfig>,
   #[serde(default)]
   pub audius: Option<AudiusConfig>,
+  #[serde(default)]
+  pub yandexmusic: Option<YandexMusicConfig>,
 }
 
 impl Default for Config {
@@ -71,6 +73,7 @@ impl Default for Config {
       mixcloud: None,
       bandcamp: None,
       audius: None,
+      yandexmusic: None,
     }
   }
 }

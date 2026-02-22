@@ -17,6 +17,7 @@ use super::{
   soundcloud::SoundCloudSource,
   spotify::SpotifySource,
   tidal::TidalSource,
+  yandexmusic::YandexMusicSource,
   youtube::{YouTubeSource, cipher::YouTubeCipherManager},
   bandcamp::BandcampSource,
   audius::AudiusSource,
@@ -53,84 +54,24 @@ impl SourceManager {
       };
     }
 
-    register_source!(
-      config.sources.jiosaavn,
-      "JioSaavn",
-      JioSaavnSource::new(config.jiosaavn.clone())
-    );
-    register_source!(
-      config.sources.deezer,
-      "Deezer",
-      DeezerSource::new(config.deezer.clone().unwrap_or_default())
-    );
-    register_source!(
-      config.sources.spotify,
-      "Spotify",
-      SpotifySource::new(config.spotify.clone())
-    );
-    register_source!(
-      config.sources.applemusic,
-      "Apple Music",
-      AppleMusicSource::new(config.applemusic.clone())
-    );
-    register_source!(
-      config.sources.gaana,
-      "Gaana",
-      GaanaSource::new(config.gaana.clone())
-    );
-    register_source!(
-      config.sources.tidal,
-      "Tidal",
-      TidalSource::new(config.tidal.clone())
-    );
-    register_source!(
-      config.sources.soundcloud,
-      "SoundCloud",
-      SoundCloudSource::new(config.soundcloud.clone().unwrap_or_default())
-    );
-    register_source!(
-      config.sources.audiomack,
-      "Audiomack",
-      AudiomackSource::new(config.audiomack.clone())
-    );
-    register_source!(
-      config.sources.audius,
-      "Audius",
-      AudiusSource::new(config.audius.clone())
-    );
-    register_source!(
-      config.sources.pandora,
-      "Pandora",
-      PandoraSource::new(config.pandora.clone())
-    );
-    register_source!(config.sources.qobuz, "Qobuz", QobuzSource::new(config));
-    register_source!(
-      config.sources.anghami,
-      "Anghami",
-      AnghamiSource::new(config)
-    );
-    register_source!(
-      config.sources.shazam,
-      "Shazam",
-      ShazamSource::new(config)
-    );
-    register_source!(
-      config.sources.mixcloud,
-      "Mixcloud",
-      MixcloudSource::new(config.mixcloud.clone())
-    );
-    register_source!(
-      config.sources.bandcamp,
-      "Bandcamp",
-      BandcampSource::new(config.bandcamp.clone())
-    );
-
     if config.sources.youtube {
       tracing::info!("Loaded source: YouTube");
       let yt = YouTubeSource::new(config.youtube.clone());
       youtube_cipher_manager = Some(yt.cipher_manager());
       sources.push(Box::new(yt));
     }
+
+    register_source!(
+      config.sources.soundcloud,
+      "SoundCloud",
+      SoundCloudSource::new(config.soundcloud.clone().unwrap_or_default())
+    );
+
+    register_source!(
+      config.sources.spotify,
+      "Spotify",
+      SpotifySource::new(config.spotify.clone())
+    );
 
     if config.sources.http {
       tracing::info!("Loaded source: http");
@@ -141,6 +82,111 @@ impl SourceManager {
       tracing::info!("Loaded source: local");
       sources.push(Box::new(LocalSource::new()));
     }
+
+    register_source!(
+      config.sources.jiosaavn,
+      "JioSaavn",
+      JioSaavnSource::new(config.jiosaavn.clone())
+    );
+
+    let (deezer_token_provided, deezer_key_provided) = if let Some(c) = config.deezer.as_ref() {
+      let arls_provided = c.arls.as_ref().map(|a| !a.is_empty() && a.iter().any(|s| !s.is_empty())).unwrap_or(false);
+      let key_provided = c.master_decryption_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false);
+      (arls_provided, key_provided)
+    } else {
+      (false, false)
+    };
+    if config.sources.deezer && (!deezer_token_provided || !deezer_key_provided) {
+      let mut missing = Vec::new();
+      if !deezer_token_provided { missing.push("arls"); }
+      if !deezer_key_provided { missing.push("master_decryption_key"); }
+      tracing::warn!("Deezer source is enabled but {} {} missing; it will be disabled.", missing.join(" and "), if missing.len() > 1 { "are" } else { "is" });
+    }
+    register_source!(
+      config.sources.deezer && deezer_token_provided && deezer_key_provided,
+      "Deezer",
+      DeezerSource::new(config.deezer.clone().unwrap_or_default())
+    );
+
+    register_source!(
+      config.sources.applemusic,
+      "Apple Music",
+      AppleMusicSource::new(config.applemusic.clone())
+    );
+
+    register_source!(
+      config.sources.gaana,
+      "Gaana",
+      GaanaSource::new(config.gaana.clone())
+    );
+
+    register_source!(
+      config.sources.tidal,
+      "Tidal",
+      TidalSource::new(config.tidal.clone())
+    );
+
+    register_source!(
+      config.sources.audiomack,
+      "Audiomack",
+      AudiomackSource::new(config.audiomack.clone())
+    );
+
+    register_source!(
+      config.sources.pandora,
+      "Pandora",
+      PandoraSource::new(config.pandora.clone())
+    );
+    
+    let qobuz_token_provided = config.qobuz.as_ref().and_then(|c| c.user_token.as_ref()).map(|t| !t.is_empty()).unwrap_or(false);
+    if config.sources.qobuz && !qobuz_token_provided {
+      tracing::warn!("Qobuz user_token is missing; all playback will fall back to mirrors.");
+    }
+    register_source!(
+      config.sources.qobuz,
+      "Qobuz",
+      QobuzSource::new(config)
+    );
+
+    register_source!(
+      config.sources.anghami,
+      "Anghami",
+      AnghamiSource::new(config)
+    );
+
+    register_source!(
+      config.sources.shazam,
+      "Shazam",
+      ShazamSource::new(config)
+    );
+
+    register_source!(
+      config.sources.mixcloud,
+      "Mixcloud",
+      MixcloudSource::new(config.mixcloud.clone())
+    );
+    
+    register_source!(
+      config.sources.bandcamp,
+      "Bandcamp",
+      BandcampSource::new(config.bandcamp.clone())
+    );
+
+    register_source!(
+      config.sources.audius,
+      "Audius",
+      AudiusSource::new(config.audius.clone())
+    );
+
+    let yandex_token_provided = config.yandexmusic.as_ref().and_then(|c| c.access_token.as_ref()).is_some();
+    if config.sources.yandexmusic && !yandex_token_provided {
+      tracing::warn!("Yandex Music source is enabled but the access_token is missing; it will be disabled.");
+    }
+    register_source!(
+      config.sources.yandexmusic && yandex_token_provided,
+      "Yandex Music",
+      YandexMusicSource::new(config.yandexmusic.clone())
+    );
 
     Self {
       sources,

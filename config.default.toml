@@ -30,6 +30,7 @@ shazam = true
 mixcloud = true
 bandcamp = true
 audius = true
+yandexmusic = true
 
 [mirrors]
 providers = [
@@ -54,7 +55,8 @@ url = "https://cipher.kikkia.dev/api" # The URL for the cipher resolution server
 # token = "your_token_here" 
 
 [soundcloud]
-# client_id = "your_client_id_here"  # Auto-extracted from soundcloud.com if not set
+# OPTIONAL: client_id -> auto-extracted from soundcloud.com if not set
+# client_id = "your_client_id_here"
 search_limit = 10
 playlist_load_limit = 100
 
@@ -83,7 +85,9 @@ secretKey = "your_secret_key" # The required secret key used for decryption
 # password = "mypassword"
 
 [deezer]
+# REQUIRED: arls -> for playback; without it the source will be disabled.
 arls = ["your_deezer_arl_here"]
+# REQUIRED: master_decryption_key -> for playback; without it the source will be disabled.
 master_decryption_key = "your_master_key_here"
 
 [deezer.proxy]
@@ -102,11 +106,12 @@ track_resolve_concurrency = 50 # Number of tracks to resolve concurrently
 
 [applemusic]
 country_code = "us"
+# OPTIONAL: media_api_token -> auto-extracted from music.apple.com if not set.
 # media_api_token = "your_token_here"
-playlist_load_limit = 0
-album_load_limit = 0
-playlist_page_load_concurrency = 5
-album_page_load_concurrency = 5
+playlist_load_limit = 0 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
+album_load_limit = 0 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
+playlist_page_load_concurrency = 5 # Number of playlist pages to fetch concurrently
+album_page_load_concurrency = 5 # Number of album pages to fetch concurrently
 
 [gaana]
 # stream_quality = "high" # "low", "medium", "high"
@@ -122,6 +127,7 @@ artist_load_limit = 20
 
 [tidal]
 country_code = "US"
+# OPTIONAL: token -> auto-extracted from listen.tidal.com if not set.
 # token = "your_token_here"
 playlist_load_limit = 50
 album_load_limit = 50
@@ -131,6 +137,7 @@ artist_load_limit = 20
 search_limit = 20
 
 [pandora]
+# OPTIONAL: csrf_token -> auto-extracted from pandora.com if not set.
 # csrf_token = "your_csrf_token_here"
 search_limit = 10
 playlist_load_limit = 100
@@ -142,10 +149,10 @@ playlist_load_limit = 100
 #password = "mypassword"
 
 [qobuz]
-# user_token is optional; without it all playback falls back to mirrors.
+# OPTIONAL: user_token -> without it all playback falls back to mirrors.
 # Get it from play.qobuz.com → DevTools → Application → Local Storage → localuser → token
 # user_token = "your_user_token_here"
-# app_id and app_secret are optional; auto-extracted from bundle.js if omitted
+# OPTIONAL: app_id and app_secret -> auto-extracted from bundle.js if omitted
 # app_id = ""
 # app_secret = ""
 search_limit = 10
@@ -175,7 +182,21 @@ search_limit = 10
 search_limit = 10
 playlist_load_limit = 100
 album_load_limit = 100
+# app_name -> OPTIONAL: used for API requests.
 # app_name = "Rustalink"
+
+[yandexmusic]
+# REQUIRED: access_token -> without it the source will be disabled.
+# access_token = "your access token"
+search_limit = 10
+playlist_load_limit = 6 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
+album_load_limit = 6 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
+artist_load_limit = 6 # 0 = unlimited, 1 = 10 tracks, 2 = 20 tracks, etc.
+
+# [yandexmusic.proxy]
+# url = "http://proxy.example.com:8080"
+# username = "myuser"
+# password = "mypassword"
 
 [filters]
 volume = true

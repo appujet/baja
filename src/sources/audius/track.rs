@@ -51,6 +51,7 @@ impl PlayableTrack for AudiusTrack {
                         let http_track = HttpTrack {
                             url: stream_url,
                             local_addr,
+                            proxy: None,
                         };
                         let (inner_rx, inner_cmd_tx, inner_err_rx) = http_track.start_decoding();
 

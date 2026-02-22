@@ -19,6 +19,7 @@ pub mod tidal;
 pub mod youtube;
 pub mod audius;
 pub mod bandcamp;
+pub mod yandexmusic;
 
 pub use manager::SourceManager;
 pub use plugin::SourcePlugin;

@@ -55,6 +55,7 @@ impl PlayableTrack for QobuzTrack {
           let http_track = HttpTrack {
             url,
             local_addr: None,
+            proxy: None,
           };
           let (inner_rx, inner_cmd_tx, inner_err_rx) = http_track.start_decoding();
 

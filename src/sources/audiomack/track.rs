@@ -34,7 +34,7 @@ impl PlayableTrack for AudiomackTrack {
       let _guard = handle.enter();
       handle.block_on(async move {
         if let Some(url) = fetch_stream_url(&client, &identifier).await {
-          let http_track = HttpTrack { url, local_addr };
+          let http_track = HttpTrack { url, local_addr, proxy: None };
           let (inner_rx, inner_cmd_tx, inner_err_rx) = http_track.start_decoding();
 
           // Proxy commands

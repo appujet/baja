@@ -21,6 +21,7 @@ pub struct SourcesConfig {
   pub shazam: bool,
   pub mixcloud: bool,
   pub bandcamp: bool,
+  pub yandexmusic: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -355,4 +356,30 @@ impl Default for AnghamiConfig {
   fn default() -> Self {
     Self { search_limit: 10 }
   }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+pub struct YandexMusicConfig {
+  pub access_token: Option<String>,
+  #[serde(default = "default_yandex_playlist_load_limit")]
+  pub playlist_load_limit: usize,
+  #[serde(default = "default_yandex_album_load_limit")]
+  pub album_load_limit: usize,
+  #[serde(default = "default_yandex_artist_load_limit")]
+  pub artist_load_limit: usize,
+  pub proxy: Option<HttpProxyConfig>,
+  #[serde(default = "default_search_limit")]
+  pub search_limit: usize,
+}
+
+fn default_yandex_playlist_load_limit() -> usize {
+  6
+}
+
+fn default_yandex_album_load_limit() -> usize {
+  6
+}
+
+fn default_yandex_artist_load_limit() -> usize {
+  6
 }

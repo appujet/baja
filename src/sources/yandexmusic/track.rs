@@ -1,21 +1,22 @@
 use std::net::IpAddr;
 use flume::{Receiver, Sender};
-use regex::Regex;
 use tracing::{debug, error};
+use regex::Regex;
 
 use crate::{
     audio::processor::DecoderCommand,
     sources::{http::HttpTrack, plugin::PlayableTrack},
 };
+use super::utils;
 
-pub struct BandcampTrack {
+pub struct YandexMusicTrack {
     pub client: reqwest::Client,
-    pub uri: String,
-    pub stream_url: Option<String>,
+    pub track_id: String,
     pub local_addr: Option<IpAddr>,
+    pub proxy: Option<crate::configs::HttpProxyConfig>,
 }
 
-impl PlayableTrack for BandcampTrack {
+impl PlayableTrack for YandexMusicTrack {
     fn start_decoding(
         &self,
     ) -> (
@@ -27,28 +28,22 @@ impl PlayableTrack for BandcampTrack {
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
-        let uri = self.uri.clone();
+        let track_id = self.track_id.clone();
         let client = self.client.clone();
-        let stream_url = self.stream_url.clone();
         let local_addr = self.local_addr;
+        let proxy = self.proxy.clone();
 
         let handle = tokio::runtime::Handle::current();
         std::thread::spawn(move || {
             let _guard = handle.enter();
             handle.block_on(async move {
-                let final_stream_url = if let Some(url) = stream_url {
-                    Some(url)
-                } else {
-                    fetch_stream_url(&client, &uri).await
-                };
-
-                match final_stream_url {
-                    Some(url) => {
-                        debug!("Bandcamp stream URL: {}", url);
+                match fetch_download_url(&client, &track_id).await {
+                    Some(stream_url) => {
+                        debug!("Yandex Music stream URL: {}", stream_url);
                         let http_track = HttpTrack {
-                            url,
+                            url: stream_url,
                             local_addr,
-                            proxy: None,
+                            proxy,
                         };
                         let (inner_rx, inner_cmd_tx, inner_err_rx) = http_track.start_decoding();
 
@@ -78,7 +73,7 @@ impl PlayableTrack for BandcampTrack {
                         }
                     }
                     None => {
-                        error!("Failed to fetch Bandcamp stream URL for {}", uri);
+                        error!("Failed to fetch Yandex Music stream URL for track ID {}", track_id);
                         let _ = err_tx.send("Failed to fetch stream URL".to_string());
                     }
                 }
@@ -89,19 +84,38 @@ impl PlayableTrack for BandcampTrack {
     }
 }
 
-async fn fetch_stream_url(client: &reqwest::Client, uri: &str) -> Option<String> {
-    let resp = client.get(uri).send().await.ok()?;
-    if !resp.status().is_success() {
-        return None;
-    }
+async fn fetch_download_url(client: &reqwest::Client, id: &str) -> Option<String> {
+    let url = format!("https://api.music.yandex.net/tracks/{}/download-info", id);
+    let resp = client.get(url).send().await.ok()?;
+    let data: serde_json::Value = resp.json().await.ok()?;
 
-    let body = resp.text().await.ok()?;
+    let results = data["result"].as_array()?;
     
-    let stream_re = Regex::new(r"https?://t4\.bcbits\.com/stream/[a-zA-Z0-9]+/mp3-128/\d+\?p=\d+&amp;ts=\d+&amp;t=[a-zA-Z0-9]+&amp;token=\d+_[a-zA-Z0-9]+").unwrap();
+    // Find MP3 with highest bitrate
+    let mut mp3_items: Vec<_> = results.iter()
+        .filter(|item| item["codec"].as_str() == Some("mp3"))
+        .collect();
     
-    if let Some(m) = stream_re.find(&body) {
-        return Some(m.as_str().replace("&amp;", "&"));
-    }
+    mp3_items.sort_by_key(|item| item["bitrateInKbps"].as_u64().unwrap_or(0));
+    let best_mp3 = mp3_items.last()?;
+    let download_info_url = best_mp3["downloadInfoUrl"].as_str()?;
 
-    None
+    // Fetch XML
+    let xml_resp = client.get(download_info_url).send().await.ok()?;
+    let xml_text = xml_resp.text().await.ok()?;
+
+    let get_tag = |text: &str, tag: &str| -> Option<String> {
+        let pattern = format!("<{tag}>(?P<val>[^<]+)</{tag}>");
+        let re = Regex::new(&pattern).ok()?;
+        re.captures(text)?.name("val")?.as_str().to_string().into()
+    };
+
+    let host: String = get_tag(&xml_text, "host")?;
+    let path: String = get_tag(&xml_text, "path")?;
+    let ts: String = get_tag(&xml_text, "ts")?;
+    let s: String = get_tag(&xml_text, "s")?;
+
+    let md5 = utils::generate_download_sign(&path, &s);
+
+    Some(format!("https://{}/get-mp3/{}/{}{}", host, md5, ts, path))
 }
