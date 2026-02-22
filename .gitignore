@@ -10,6 +10,8 @@
 # LOGS
 logs/*
 
+# Extra folder
+extra/*
 
 config.toml
 .env
