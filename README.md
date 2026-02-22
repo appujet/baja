@@ -40,18 +40,18 @@ The following table outlines the current implementation status of various featur
 | **Apple Music** | ✅ | Implementation |
 | **Anghami** | ✅ | Metadata resolution with full mirror playback support (Protobuf-encoded response handling) |
 | **Audiomack** | ✅ | Implementation |
-| **Audius** | ❌ | Planned implementation |
-| **Bandcamp** | ❌ | Planned implementation |
+| **Audius** | ✅ | Implementation |
+| **Bandcamp** | ✅ | Implementation |
 | **Bilibili** | ❌ | Planned implementation |
 | **Deezer** | ✅ | Implementation |
 | **Gaana** | ✅ | Implementation |
 | **Kwai** | ❌ | Planned implementation |
 | **Last.fm** | ❌ | Planned implementation |
-| **MixCloud** | ❌ | Planned implementation |
+| **MixCloud** | ✅ | Implementation |
 | **Pandora** | ✅ | Implementation |
 | **Qobuz** | ✅ | Implementation |
 | **Reddit** | ❌ | Planned implementation |
-| **Shazam** | ❌ | Planned implementation |
+| **Shazam** | ✅ | Implementation |
 | **SoundCloud** | ✅ | Integration with progressive and HLS streams |
 | **Tidal** | ✅ | Implementation |
 | **Twitch** | ❌ | Planned implementation |
