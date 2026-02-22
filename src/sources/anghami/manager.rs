@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
 use crate::configs::Config;
 use crate::sources::{SourcePlugin, plugin::BoxedTrack};
-use tracing::debug;
+
 
 const BASE_URL: &str = "https://api.anghami.com/gateway.php";
 
@@ -629,7 +629,6 @@ impl SourcePlugin for AnghamiSource {
     _identifier: &str,
     _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
   ) -> Option<BoxedTrack> {
-    debug!("Anghami: metadata-only, mirroring handles playback");
     None
   }
 }

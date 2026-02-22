@@ -12,6 +12,7 @@ pub mod plugin;
 pub mod soundcloud;
 pub mod pandora;
 pub mod qobuz;
+pub mod shazam;
 pub mod spotify;
 pub mod tidal;
 pub mod youtube;

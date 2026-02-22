@@ -17,6 +17,7 @@ pub struct SourcesConfig {
   pub pandora: bool,
   pub qobuz: bool,
   pub anghami: bool,
+  pub shazam: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

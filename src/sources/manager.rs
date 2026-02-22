@@ -12,6 +12,7 @@ use super::{
   pandora::PandoraSource,
   plugin::{BoxedSource, BoxedTrack, PlayableTrack},
   qobuz::QobuzSource,
+  shazam::ShazamSource,
   soundcloud::SoundCloudSource,
   spotify::SpotifySource,
   tidal::TidalSource,
@@ -99,6 +100,11 @@ impl SourceManager {
       config.sources.anghami,
       "Anghami",
       AnghamiSource::new(config)
+    );
+    register_source!(
+      config.sources.shazam,
+      "Shazam",
+      ShazamSource::new(config)
     );
 
     if config.sources.youtube {

@@ -424,4 +424,12 @@ impl SourcePlugin for TidalSource {
 
     LoadResult::Empty {}
   }
+ 
+  async fn get_track(
+    &self,
+    _identifier: &str,
+    _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+  ) -> Option<crate::sources::plugin::BoxedTrack> {
+    None
+  }
 }

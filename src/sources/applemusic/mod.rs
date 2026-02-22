@@ -141,4 +141,12 @@ impl SourcePlugin for AppleMusicSource {
 
     self.get_search_suggestions(q, types).await
   }
+ 
+  async fn get_track(
+    &self,
+    _identifier: &str,
+    _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+  ) -> Option<crate::sources::plugin::BoxedTrack> {
+    None
+  }
 }

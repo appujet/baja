@@ -36,6 +36,8 @@ pub struct Config {
   pub qobuz: Option<QobuzConfig>,
   #[serde(default)]
   pub anghami: Option<AnghamiConfig>,
+  #[serde(default)]
+  pub shazam: bool,
 }
 
 impl Default for Config {
@@ -59,6 +61,7 @@ impl Default for Config {
       pandora: None,
       qobuz: None,
       anghami: None,
+      shazam: false,
     }
   }
 }

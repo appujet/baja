@@ -251,7 +251,7 @@ impl PandoraSource {
     Value::Null
   }
 
-  async fn get_track(&self, id: &str) -> LoadResult {
+  async fn fetch_track(&self, id: &str) -> LoadResult {
     let data = match self
       .api_request(ENDPOINT_DETAILS, json!({ "pandoraId": id }))
       .await
@@ -874,7 +874,7 @@ impl SourcePlugin for PandoraSource {
         }
 
         if id.starts_with("TR") {
-          return self.get_track(id).await;
+          return self.fetch_track(id).await;
         } else if id.starts_with("AL") {
           return self.get_album(id).await;
         } else if id.starts_with("AR") {
@@ -898,5 +898,13 @@ impl SourcePlugin for PandoraSource {
     _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
   ) -> Option<SearchResult> {
     self.get_autocomplete(query, types).await
+  }
+ 
+  async fn get_track(
+    &self,
+    _identifier: &str,
+    _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+  ) -> Option<crate::sources::plugin::BoxedTrack> {
+    None
   }
 }

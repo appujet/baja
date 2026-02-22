@@ -206,4 +206,12 @@ impl SourcePlugin for SpotifySource {
     }
     self.get_autocomplete(q, types).await
   }
+ 
+  async fn get_track(
+    &self,
+    _identifier: &str,
+    _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
+  ) -> Option<crate::sources::plugin::BoxedTrack> {
+    None
+  }
 }
