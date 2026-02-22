@@ -503,7 +503,7 @@ impl SpotifySource {
       .and_then(|v| v.as_array())
     {
       for item in items {
-        if let Some(track_data) = item.get("item").and_then(|v| v.get("data")) {
+        if let Some(track_data) = item.get("item").or_else(|| item.get("itemV2")).and_then(|v| v.get("data")) {
           // For search we allow the ISRC metadata fallback (small result set)
           if let Some(track_info) = self.parse_generic_track(track_data, None).await {
             tracks.push(Track::new(track_info));
@@ -722,7 +722,10 @@ impl SpotifySource {
         usize::MAX
       })
       .filter_map(|item| {
-        let track_data = item.pointer("/item/data")?.clone();
+        let track_data = item
+          .pointer("/item/data")
+          .or_else(|| item.pointer("/itemV2/data"))?
+          .clone();
         let semaphore = semaphore.clone();
         Some(async move {
           let _permit = semaphore.acquire().await.unwrap();
@@ -746,7 +749,11 @@ impl SpotifySource {
           "type": "playlist",
           "url": format!("https://open.spotify.com/playlist/{}", id),
           "artworkUrl": playlist.pointer("/images/items/0/sources/0/url").and_then(|v| v.as_str()),
-          "author": playlist.get("ownerV2").and_then(|v| v.get("name")).and_then(|v| v.as_str()),
+          "author": playlist
+            .get("ownerV2")
+            .and_then(|v| v.get("name"))
+            .and_then(|v| v.as_str())
+            .or_else(|| (id.starts_with("37i9dQZ")).then_some("Spotify")),
           "totalTracks": total_count
         }),
         tracks,
