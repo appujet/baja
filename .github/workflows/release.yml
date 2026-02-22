@@ -69,10 +69,11 @@ jobs:
         run: |
           curl -L https://downloads.xiph.org/releases/opus/opus-1.4.tar.gz | tar xz
           cd opus-1.4
-          ./configure --prefix=$HOME/opus-static --disable-shared --enable-static --disable-stack-protector
+          ./configure --prefix=/tmp/opus-static --disable-shared --enable-static --disable-stack-protector
           make -j$(sysctl -n hw.logicalcpu)
           make install
-          echo "LIBOPUS_LIB_DIR=$HOME/opus-static/lib" >> $GITHUB_ENV
+          ls /tmp/opus-static/lib/  # debug: confirm libopus.a exists
+          echo "LIBOPUS_LIB_DIR=/tmp/opus-static/lib" >> $GITHUB_ENV
           echo "LIBOPUS_STATIC=1" >> $GITHUB_ENV
           echo "OPUS_NO_PKG=1" >> $GITHUB_ENV
 
