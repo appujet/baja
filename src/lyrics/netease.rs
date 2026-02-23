@@ -117,7 +117,6 @@ impl LyricsProvider for NeteaseProvider {
     async fn load_lyrics(
         &self,
         track: &TrackInfo,
-        _language: Option<String>,
     ) -> Option<LyricsData> {
         let title = self.clean(&track.title);
         let artist = self.clean(&track.author);

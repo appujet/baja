@@ -29,7 +29,6 @@ pub trait LyricsProvider: Send + Sync {
     async fn load_lyrics(
         &self,
         track: &TrackInfo,
-        language: Option<String>,
     ) -> Option<LyricsData>;
 }
 
@@ -87,14 +86,13 @@ impl LyricsManager {
         }
     }
 
-    pub async fn load_lyrics(&self, track: &TrackInfo, language: Option<String>) -> Option<LyricsData> {
-        self.load_lyrics_ext(track, language, false).await
+    pub async fn load_lyrics(&self, track: &TrackInfo) -> Option<LyricsData> {
+        self.load_lyrics_ext(track, false).await
     }
 
     pub async fn load_lyrics_ext(
         &self,
         track: &TrackInfo,
-        language: Option<String>,
         skip_track_source: bool,
     ) -> Option<LyricsData> {
         let mut futures = FuturesUnordered::new();
@@ -105,9 +103,8 @@ impl LyricsManager {
             }
             let provider = provider.clone();
             let track = track.clone();
-            let language = language.clone();
             futures.push(async move {
-                provider.load_lyrics(&track, language).await
+                provider.load_lyrics(&track).await
             });
         }
 

@@ -89,11 +89,10 @@ impl LyricsProvider for YoutubeLyricsProvider {
     async fn load_lyrics(
         &self,
         track: &TrackInfo,
-        _language: Option<String>,
     ) -> Option<LyricsData> {
         let mut video_id = None;
 
-        if track.source_name == "youtube" || track.source_name == "ytmusic" {
+        if track.source_name == "youtube" || track.source_name == "youtubemusic" {
             video_id = track.uri.as_deref().or(Some(&track.identifier)).map(|s| {
                 if s.contains("v=") {
                     s.split("v=").nth(1).and_then(|v| v.split('&').next()).unwrap_or(s).to_string()

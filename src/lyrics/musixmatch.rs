@@ -116,7 +116,6 @@ impl LyricsProvider for MusixmatchProvider {
     async fn load_lyrics(
         &self,
         track: &TrackInfo,
-        _language: Option<String>,
     ) -> Option<LyricsData> {
         let token = self.get_token().await?;
         let title = Self::clean_title(&track.title);

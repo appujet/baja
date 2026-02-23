@@ -123,7 +123,6 @@ impl LyricsProvider for BilibiliProvider {
     async fn load_lyrics(
         &self,
         track: &TrackInfo,
-        _language: Option<String>,
     ) -> Option<LyricsData> {
         if track.source_name != "bilibili" {
             return None;

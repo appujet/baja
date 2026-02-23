@@ -125,7 +125,7 @@ pub async fn start_playback(
     let guild_id_lyrics = player.guild_id.clone();
     
     tokio::spawn(async move {
-        if let Some(lyrics) = lyrics_manager_clone.load_lyrics(&track_info_clone, None).await {
+        if let Some(lyrics) = lyrics_manager_clone.load_lyrics(&track_info_clone).await {
             {
                 let mut lock = lyrics_data_arc.lock().await;
                 *lock = Some(lyrics.clone());

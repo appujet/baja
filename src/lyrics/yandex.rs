@@ -97,7 +97,6 @@ impl LyricsProvider for YandexProvider {
     async fn load_lyrics(
         &self,
         track: &TrackInfo,
-        _language: Option<String>,
     ) -> Option<LyricsData> {
         let token = self.access_token.as_ref()?;
         let title = self.clean(&track.title);

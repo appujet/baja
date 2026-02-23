@@ -34,14 +34,6 @@ impl LetrasMusProvider {
         }
         result.trim().to_string()
     }
-
-    fn normalize_lang(&self, lang: &str) -> Option<&'static str> {
-        let l = lang.to_lowercase();
-        if l.starts_with("pt") { Some("pt") }
-        else if l.starts_with("en") { Some("en") }
-        else if l.starts_with("es") { Some("es") }
-        else { None }
-    }
 }
 
 #[async_trait]
@@ -51,7 +43,6 @@ impl LyricsProvider for LetrasMusProvider {
     async fn load_lyrics(
         &self,
         track: &TrackInfo,
-        language: Option<String>,
     ) -> Option<LyricsData> {
         let title = self.clean(&track.title);
         let author = self.clean(&track.author);
@@ -79,51 +70,6 @@ impl LyricsProvider for LetrasMusProvider {
         let letras_id = omq.as_ref().and_then(|o| o["ID"].as_i64());
         let youtube_id = omq.as_ref().and_then(|o| o["YoutubeID"].as_str());
 
-        // Handle translations
-        if let Some(lang) = language {
-            let norm = self.normalize_lang(&lang);
-            if let Some(n) = norm {
-                // Check for translations in HTML (window.__translationLanguages)
-                let trans_re = Regex::new(r#"window\.__translationLanguages\s*=\s*(\[[\s\S]*?\]);"#).unwrap();
-                if let Some(caps) = trans_re.captures(&html) {
-                    let trans_list: Value = serde_json::from_str(caps.get(1)?.as_str()).ok()?;
-                    if let Some(arr) = trans_list.as_array() {
-                        let entry = arr.iter().find(|t| t["languageCode"].as_str().map(|c| c.starts_with(n)).unwrap_or(false));
-                        if let Some(e) = entry {
-                            let trans_url = format!("https://www.letras.mus.br/{}/{}/{}/", 
-                                e["url"]["artist"].as_str()?,
-                                e["url"]["song"].as_str()?,
-                                e["url"]["translation"].as_str()?
-                            );
-                            let trans_html = self.client.get(trans_url).send().await.ok()?.text().await.ok()?;
-                            
-                            // Extract lines from translation page
-                            let lyric_re = Regex::new(r#"(?i)<div class="lyric-original[^>]*">([\s\S]*?)</div>"#).unwrap();
-                            if let Some(c) = lyric_re.captures(&trans_html) {
-                                let content = c.get(1)?.as_str().replace("<br>", "\n").replace("<p>", "").replace("</p>", "\n");
-                                let tag_re = Regex::new(r#"<[^>]*>"#).unwrap();
-                                let cleaned = tag_re.replace_all(&content, "");
-                                let lines: Vec<LyricsLine> = cleaned.lines()
-                                    .map(|l| l.trim())
-                                    .filter(|l| !l.is_empty())
-                                    .map(|l| LyricsLine { text: l.to_string(), timestamp: 0, duration: 0 })
-                                    .collect();
-                                
-                                if !lines.is_empty() {
-                                    return Some(LyricsData {
-                                        name: omq.as_ref().and_then(|o| o["Name"].as_str()).unwrap_or(&track.title).to_string(),
-                                        author: track.author.clone(),
-                                        provider: "letrasmus".to_string(),
-                                        text: lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n"),
-                                        lines: None,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         // Try synced lyrics if available
         if let (Some(l_id), Some(y_id)) = (letras_id, youtube_id) {

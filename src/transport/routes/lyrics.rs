@@ -33,7 +33,7 @@ pub async fn load_lyrics(
         })),
     };
 
-    match state.lyrics_manager.load_lyrics(&track.info, query.lang).await {
+    match state.lyrics_manager.load_lyrics(&track.info).await {
         Some(lyrics) => {
             if let Some(lines) = lyrics.lines {
                 Json(LyricsLoadResult::Lyrics(ApiLyricsData {
@@ -97,7 +97,7 @@ pub async fn get_lyrics(
         None => return (axum::http::StatusCode::BAD_REQUEST, "Invalid encoded track").into_response(),
     };
 
-    match state.lyrics_manager.load_lyrics_ext(&track.info, None, query.skip_track_source).await {
+    match state.lyrics_manager.load_lyrics_ext(&track.info, query.skip_track_source).await {
         Some(lyrics) => {
             let response = LavalinkLyrics {
                 source_name: track.info.source_name.clone(),
@@ -143,7 +143,7 @@ pub async fn get_player_lyrics(
         None => return axum::http::StatusCode::NOT_FOUND.into_response(),
     };
 
-    match state.lyrics_manager.load_lyrics_ext(&track.info, None, query.skip_track_source).await {
+    match state.lyrics_manager.load_lyrics_ext(&track.info, query.skip_track_source).await {
         Some(lyrics) => {
             let response = LavalinkLyrics {
                 source_name: track.info.source_name.clone(),

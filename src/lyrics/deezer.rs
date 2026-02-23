@@ -114,7 +114,6 @@ impl LyricsProvider for DeezerProvider {
     async fn load_lyrics(
         &self,
         track: &TrackInfo,
-        _language: Option<String>,
     ) -> Option<LyricsData> {
         let jwt = self.get_jwt().await?;
 
