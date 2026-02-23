@@ -6,9 +6,13 @@ pub mod ts_demux;
 pub mod types;
 pub mod utils;
 
+use parking_lot::{Condvar, Mutex};
 use std::{
     io::{self, Read, Seek, SeekFrom},
-    sync::{Arc, Condvar, Mutex},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use symphonia::core::io::MediaSource;
@@ -21,14 +25,14 @@ use self::{
 };
 use crate::{configs::HttpProxyConfig, sources::youtube::cipher::YouTubeCipherManager};
 
-/// Number of segments fetched into the look-ahead buffer before the reader
-/// swaps it into the active position.  Keep this small so swaps are fast but
-/// large enough that network jitter is absorbed.
-const PREFETCH_SEGMENTS: usize = 3;
+/// Number of segments fetched into the look-ahead buffer by the background thread.
+/// Increased to 4 to provide a deeper buffer against network jitter.
+const PREFETCH_SEGMENTS: usize = 4;
 
-/// Low-water mark: when the active buffer has fewer bytes remaining than this,
-/// we wake the background thread early so it can start filling the next buffer.
-const LOW_WATER_BYTES: usize = 64 * 1024; // 64 KiB
+/// Low-water mark: when the active buffer has fewer bytes than this, wake
+/// the background thread to start prefetching the next segment early.
+/// Set to 512 KiB to ensure the next segment is always ready before we run out.
+const LOW_WATER_BYTES: usize = 512 * 1024; // 512 KiB
 
 // ──────────────────── Shared state between reader & prefetcher ────────────────
 
@@ -69,6 +73,9 @@ pub struct HlsReader {
 
     /// Shared mutable state protected by a mutex + condvar.
     shared: Arc<(Mutex<SharedState>, Condvar)>,
+    /// Lightweight abort flag: set to `true` on Stop or Seek so the prefetch
+    /// thread can bail between segments without locking SharedState.
+    abort_flag: Arc<AtomicBool>,
     /// Handle to the background prefetch thread (joined on drop).
     bg_thread: Option<std::thread::JoinHandle<()>>,
 
@@ -83,9 +90,10 @@ pub struct HlsReader {
 impl Drop for HlsReader {
     fn drop(&mut self) {
         // Signal the background thread to stop.
+        self.abort_flag.store(true, Ordering::Relaxed);
         {
             let (lock, cvar) = &*self.shared;
-            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+            let mut state = lock.lock();
             state.command = PrefetchCommand::Stop;
             state.need_data = true;
             cvar.notify_one();
@@ -153,8 +161,10 @@ impl HlsReader {
             cached_map_data = Some(map_data);
         }
 
-        // Fetch first batch into the active buffer so playback starts instantly.
-        let first_batch_count = PREFETCH_SEGMENTS.min(segment_urls.len());
+        // Bootstrap: fetch exactly ONE segment synchronously so decoding can start
+        // immediately. The background thread fills the rest concurrently.
+        // Fetching more here (e.g. 3) would block the decode thread for 3× network RTT.
+        let first_batch_count = 1_usize.min(segment_urls.len());
         let mut pending = segment_urls;
         let first_batch: Vec<Resource> = pending.drain(..first_batch_count).collect();
 
@@ -194,11 +204,15 @@ impl HlsReader {
         let bg_cached_map = cached_map_data;
         let bg_all_segments = all_segments.clone();
 
+        let abort_flag = Arc::new(AtomicBool::new(false));
+        let abort_flag_bg = Arc::clone(&abort_flag);
+
         let bg_thread = std::thread::Builder::new()
             .name("hls-prefetch".into())
             .spawn(move || {
                 prefetch_loop(
                     shared_bg,
+                    abort_flag_bg,
                     bg_client,
                     bg_cipher,
                     bg_player_url,
@@ -213,6 +227,7 @@ impl HlsReader {
             buf: initial_buf,
             pos: 0,
             shared,
+            abort_flag,
             bg_thread: Some(bg_thread),
             all_segments,
             segment_durations,
@@ -260,7 +275,9 @@ impl HlsReader {
         // Tell background thread to seek.
         {
             let (lock, cvar) = &*self.shared;
-            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+            // Set abort flag first so the thread's between-segment check bails immediately.
+            self.abort_flag.store(true, Ordering::Relaxed);
+            let mut state = lock.lock();
             state.command = PrefetchCommand::Seek(target_index);
             state.need_data = true;
             state.seek_done = false;
@@ -268,9 +285,11 @@ impl HlsReader {
 
             // Wait for the background thread to confirm seek is complete.
             while !state.seek_done {
-                state = cvar.wait(state).unwrap();
+                cvar.wait(&mut state);
             }
             state.seek_done = false;
+            // Clear the flag — background thread is now fetching for the new position.
+            self.abort_flag.store(false, Ordering::Relaxed);
 
             // Swap in whatever the background thread prepared.
             std::mem::swap(&mut self.buf, &mut state.next_buf);
@@ -291,7 +310,7 @@ impl Read for HlsReader {
             let remaining = self.buf.len() - self.pos;
             if remaining <= LOW_WATER_BYTES {
                 let (lock, cvar) = &*self.shared;
-                if let Ok(mut state) = lock.try_lock() {
+                if let Some(mut state) = lock.try_lock() {
                     if !state.need_data && !state.eos {
                         state.need_data = true;
                         cvar.notify_one();
@@ -307,7 +326,7 @@ impl Read for HlsReader {
 
         // Active buffer exhausted — swap with the pre-filled next buffer.
         let (lock, cvar) = &*self.shared;
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
 
         // If the background thread hasn't finished yet, wait for it.
         // But first signal that we need data if not already signalled.
@@ -317,7 +336,7 @@ impl Read for HlsReader {
         }
 
         while state.next_buf.is_empty() && !state.eos {
-            state = cvar.wait(state).unwrap();
+            cvar.wait(&mut state);
         }
 
         if state.next_buf.is_empty() && state.eos {
@@ -367,6 +386,7 @@ impl MediaSource for HlsReader {
 
 fn prefetch_loop(
     shared: Arc<(Mutex<SharedState>, Condvar)>,
+    abort_flag: Arc<AtomicBool>,
     client: reqwest::Client,
     cipher_manager: Option<Arc<YouTubeCipherManager>>,
     player_url: Option<String>,
@@ -378,9 +398,9 @@ fn prefetch_loop(
 
     loop {
         // Wait until the reader signals it needs data.
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
         while !state.need_data {
-            state = cvar.wait(state).unwrap();
+            cvar.wait(&mut state);
         }
 
         // Check for commands.
@@ -422,7 +442,7 @@ fn prefetch_loop(
                 }
 
                 // Re-acquire lock and store data.
-                let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+                let mut state = lock.lock();
                 state.next_buf.extend_from_slice(&tmp_buf);
                 state.current_segment_index += batch.len();
                 state.need_data = false;
@@ -463,21 +483,11 @@ fn prefetch_loop(
 
         let mut tmp_buf = Vec::with_capacity(256 * 1024);
         for res in &batch {
-            // Check for abort (stop or seek) between segments.
-            {
-                let s = lock.lock().unwrap_or_else(|e| e.into_inner());
-                match &s.command {
-                    PrefetchCommand::Stop => return,
-                    PrefetchCommand::Seek(_) => {
-                        // A seek was requested while we were fetching.
-                        // Re-enter the loop to handle it.
-                        let mut s = s;
-                        s.need_data = true;
-                        cvar.notify_one();
-                        break;
-                    }
-                    PrefetchCommand::Continue => {}
-                }
+            // Fast abort check between segments — no mutex, just an atomic load.
+            // The full command (Stop/Seek) will be handled in the outer loop's
+            // mutex wait after this inner loop breaks.
+            if abort_flag.load(Ordering::Relaxed) {
+                break;
             }
 
             if let Ok(resolved) = resolve_resource_static(res, &cipher_manager, &player_url) {
@@ -490,7 +500,7 @@ fn prefetch_loop(
         }
 
         // Re-acquire lock and store the fetched data.
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
         if !matches!(state.command, PrefetchCommand::Continue) {
             // Re-enter the loop to immediately handle the new command (e.g. Seek)
             // without resetting need_data to false, which would cause a deadlock

@@ -1,6 +1,7 @@
+use parking_lot::{Condvar, Mutex};
 use std::{
     io::{Read, Seek, SeekFrom},
-    sync::{Arc, Condvar, Mutex},
+    sync::Arc,
     thread,
 };
 
@@ -226,14 +227,14 @@ impl SoundCloudHlsReader {
         // Signal prefetcher
         {
             let (lock, cvar) = &*self.shared;
-            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+            let mut state = lock.lock();
             state.command = PrefetchCommand::Seek(target_index);
             state.need_data = true;
             state.seek_done = false;
             cvar.notify_one();
 
             while !state.seek_done {
-                state = cvar.wait(state).unwrap();
+                cvar.wait(&mut state);
             }
             state.seek_done = false;
 
@@ -268,7 +269,7 @@ impl Read for SoundCloudHlsReader {
             let remaining = self.buf.len() - self.pos;
             if remaining <= LOW_WATER_BYTES {
                 let (lock, cvar) = &*self.shared;
-                if let Ok(mut state) = lock.try_lock() {
+                if let Some(mut state) = lock.try_lock() {
                     if !state.need_data && !state.eos {
                         state.need_data = true;
                         cvar.notify_one();
@@ -283,7 +284,7 @@ impl Read for SoundCloudHlsReader {
         }
 
         let (lock, cvar) = &*self.shared;
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
 
         if !state.need_data && state.next_buf.is_empty() && !state.eos {
             state.need_data = true;
@@ -291,7 +292,7 @@ impl Read for SoundCloudHlsReader {
         }
 
         while state.next_buf.is_empty() && !state.eos {
-            state = cvar.wait(state).unwrap();
+            cvar.wait(&mut state);
         }
 
         if state.next_buf.is_empty() && state.eos {
@@ -346,10 +347,11 @@ impl MediaSource for SoundCloudHlsReader {
 impl Drop for SoundCloudHlsReader {
     fn drop(&mut self) {
         let (lock, cvar) = &*self.shared;
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
         state.command = PrefetchCommand::Stop;
         state.need_data = true;
         cvar.notify_one();
+        drop(state); // Drop the lock before waiting on the thread
         if let Some(handle) = self.bg_thread.take() {
             let _ = handle.join();
         }
@@ -365,9 +367,9 @@ fn prefetch_loop(
     let (lock, cvar) = &*shared;
 
     loop {
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
         while !state.need_data {
-            state = cvar.wait(state).unwrap();
+            cvar.wait(&mut state);
         }
 
         match std::mem::replace(&mut state.command, PrefetchCommand::Continue) {
@@ -395,7 +397,7 @@ fn prefetch_loop(
                     tmp_buf.len()
                 );
 
-                let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+                let mut state = lock.lock();
                 state.next_buf.extend_from_slice(&tmp_buf);
                 state.current_segment_index += batch.len();
                 state.need_data = false;
@@ -422,7 +424,7 @@ fn prefetch_loop(
         let mut tmp_buf = Vec::with_capacity(256 * 1024);
         for res in &batch {
             {
-                let s = lock.lock().unwrap_or_else(|e| e.into_inner());
+                let s = lock.lock();
                 if !matches!(s.command, PrefetchCommand::Continue) {
                     break;
                 }
@@ -430,7 +432,7 @@ fn prefetch_loop(
             let _ = handle.block_on(fetch_and_demux_into(&client, res, &mut tmp_buf));
         }
 
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
         if !matches!(state.command, PrefetchCommand::Continue) {
             // Re-enter the loop to immediately handle the new command (e.g. Seek)
             // without resetting need_data to false, which would cause a deadlock

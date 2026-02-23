@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use flume::{Receiver, Sender};
 
-use crate::audio::processor::DecoderCommand;
+use crate::audio::{buffer::PooledBuffer, processor::DecoderCommand};
 
 /// A track that can start its own decoding and return PCM samples.
 /// Returns `(pcm_rx, cmd_tx, error_rx)` where:
@@ -14,7 +14,7 @@ pub trait PlayableTrack: Send + Sync {
     fn start_decoding(
         &self,
     ) -> (
-        Receiver<Vec<i16>>,
+        Receiver<PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
     );

@@ -1,7 +1,4 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicU16, AtomicU32, Ordering},
-};
+use std::sync::Arc;
 
 use davey::{AeadInPlace as AesAeadInPlace, Aes256Gcm, KeyInit as AesKeyInit};
 use xsalsa20poly1305::XSalsa20Poly1305;
@@ -19,9 +16,9 @@ pub struct UdpBackend {
     salsa_cipher: Option<XSalsa20Poly1305>,
     aes_cipher: Option<Aes256Gcm>,
 
-    sequence: AtomicU16,
-    timestamp: AtomicU32,
-    nonce: AtomicU32,
+    sequence: u16,
+    timestamp: u32,
+    nonce: u32,
     packet_buf: Vec<u8>,
 }
 
@@ -57,9 +54,9 @@ impl UdpBackend {
             mode,
             salsa_cipher,
             aes_cipher,
-            sequence: AtomicU16::new(0),
-            timestamp: AtomicU32::new(0),
-            nonce: AtomicU32::new(0),
+            sequence: 0,
+            timestamp: 0,
+            nonce: 0,
             packet_buf: Vec::with_capacity(1500),
         })
     }
@@ -68,10 +65,14 @@ impl UdpBackend {
         &mut self,
         payload: &[u8],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let sequence = self.sequence.fetch_add(1, Ordering::SeqCst);
-        let timestamp = self.timestamp.fetch_add(960, Ordering::SeqCst);
+        let sequence = self.sequence;
+        self.sequence = self.sequence.wrapping_add(1);
 
-        let current_nonce = self.nonce.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
+        let timestamp = self.timestamp;
+        self.timestamp = self.timestamp.wrapping_add(960);
+
+        self.nonce = self.nonce.wrapping_add(1);
+        let current_nonce = self.nonce;
 
         let mut header = [0u8; 12];
         header[0] = 0x80; // Version 2

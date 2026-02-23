@@ -762,7 +762,7 @@ impl VoiceGateway {
                     } else if is_reidentify_close(code) {
                         break SessionOutcome::Identify;
                     } else if is_fatal_close(code) {
-                        tracing::error!("Voice gateway closed fatally with code {}", code);
+                        tracing::warn!("Voice gateway closed fatally with code {}", code);
                         break SessionOutcome::Shutdown;
                     } else {
                         // Default to reconnect for safety on unknown codes
@@ -875,40 +875,45 @@ async fn speak_loop(
                     }
                 }
 
-                // Apply audio filters
-                let mut fc = filter_chain.lock().await;
-                if fc.is_active() {
-                    fc.process(&mut pcm_buf);
+                // Apply audio filters — process inside lock, then drop BEFORE encode.
+                // Holding fc across encoder.encode() (~0.1–0.5ms) blocks concurrent
+                // PATCH /filters requests unnecessarily.
+                {
+                    let mut fc = filter_chain.lock().await;
+                    if fc.is_active() {
+                        fc.process(&mut pcm_buf);
 
-                    if fc.has_timescale() {
-                        // Timescale changes buffer length — drain fixed frames
-                        if fc.fill_frame(&mut ts_frame_buf) {
-                            let size = encoder.encode(&ts_frame_buf, &mut opus_buf).map_err(map_boxed_err)?;
+                        if fc.has_timescale() {
+                            let timescale_frame_ready = Some(fc.fill_frame(&mut ts_frame_buf));
+                            // fc lock released here — encode happens outside the lock
                             drop(fc);
-                            if size > 0 {
-                                // Encrypt under lock, then drop it immediately before UDP I/O.
-                                // Holding a Mutex across send_opus_packet blocks other guild players.
-                                let encrypted = {
-                                    let mut dave_lock = dave.lock().await;
-                                    dave_lock.encrypt_opus(&opus_buf[..size])
-                                }; // ← dave lock released here, before any I/O
-                                match encrypted {
-                                    Ok(packet) => {
-                                        if let Err(e) = udp.send_opus_packet(&packet).await {
-                                            tracing::warn!("Failed to send UDP packet: {}", e);
+
+                            match timescale_frame_ready {
+                                Some(true) => {
+                                    let size = encoder.encode(&ts_frame_buf, &mut opus_buf).map_err(map_boxed_err)?;
+                                    if size > 0 {
+                                        let encrypted = {
+                                            let mut dave_lock = dave.lock().await;
+                                            dave_lock.encrypt_opus(&opus_buf[..size])
+                                        };
+                                        match encrypted {
+                                            Ok(packet) => {
+                                                if let Err(e) = udp.send_opus_packet(&packet).await {
+                                                    tracing::warn!("Failed to send UDP packet: {}", e);
+                                                }
+                                            }
+                                            Err(e) => tracing::error!("DAVE encryption failed: {}", e),
                                         }
                                     }
-                                    Err(e) => tracing::error!("DAVE encryption failed: {}", e),
                                 }
+                                _ => {} // Not enough timescale data yet — skip frame
                             }
-                        } else {
-                            // Not enough data yet from timescale — skip frame
-                            drop(fc);
+                            continue;
                         }
-                        continue;
+                        // fc lock released at end of this block (no timescale)
                     }
+                    // fc released here for non-active / non-timescale path
                 }
-                drop(fc);
 
                 let size = encoder.encode(&pcm_buf, &mut opus_buf).map_err(map_boxed_err)?;
                 if size > 0 {

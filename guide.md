@@ -72,8 +72,8 @@ All platforms require:
 #### 🏔️ Linux (Arch / Ubuntu) Setup
 1. Download `rustalink-x86_64-unknown-linux-musl` (Static binary).
 2. Install system dependencies (for building or if dynamic):
-   *   **Arch**: `sudo pacman -S openssl cmake gcc pkg-config`
-   *   **Ubuntu/Debian**: `sudo apt install openssl cmake build-essential pkg-config`
+   *   **Arch**: `sudo pacman -S cmake gcc pkg-config`
+   *   **Ubuntu/Debian**: `sudo apt install cmake build-essential pkg-config`
 3. Make the binary executable:
    ```bash
    chmod +x rustalink-x86_64-unknown-linux-musl

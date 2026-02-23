@@ -4,6 +4,7 @@ use std::sync::{
 };
 
 pub mod tape;
+use crate::audio::buffer::PooledBuffer;
 
 pub trait TransitionEffect: Send {
     fn process(
@@ -13,7 +14,7 @@ pub trait TransitionEffect: Send {
         out_len: usize,
         vol: f32,
         stash: &mut Vec<i16>,
-        rx: &flume::Receiver<Vec<i16>>,
+        rx: &flume::Receiver<PooledBuffer>,
         state_atomic: &Arc<AtomicU8>,
         position_atomic: &Arc<AtomicU64>,
     ) -> bool; // returns true if track contributed audio

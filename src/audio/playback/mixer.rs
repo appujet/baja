@@ -4,15 +4,20 @@ use std::sync::{
 };
 
 use crate::{
-    audio::playback::{
-        effects::{
-            TransitionEffect,
-            tape::{TapeEffect, TapeState},
+    audio::{
+        buffer::PooledBuffer,
+        playback::{
+            effects::{
+                TransitionEffect,
+                tape::{TapeEffect, TapeState},
+            },
+            handle::PlaybackState,
         },
-        handle::PlaybackState,
     },
     configs::player::PlayerConfig,
 };
+
+const MIXER_CHANNELS: u64 = 2;
 
 pub struct Mixer {
     tracks: Vec<MixerTrack>,
@@ -20,7 +25,7 @@ pub struct Mixer {
 }
 
 struct MixerTrack {
-    rx: flume::Receiver<Vec<i16>>,
+    rx: flume::Receiver<PooledBuffer>,
     /// Partially-consumed frame — leftover samples.
     pending: Vec<i16>,
     pending_pos: usize,
@@ -42,7 +47,7 @@ impl Mixer {
 
     pub fn add_track(
         &mut self,
-        rx: flume::Receiver<Vec<i16>>,
+        rx: flume::Receiver<PooledBuffer>,
         state: Arc<AtomicU8>,
         volume: Arc<AtomicU32>,
         position: Arc<AtomicU64>,
@@ -134,37 +139,69 @@ impl Mixer {
                         &track.state,
                         &track.position,
                     );
+
+                    if i > 0 {
+                        track
+                            .position
+                            .fetch_add(i as u64 / MIXER_CHANNELS, Ordering::Relaxed);
+                    }
                 }
             } else {
                 // ── Normal Playback (Rate 1.0) ────────────────────────────────────
-                track.effect = None; // Ensure effect is cleared
-
+                track.effect = None;
                 // ── 1. Drain leftover samples from the previous frame ─────────────
-                while i < out_len && track.pending_pos < track.pending.len() {
-                    self.mix_buf[i] += (track.pending[track.pending_pos] as f32 * vol) as i32;
-                    track.pending_pos += 1;
-                    i += 1;
+                let pending_len = track.pending.len();
+                if track.pending_pos < pending_len {
+                    let to_copy = (out_len - i).min(pending_len - track.pending_pos);
+                    let vol_fixed = (vol * 65536.0) as i32;
+
+                    if vol_fixed == 65536 {
+                        for j in 0..to_copy {
+                            self.mix_buf[i + j] += track.pending[track.pending_pos + j] as i32;
+                        }
+                    } else if vol_fixed != 0 {
+                        for j in 0..to_copy {
+                            let sample = track.pending[track.pending_pos + j] as i32;
+                            self.mix_buf[i + j] += (sample * vol_fixed) >> 16;
+                        }
+                    }
+
+                    track.pending_pos += to_copy;
+                    i += to_copy;
                     track_contributed = true;
-                }
-                if track.pending_pos >= track.pending.len() {
-                    track.pending.clear();
-                    track.pending_pos = 0;
+
+                    if track.pending_pos >= pending_len {
+                        track.pending.clear();
+                        track.pending_pos = 0;
+                    }
                 }
 
                 // ── 2. receive whole frame batches ────────────────────────────────
                 while i < out_len {
                     match track.rx.try_recv() {
                         Ok(frame) => {
-                            let can_use = frame.len().min(out_len - i);
-                            for j in 0..can_use {
-                                self.mix_buf[i + j] += (frame[j] as f32 * vol) as i32;
+                            let frame_len = frame.len();
+                            let can_use = frame_len.min(out_len - i);
+                            let vol_fixed = (vol * 65536.0) as i32;
+
+                            if vol_fixed == 65536 {
+                                for j in 0..can_use {
+                                    self.mix_buf[i + j] += frame[j] as i32;
+                                }
+                            } else if vol_fixed != 0 {
+                                // Optimized fixed-point multiplication
+                                for j in 0..can_use {
+                                    let sample = frame[j] as i32;
+                                    self.mix_buf[i + j] += (sample * vol_fixed) >> 16;
+                                }
                             }
+
                             i += can_use;
                             track_contributed = true;
 
-                            if can_use < frame.len() {
-                                track.pending = frame;
-                                track.pending_pos = can_use;
+                            if can_use < frame_len {
+                                track.pending.extend_from_slice(&frame[can_use..]);
+                                track.pending_pos = 0;
                             }
                         }
                         Err(flume::TryRecvError::Disconnected) => {
@@ -175,8 +212,10 @@ impl Mixer {
                     }
                 }
 
-                // Track position for normal playback
-                track.position.fetch_add((i / 2) as u64, Ordering::Relaxed);
+                // Track position using MIXER_CHANNELS (always stereo out to Opus).
+                track
+                    .position
+                    .fetch_add(i as u64 / MIXER_CHANNELS, Ordering::Relaxed);
             }
 
             if track_contributed {

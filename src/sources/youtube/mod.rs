@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
+use tracing::{debug, warn};
 
 use crate::{
     api::tracks::*,
@@ -58,6 +59,17 @@ impl YouTubeSource {
                 oauth_clone.initialize_access_token().await;
             });
         }
+
+        // Warm the cipher cache on startup (Issue #21)
+        let cm_clone = cipher_manager.clone();
+        tokio::spawn(async move {
+            debug!("YouTubeSource: Warming cipher cache...");
+            if let Err(e) = cm_clone.get_cached_player_script().await {
+                warn!("YouTubeSource: Failed to warm cipher cache: {}", e);
+            } else {
+                debug!("YouTubeSource: Cipher cache warmed.");
+            }
+        });
 
         let visitor_data = Arc::new(RwLock::new(None));
         let http = reqwest::Client::builder()

@@ -209,17 +209,18 @@ pub async fn start_playback(
     let last_lyric_index = player.last_lyric_index.clone();
 
     let track_task = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
-        let mut last_update = std::time::Instant::now();
-        let update_duration = std::time::Duration::from_secs(update_interval_secs);
+        let mut state_interval = tokio::time::interval(std::time::Duration::from_millis(500));
+    
+        let update_every_n: u64 = (update_interval_secs * 2).max(1);
+        let mut tick_count: u64 = 0;
 
         let mut last_position = handle_clone.get_position();
         let mut stuck_ms = 0u64;
 
         loop {
-            interval.tick().await;
+            state_interval.tick().await;
+            tick_count = tick_count.wrapping_add(1);
 
-            // Check if we should stop
             if stop_signal.load(Ordering::SeqCst) {
                 break;
             }
@@ -263,10 +264,26 @@ pub async fn start_playback(
             }
 
             let current_pos = handle_clone.get_position();
-            if current_state == PlaybackState::Playing {
+            // Only check stuck when actively playing at normal rate.
+            // During Stopping/Starting (tape effect) position is intentionally
+            // frozen — skip the stuck check to avoid false TrackStuck events.
+            let is_playing = current_state == PlaybackState::Playing;
+            let is_transitioning = current_state == PlaybackState::Stopping
+                || current_state == PlaybackState::Starting;
+
+            if is_playing {
                 if current_pos == last_position {
                     stuck_ms += 500;
-                    if stuck_ms >= stuck_threshold_ms {
+
+                    // Give more time for the initial start (pos=0) to account for slow
+                    // URL resolution and probing (~7-10s is common for YouTube).
+                    let threshold = if current_pos == 0 {
+                        stuck_threshold_ms.max(30000)
+                    } else {
+                        stuck_threshold_ms
+                    };
+
+                    if stuck_ms >= threshold {
                         let stuck_event =
                             api::OutgoingMessage::Event(api::LavalinkEvent::TrackStuck {
                                 guild_id: guild_id.clone(),
@@ -288,18 +305,18 @@ pub async fn start_playback(
                             },
                         };
                         session_clone.send_message(&stuck_update).await;
-                        last_update = std::time::Instant::now();
                     }
                 } else {
                     stuck_ms = 0;
                 }
-            } else {
+            } else if !is_transitioning {
+                // Paused / Stopped — also reset stuck counter
                 stuck_ms = 0;
             }
             last_position = current_pos;
 
-            if last_update.elapsed() >= update_duration {
-                last_update = std::time::Instant::now();
+            // Fire PlayerUpdate every update_interval_secs (counted in 500ms ticks).
+            if tick_count % update_every_n == 0 {
                 let update = api::OutgoingMessage::PlayerUpdate {
                     guild_id: guild_id.clone(),
                     state: PlayerState {
@@ -314,60 +331,65 @@ pub async fn start_playback(
 
             // Lyrics synchronization
             if lyrics_subscribed.load(Ordering::Relaxed) {
-                let lyrics_lock = lyrics_data.lock().await;
-                if let Some(lyrics) = &*lyrics_lock {
-                    if let Some(lines) = &lyrics.lines {
-                        let last_index = last_lyric_index.load(Ordering::Relaxed);
+                // Use try_lock to avoid blocking the 500ms tick if the lyrics
+                // writer (fetcher task) currently holds the lock.
+                if let Ok(lyrics_lock) = lyrics_data.try_lock() {
+                    if let Some(lyrics) = &*lyrics_lock {
+                        if let Some(lines) = &lyrics.lines {
+                            let last_index = last_lyric_index.load(Ordering::Relaxed);
 
-                        // Find the current target index based on position
-                        let mut target_index = -1i64;
-                        for (i, line) in lines.iter().enumerate() {
-                            if current_pos >= line.timestamp {
-                                target_index = i as i64;
-                            } else {
-                                break;
+                            // Find the current target index based on position
+                            let mut target_index = -1i64;
+                            for (i, line) in lines.iter().enumerate() {
+                                if current_pos >= line.timestamp {
+                                    target_index = i as i64;
+                                } else {
+                                    break;
+                                }
                             }
-                        }
 
-                        if target_index > last_index {
-                            // Forward progression or jump
-                            for i in (last_index + 1)..=target_index {
-                                let line = &lines[i as usize];
-                                let is_final = i == target_index;
-                                let event =
-                                    api::OutgoingMessage::Event(api::LavalinkEvent::LyricsLine {
-                                        guild_id: guild_id.clone(),
-                                        line_index: i as i32,
-                                        line: api::models::LavalinkLyricsLine {
-                                            line: line.text.clone(),
-                                            timestamp: line.timestamp,
-                                            duration: Some(line.duration),
-                                            plugin: serde_json::json!({}),
+                            if target_index > last_index {
+                                // Forward progression or jump
+                                for i in (last_index + 1)..=target_index {
+                                    let line = &lines[i as usize];
+                                    let is_final = i == target_index;
+                                    let event = api::OutgoingMessage::Event(
+                                        api::LavalinkEvent::LyricsLine {
+                                            guild_id: guild_id.clone(),
+                                            line_index: i as i32,
+                                            line: api::models::LavalinkLyricsLine {
+                                                line: line.text.clone(),
+                                                timestamp: line.timestamp,
+                                                duration: Some(line.duration),
+                                                plugin: serde_json::json!({}),
+                                            },
+                                            skipped: !is_final,
                                         },
-                                        skipped: !is_final,
-                                    });
-                                session_clone.send_message(&event).await;
-                            }
-                            last_lyric_index.store(target_index, Ordering::SeqCst);
-                        } else if target_index < last_index {
-                            // Backward jump
-                            if target_index != -1 {
-                                let line = &lines[target_index as usize];
-                                let event =
-                                    api::OutgoingMessage::Event(api::LavalinkEvent::LyricsLine {
-                                        guild_id: guild_id.clone(),
-                                        line_index: target_index as i32,
-                                        line: api::models::LavalinkLyricsLine {
-                                            line: line.text.clone(),
-                                            timestamp: line.timestamp,
-                                            duration: Some(line.duration),
-                                            plugin: serde_json::json!({}),
+                                    );
+                                    session_clone.send_message(&event).await;
+                                }
+                                last_lyric_index.store(target_index, Ordering::SeqCst);
+                            } else if target_index < last_index {
+                                // Backward jump
+                                if target_index != -1 {
+                                    let line = &lines[target_index as usize];
+                                    let event = api::OutgoingMessage::Event(
+                                        api::LavalinkEvent::LyricsLine {
+                                            guild_id: guild_id.clone(),
+                                            line_index: target_index as i32,
+                                            line: api::models::LavalinkLyricsLine {
+                                                line: line.text.clone(),
+                                                timestamp: line.timestamp,
+                                                duration: Some(line.duration),
+                                                plugin: serde_json::json!({}),
+                                            },
+                                            skipped: false,
                                         },
-                                        skipped: false,
-                                    });
-                                session_clone.send_message(&event).await;
+                                    );
+                                    session_clone.send_message(&event).await;
+                                }
+                                last_lyric_index.store(target_index, Ordering::SeqCst);
                             }
-                            last_lyric_index.store(target_index, Ordering::SeqCst);
                         }
                     }
                 }

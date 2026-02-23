@@ -214,10 +214,20 @@ impl Default for AppleMusicConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct MirrorsConfig {
-    #[serde(default)]
     pub providers: Vec<String>,
+    #[serde(default = "default_mirrors_timeout")]
+    pub timeout_ms: u64,
+}
+
+impl Default for MirrorsConfig {
+    fn default() -> Self {
+        Self {
+            providers: Vec::new(),
+            timeout_ms: 5000,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -382,4 +392,8 @@ fn default_yandex_album_load_limit() -> usize {
 
 fn default_yandex_artist_load_limit() -> usize {
     6
+}
+
+fn default_mirrors_timeout() -> u64 {
+    5000
 }

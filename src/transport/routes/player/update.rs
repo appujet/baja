@@ -85,16 +85,14 @@ pub async fn update_player(
         }
     }
 
-    // Apply position (seek) — also send playerUpdate immediately (Lavalink behaviour)
+    // Apply position (seek) — also send playerUpdate 
     if let Some(pos) = body.position {
-        // Only apply mid-play seek when no new track is being started (checked later)
-        // We capture the values now; the actual send happens below after track logic.
         player.position = pos;
         if player.track.is_some() {
             if let Some(handle) = &player.track_handle {
                 handle.seek(pos);
             }
-            // Send playerUpdate immediately after seek (matches Lavalink SocketServer.sendPlayerUpdate)
+            // Send playerUpdate immediately after seek 
             let seek_update = api::OutgoingMessage::PlayerUpdate {
                 guild_id: guild_id.clone(),
                 state: crate::player::PlayerState {
@@ -142,13 +140,11 @@ pub async fn update_player(
 
         player.filters = filters;
 
-        // Rebuild the DSP filter chain
         let new_chain = crate::audio::filters::FilterChain::from_config(&player.filters);
-        let fc = player.filter_chain.clone();
-        tokio::spawn(async move {
-            let mut lock = fc.lock().await;
+        {
+            let mut lock = player.filter_chain.lock().await;
             *lock = new_chain;
-        });
+        }
     }
 
     // Apply voice

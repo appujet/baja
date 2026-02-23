@@ -29,13 +29,14 @@ impl PlayableTrack for YoutubeTrack {
     fn start_decoding(
         &self,
     ) -> (
-        Receiver<Vec<i16>>,
+        Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
     ) {
-        let (tx, rx) = flume::bounded::<Vec<i16>>(64);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
-        let (err_tx, err_rx) = flume::bounded::<String>(1);
+        // unbounded so multiple consecutive errors are never silently dropped (#19)
+        let (err_tx, err_rx) = flume::unbounded::<String>();
 
         // Prepare data for the decoding thread
         let identifier = self.identifier.clone();
@@ -46,128 +47,162 @@ impl PlayableTrack for YoutubeTrack {
         let local_addr = self.local_addr;
         let proxy = self.proxy.clone();
 
-        let handle = tokio::runtime::Handle::current();
-        std::thread::spawn(move || {
-            let _guard = handle.enter();
+        let (url_tx, url_rx) = tokio::sync::oneshot::channel::<(String, String)>();
+        let identifier_async = identifier.clone();
+        let err_tx_async = err_tx.clone();
+        let cipher_manager_async = cipher_manager.clone();
+        let oauth_async = oauth.clone();
+        let clients_async = clients.clone();
+
+        tokio::spawn(async move {
             let context = serde_json::json!({ "visitorData": visitor_data });
-            let mut success = false;
 
-            for client in &clients {
-                let client_name = client.name();
-                debug!(
-                    "YoutubeTrack: Resolving '{}' using {}",
-                    identifier, client_name
-                );
-
-                let playback_result = handle.block_on(async {
-                    client
-                        .get_track_url(&identifier, &context, cipher_manager.clone(), oauth.clone())
-                        .await
-                });
-
-                let url = match playback_result {
-                    Ok(Some(u)) => u,
-                    Ok(None) => {
-                        debug!("YoutubeTrack: {} returned no stream URL", client_name);
-                        continue;
+            use futures::stream::{FuturesUnordered, StreamExt};
+            let mut futs: FuturesUnordered<_> = clients_async
+                .into_iter()
+                .map(|client| {
+                    let id = identifier_async.clone();
+                    let ctx = context.clone();
+                    let cipher = cipher_manager_async.clone();
+                    let oauth_token = oauth_async.clone();
+                    async move {
+                        let client_name = client.name().to_string();
+                        debug!("YoutubeTrack: Resolving '{}' using {}", id, client_name);
+                        let res = client.get_track_url(&id, &ctx, cipher, oauth_token).await;
+                        (client_name, res)
                     }
-                    Err(e) => {
-                        debug!("YoutubeTrack: {} failed to resolve: {}", client_name, e);
-                        continue;
-                    }
-                };
+                })
+                .collect();
 
-                debug!(
-                    "YoutubeTrack: Resolved stream URL via {}: {}",
-                    client_name, url
-                );
-
-                // 1. Initialize the appropriate MediaSource reader
-                let reader: Box<dyn symphonia::core::io::MediaSource> =
-                    if url.contains(".m3u8") || url.contains("/playlist") {
-                        let player_url = if url.contains("youtube.com") {
-                            Some(url.clone())
-                        } else {
-                            None
-                        };
-
-                        match HlsReader::new(
-                            &url,
-                            local_addr,
-                            Some(cipher_manager.clone()),
-                            player_url,
-                            proxy.clone(),
-                        ) {
-                            Ok(r) => Box::new(r),
-                            Err(e) => {
-                                error!(
-                                    "YoutubeTrack: HlsReader initialization failed for {}: {}",
-                                    client_name, e
-                                );
-                                continue;
-                            }
-                        }
-                    } else {
-                        match super::reader::YoutubeReader::new(&url, local_addr, proxy.clone()) {
-                            Ok(r) => Box::new(r),
-                            Err(e) => {
-                                error!(
-                                    "YoutubeTrack: YoutubeReader initialization failed for {}: {}",
-                                    client_name, e
-                                );
-                                continue;
-                            }
-                        }
-                    };
-
-                // 2. Identify the likely codec format for Symphonia's demuxer
-                let kind = if url.contains(".m3u8") || url.contains("/hls_") {
-                    Some(crate::common::types::AudioKind::Aac)
-                } else if url.contains("itag=251") || url.contains("mime=audio/webm") {
-                    Some(crate::common::types::AudioKind::Webm)
-                } else if url.contains("itag=140") || url.contains("mime=audio/mp4") {
-                    Some(crate::common::types::AudioKind::Mp4)
-                } else {
-                    std::path::Path::new(&url)
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .and_then(crate::common::types::AudioKind::from_ext)
-                };
-
-                // 3. Initialize AudioProcessor and start decoding session
-                match AudioProcessor::new(
-                    reader,
-                    kind,
-                    tx.clone(),
-                    cmd_rx.clone(),
-                    Some(err_tx.clone()),
-                ) {
-                    Ok(mut processor) => {
+            while let Some((client_name, res)) = futs.next().await {
+                match res {
+                    Ok(Some(url)) => {
                         debug!(
-                            "YoutubeTrack: Playback session started for {} using {}",
-                            identifier, client_name
+                            "YoutubeTrack: Resolved stream URL via {}: {}",
+                            client_name, url
                         );
-                        success = true;
-                        if let Err(e) = processor.run() {
-                            error!("YoutubeTrack: Decoding session finished with error: {}", e);
-                        }
-                        break; // Successfully played/finished, stop trying other clients
+                        let _ = url_tx.send((url, client_name));
+                        return;
                     }
-                    Err(e) => {
-                        error!(
-                            "YoutubeTrack: AudioProcessor initialization failed with {}: {}",
-                            client_name, e
-                        );
-                        continue;
-                    }
+                    Ok(None) => debug!("YoutubeTrack: {} returned no stream URL", client_name),
+                    Err(e) => debug!("YoutubeTrack: {} failed to resolve: {}", client_name, e),
                 }
             }
 
-            if !success {
-                error!(
-                    "YoutubeTrack: All configured playback clients failed for {}",
-                    identifier
-                );
+            // All clients exhausted.
+            let msg = format!(
+                "YoutubeTrack: All clients failed to resolve '{}'",
+                identifier_async
+            );
+            error!("{}", msg);
+            let _ = err_tx_async.send(msg);
+            // url_tx is dropped here → url_rx.await will return Err, decode task exits.
+        });
+
+
+        let tx_clone = tx;
+        let cmd_rx_clone = cmd_rx;
+        let err_tx_clone = err_tx;
+        let identifier_decode = identifier;
+        let cipher_manager_decode = cipher_manager;
+        tokio::task::spawn_blocking(move || {
+       
+            let (url, client_name) = match url_rx.blocking_recv() {
+                Ok(pair) => pair,
+                Err(_) => {
+                    // url_tx was dropped (all clients failed) — error already sent.
+                    return;
+                }
+            };
+
+            let reader: Box<dyn symphonia::core::io::MediaSource> =
+                if url.contains(".m3u8") || url.contains("/playlist") {
+                    let player_url = if url.contains("youtube.com") {
+                        Some(url.clone())
+                    } else {
+                        None
+                    };
+                    match HlsReader::new(
+                        &url,
+                        local_addr,
+                        Some(cipher_manager_decode.clone()),
+                        player_url,
+                        proxy.clone(),
+                    ) {
+                        Ok(r) => Box::new(r),
+                        Err(e) => {
+                            error!(
+                                "YoutubeTrack: HlsReader initialization failed for {}: {}",
+                                client_name, e
+                            );
+                            return;
+                        }
+                    }
+                } else {
+                    match super::reader::YoutubeReader::new(&url, local_addr, proxy.clone()) {
+                        Ok(r) => Box::new(r),
+                        Err(e) => {
+                            error!(
+                                "YoutubeTrack: YoutubeReader initialization failed for {}: {}",
+                                client_name, e
+                            );
+                            return;
+                        }
+                    }
+                };
+
+            // Determine codec from itag param → mime= → path extension.
+            let is_hls = url.contains(".m3u8") || url.contains("/playlist");
+            let kind = if is_hls {
+                Some(crate::common::types::AudioKind::Aac)
+            } else {
+                let itag: Option<u32> = url.split('?').nth(1).and_then(|qs| {
+                    qs.split('&').find_map(|kv| {
+                        let mut parts = kv.splitn(2, '=');
+                        if parts.next() == Some("itag") {
+                            parts.next().and_then(|v| v.parse().ok())
+                        } else {
+                            None
+                        }
+                    })
+                });
+                match itag {
+                    Some(249) | Some(250) | Some(251) => {
+                        Some(crate::common::types::AudioKind::Webm)
+                    }
+                    Some(139) | Some(140) | Some(141) => Some(crate::common::types::AudioKind::Mp4),
+                    _ => {
+                        if url.contains("mime=audio%2Fwebm") || url.contains("mime=audio/webm") {
+                            Some(crate::common::types::AudioKind::Webm)
+                        } else if url.contains("mime=audio%2Fmp4") || url.contains("mime=audio/mp4")
+                        {
+                            Some(crate::common::types::AudioKind::Mp4)
+                        } else {
+                            std::path::Path::new(url.split('?').next().unwrap_or(&url))
+                                .extension()
+                                .and_then(|s| s.to_str())
+                                .and_then(crate::common::types::AudioKind::from_ext)
+                        }
+                    }
+                }
+            };
+
+            match AudioProcessor::new(reader, kind, tx_clone, cmd_rx_clone, Some(err_tx_clone)) {
+                Ok(mut processor) => {
+                    debug!(
+                        "YoutubeTrack: Playback session started for {} using {}",
+                        identifier_decode, client_name
+                    );
+                    if let Err(e) = processor.run() {
+                        error!("YoutubeTrack: Decoding session finished with error: {}", e);
+                    }
+                }
+                Err(e) => {
+                    error!(
+                        "YoutubeTrack: AudioProcessor initialization failed with {}: {}",
+                        client_name, e
+                    );
+                }
             }
         });
 

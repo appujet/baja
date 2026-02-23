@@ -24,11 +24,11 @@ impl PlayableTrack for QobuzTrack {
     fn start_decoding(
         &self,
     ) -> (
-        Receiver<Vec<i16>>,
+        Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
     ) {
-        let (tx, rx) = flume::bounded::<Vec<i16>>(64);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
