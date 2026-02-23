@@ -80,7 +80,7 @@ If you are building from source, you need the following installed on your system
 - **Rust**: Latest stable version (Edition 2024).
 - **C/C++ Toolchain**: `gcc`, `g++`, `make`.
 - **CMake**: Required for building bundled C dependencies (`opus`).
-- **OpenSSL**: Development headers (e.g., `libssl-dev` or `openssl-devel`).
+- **CMake**: Used for building some C/C++ dependencies (like Opus).
 - **Clang/LLVM**: Required for `bindgen` (e.g., `libclang-dev`).
 - **Pkg-config**: To locate system libraries.
 
@@ -88,11 +88,11 @@ If you are building from source, you need the following installed on your system
 - **Ubuntu/Debian**:
   ```bash
   sudo apt-get update
-  sudo apt-get install -y cmake pkg-config libclang-dev clang gcc g++ make perl libssl-dev
+  sudo apt-get install -y cmake pkg-config libclang-dev clang gcc g++ make perl
   ```
 - **Arch Linux**:
   ```bash
-  sudo pacman -S cmake pkgconf clang gcc make perl openssl
+  sudo pacman -S cmake pkgconf clang gcc make perl
   ```
 - **macOS**:
   ```bash
