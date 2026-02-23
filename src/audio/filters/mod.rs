@@ -113,7 +113,7 @@ impl ConcreteFilter {
     }
 }
 
-/// An ordered chain of audio filters, constructed from Lavalink API `Filters`.
+/// An ordered chain of audio filters, constructed from Rustalink API `Filters`.
 pub struct FilterChain {
     filters: Vec<ConcreteFilter>,
     /// Timescale filter handled separately (changes buffer length).
@@ -123,7 +123,7 @@ pub struct FilterChain {
 }
 
 impl FilterChain {
-    /// Build a filter chain from the Lavalink API `Filters` config.
+    /// Build a filter chain from the Rustalink API `Filters` config.
     pub fn from_config(config: &Filters) -> Self {
         let mut filters: Vec<ConcreteFilter> = Vec::new();
 

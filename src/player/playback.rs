@@ -14,6 +14,7 @@ pub async fn start_playback(
     track: String,
     session: Arc<Session>,
     source_manager: Arc<crate::sources::SourceManager>,
+    lyrics_manager: Arc<crate::lyrics::LyricsManager>,
     routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     update_interval_secs: u64,
     user_data: Option<serde_json::Value>,
@@ -61,7 +62,7 @@ pub async fn start_playback(
     player.user_data = user_data.unwrap_or_else(|| serde_json::json!({}));
     player.stop_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    // Decode the Lavalink track format to extract the actual playback URI
+    // Decode the Rustalink track format to extract the actual playback URI
     let track_info = if let Some(decoded_track) = &player.track_info {
         decoded_track.info.clone()
     } else {
@@ -115,6 +116,46 @@ pub async fn start_playback(
             return;
         }
     };
+    
+    // Attempt to fetch lyrics
+    let lyrics_data_arc = player.lyrics_data.clone();
+    let lyrics_manager_clone = lyrics_manager.clone();
+    let track_info_clone = track_info.clone();
+    let session_lyrics_clone = session.clone();
+    let guild_id_lyrics = player.guild_id.clone();
+    
+    tokio::spawn(async move {
+        if let Some(lyrics) = lyrics_manager_clone.load_lyrics(&track_info_clone, None).await {
+            {
+                let mut lock = lyrics_data_arc.lock().await;
+                *lock = Some(lyrics.clone());
+            }
+            
+            let event = api::OutgoingMessage::Event(api::LavalinkEvent::LyricsFound {
+                guild_id: guild_id_lyrics,
+                lyrics: super::super::api::models::LavalinkLyrics {
+                    source_name: track_info_clone.source_name.clone(),
+                    provider: Some(lyrics.provider),
+                    text: Some(lyrics.text),
+                    lines: lyrics.lines.map(|lines| {
+                        lines.into_iter().map(|l| super::super::api::models::LavalinkLyricsLine {
+                            timestamp: l.timestamp,
+                            duration: Some(l.duration),
+                            line: l.text,
+                            plugin: serde_json::json!({}),
+                        }).collect()
+                    }),
+                    plugin: serde_json::json!({}),
+                },
+            });
+            session_lyrics_clone.send_message(&event).await;
+        } else {
+            let event = api::OutgoingMessage::Event(api::LavalinkEvent::LyricsNotFound {
+                guild_id: guild_id_lyrics,
+            });
+            session_lyrics_clone.send_message(&event).await;
+        }
+    });
 
     info!(
         "Playback starting: {} (source: {})",
@@ -155,9 +196,12 @@ pub async fn start_playback(
     let track_data_clone = track_data.clone();
     let ping = player.ping.clone();
     let stuck_threshold_ms = player.stuck_threshold_ms;
+    let lyrics_subscribed = player.lyrics_subscribed.clone();
+    let lyrics_data = player.lyrics_data.clone();
+    let last_lyric_index = player.last_lyric_index.clone();
 
     let track_task = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
         let mut last_update = std::time::Instant::now();
         let update_duration = std::time::Duration::from_secs(update_interval_secs);
 
@@ -224,7 +268,7 @@ pub async fn start_playback(
                         session_clone.send_message(&stuck_event).await;
                         tracing::warn!("Track {} got stuck!", track_data_clone.info.title);
 
-                        // Send a playerUpdate immediately after stuck — mirrors Lavalink behaviour.
+                        // Send a playerUpdate immediately after stuck — mirrors Rustalink behaviour.
                         let stuck_update = api::OutgoingMessage::PlayerUpdate {
                             guild_id: guild_id.clone(),
                             state: PlayerState {
@@ -257,6 +301,65 @@ pub async fn start_playback(
                     },
                 };
                 session_clone.send_message(&update).await;
+            }
+
+            // Lyrics synchronization
+            if lyrics_subscribed.load(Ordering::Relaxed) {
+                let lyrics_lock = lyrics_data.lock().await;
+                if let Some(lyrics) = &*lyrics_lock {
+                    if let Some(lines) = &lyrics.lines {
+                        let last_index = last_lyric_index.load(Ordering::Relaxed);
+                        
+                        // Find the current target index based on position
+                        let mut target_index = -1i64;
+                        for (i, line) in lines.iter().enumerate() {
+                            if current_pos >= line.timestamp {
+                                target_index = i as i64;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        if target_index > last_index {
+                            // Forward progression or jump
+                            for i in (last_index + 1)..=target_index {
+                                let line = &lines[i as usize];
+                                let is_final = i == target_index;
+                                let event = api::OutgoingMessage::Event(api::LavalinkEvent::LyricsLine {
+                                    guild_id: guild_id.clone(),
+                                    line_index: i as i32,
+                                    line: api::models::LavalinkLyricsLine {
+                                        line: line.text.clone(),
+                                        timestamp: line.timestamp,
+                                        duration: Some(line.duration),
+                                        plugin: serde_json::json!({}),
+                                    },
+                                    skipped: !is_final,
+                                });
+                                session_clone.send_message(&event).await;
+                            }
+                            last_lyric_index.store(target_index, Ordering::SeqCst);
+                        } else if target_index < last_index {
+                            // Backward jump
+                            if target_index != -1 {
+                                let line = &lines[target_index as usize];
+                                let event = api::OutgoingMessage::Event(api::LavalinkEvent::LyricsLine {
+                                    guild_id: guild_id.clone(),
+                                    line_index: target_index as i32,
+                                    line: api::models::LavalinkLyricsLine {
+                                        line: line.text.clone(),
+                                        timestamp: line.timestamp,
+                                        duration: Some(line.duration),
+                                        plugin: serde_json::json!({}),
+                                    },
+                                    skipped: false,
+                                });
+                                session_clone.send_message(&event).await;
+                            }
+                            last_lyric_index.store(target_index, Ordering::SeqCst);
+                        }
+                    }
+                }
             }
         }
     });

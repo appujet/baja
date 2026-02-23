@@ -32,6 +32,9 @@ pub struct PlayerContext {
     pub frames_sent: Arc<AtomicU64>,
     pub frames_nulled: Arc<AtomicU64>,
     pub stuck_threshold_ms: u64,
+    pub lyrics_subscribed: Arc<AtomicBool>,
+    pub lyrics_data: Arc<Mutex<Option<crate::api::models::LyricsData>>>,
+    pub last_lyric_index: Arc<AtomicI64>,
 }
 
 impl PlayerContext {
@@ -57,7 +60,19 @@ impl PlayerContext {
             frames_sent: Arc::new(AtomicU64::new(0)),
             frames_nulled: Arc::new(AtomicU64::new(0)),
             stuck_threshold_ms,
+            lyrics_subscribed: Arc::new(AtomicBool::new(false)),
+            lyrics_data: Arc::new(Mutex::new(None)),
+            last_lyric_index: Arc::new(AtomicI64::new(-1)),
         }
+    }
+
+    pub async fn subscribe_lyrics(&self) {
+        self.lyrics_subscribed.store(true, Ordering::SeqCst);
+        self.last_lyric_index.store(-1, Ordering::SeqCst);
+    }
+
+    pub async fn unsubscribe_lyrics(&self) {
+        self.lyrics_subscribed.store(false, Ordering::SeqCst);
     }
 
     pub fn to_player_response(&self) -> Player {

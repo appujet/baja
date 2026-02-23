@@ -50,9 +50,33 @@ pub enum LavalinkEvent {
     #[serde(rename = "TrackStuckEvent")]
     #[serde(rename_all = "camelCase")]
     TrackStuck {
+        #[serde(rename = "guildId")]
         guild_id: crate::common::types::GuildId,
         track: Track,
+        #[serde(rename = "thresholdMs")]
         threshold_ms: u64,
+    },
+
+    #[serde(rename = "LyricsFoundEvent")]
+    #[serde(rename_all = "camelCase")]
+    LyricsFound {
+        guild_id: crate::common::types::GuildId,
+        lyrics: super::models::LavalinkLyrics,
+    },
+
+    #[serde(rename = "LyricsNotFoundEvent")]
+    #[serde(rename_all = "camelCase")]
+    LyricsNotFound {
+        guild_id: crate::common::types::GuildId,
+    },
+    
+    #[serde(rename = "LyricsLineEvent")]
+    #[serde(rename_all = "camelCase")]
+    LyricsLine {
+        guild_id: crate::common::types::GuildId,
+        line_index: i32,
+        line: super::models::LavalinkLyricsLine,
+        skipped: bool,
     },
 
     #[serde(rename = "WebSocketClosedEvent")]

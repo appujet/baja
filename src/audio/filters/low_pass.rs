@@ -1,6 +1,6 @@
 use super::AudioFilter;
 
-/// Low-pass filter — IIR single-pole smoothing. Matches Lavalink smoothing parameter.
+/// Low-pass filter — IIR single-pole smoothing. Matches Rustalink smoothing parameter.
 pub struct LowPassFilter {
     smoothing: f32,
     smoothing_factor: f64,
