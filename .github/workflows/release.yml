@@ -1,10 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -98,7 +96,7 @@ jobs:
         run: mv target/${{ matrix.target }}/release/rustalink target/${{ matrix.target }}/release/${{ matrix.name }}
       
       - name: Rename binary (Windows)
-        if: startsWith(matrix.os, 'windows')"
+        if: startsWith(matrix.os, 'windows')
         shell: bash
         run: mv target/${{ matrix.target }}/release/rustalink.exe target/${{ matrix.target }}/release/${{ matrix.name }}
       
@@ -147,7 +145,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=raw,value=latest
       
       # FAST: Native multi-arch build without QEMU
       - name: Build and push
@@ -164,7 +162,6 @@ jobs:
     name: Publish Release
     needs: [build-linux, build-other]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
       
@@ -178,4 +175,3 @@ jobs:
         with:
           files: artifacts/**/*
           fail_on_unmatched_files: false
-          generate_release_notes: true
