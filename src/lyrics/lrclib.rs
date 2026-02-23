@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use async_trait::async_trait;
 use crate::api::models::{LyricsData, LyricsLine};
 use crate::api::tracks::TrackInfo;
@@ -90,7 +91,12 @@ impl LrcLibProvider {
 impl LyricsProvider for LrcLibProvider {
     fn name(&self) -> &'static str { "lrclib" }
 
-    async fn load_lyrics(&self, track: &TrackInfo, _language: Option<String>) -> Option<LyricsData> {
+    async fn load_lyrics(
+        &self,
+        track: &TrackInfo,
+        _language: Option<String>,
+        _source_manager: Option<Arc<crate::sources::SourceManager>>,
+    ) -> Option<LyricsData> {
         let title = self.clean(&track.title, true);
         let author = self.clean(&track.author, false);
         

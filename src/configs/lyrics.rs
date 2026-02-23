@@ -11,6 +11,7 @@ pub struct LyricsConfig {
     pub musixmatch: bool,
     pub letrasmus: bool,
     pub yandex: bool,
+    pub netease: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

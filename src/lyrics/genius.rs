@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use async_trait::async_trait;
 use regex::Regex;
 use crate::api::models::{LyricsData, LyricsLine};
@@ -16,14 +17,16 @@ impl GeniusProvider {
     }
 
     fn clean(&self, text: &str) -> String {
-        let mut result = text.to_string();
         let patterns = [
             r#"(?i)\s*\([^)]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^)]*\)"#,
             r#"(?i)\s*\[[^\]]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^\]]*\]"#,
+            r#"(?i)\s*[([]\s*(?:ft\.?|feat\.?|featuring)\s+[^)\]]+[)\]]"#,
             r#"(?i)\s*-\s*Topic$"#,
             r#"(?i)VEVO$"#,
+            r#"(?i)\s*[(\[]\s*Remastered\s*[\)\]]"#,
         ];
 
+        let mut result = text.to_string();
         for pattern in patterns {
             if let Ok(re) = Regex::new(pattern) {
                 result = re.replace_all(&result, "").to_string();
@@ -31,13 +34,28 @@ impl GeniusProvider {
         }
         result.trim().to_string()
     }
+
+    fn unescape_html(&self, text: &str) -> String {
+        text.replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
+            .replace("&nbsp;", " ")
+    }
 }
 
 #[async_trait]
 impl LyricsProvider for GeniusProvider {
     fn name(&self) -> &'static str { "genius" }
 
-    async fn load_lyrics(&self, track: &TrackInfo, _language: Option<String>) -> Option<LyricsData> {
+    async fn load_lyrics(
+        &self,
+        track: &TrackInfo,
+        _language: Option<String>,
+        _source_manager: Option<Arc<crate::sources::SourceManager>>,
+    ) -> Option<LyricsData> {
         let title = self.clean(&track.title);
         let author = self.clean(&track.author);
 
@@ -46,6 +64,7 @@ impl LyricsProvider for GeniusProvider {
         } else {
             format!("{} {}", title, author)
         };
+
 
         let url = format!("https://genius.com/api/search/multi?q={}", urlencoding::encode(&query));
         let resp = self.client.get(url).send().await.ok()?;
@@ -64,23 +83,29 @@ impl LyricsProvider for GeniusProvider {
         let song_resp = self.client.get(song_url).send().await.ok()?;
         let song_page = song_resp.text().await.ok()?;
 
-        let re = Regex::new(r#"window\.__PRELOADED_STATE__\s*=\s*JSON\.parse\('(.*)'\);"#).unwrap();
+
+        let re = Regex::new(r#"(?s)window\.__PRELOADED_STATE__\s*=\s*JSON\.parse\('(.*?)'\);"#).unwrap();
         let caps = re.captures(&song_page)?;
         let lyrics_data_raw = caps.get(1)?.as_str();
         
-        // Unescape the string before parsing JSON
-        let lyrics_data_unescaped = lyrics_data_raw.replace("\\'", "'").replace("\\\\", "\\");
+
+        // Unescape any backslash-escaped character, matching NodeLink's replace(/\\(.)/g, '$1')
+        let escape_re = Regex::new(r#"\\(.)"#).unwrap();
+        let lyrics_data_unescaped = escape_re.replace_all(lyrics_data_raw, "$1");
+        
         let lyrics_json: serde_json::Value = serde_json::from_str(&lyrics_data_unescaped).ok()?;
         
         let lyrics_content = lyrics_json["songPage"]["lyricsData"]["body"]["html"].as_str()?;
         
+        
         let tag_re = Regex::new(r#"<[^>]*>"#).unwrap();
-        let lyrics_text = lyrics_content.replace("<br>", "\n");
-        let cleaned_lyrics = tag_re.replace_all(&lyrics_text, "");
+        let lyrics_text = lyrics_content.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n");
+        let cleaned_lyrics = self.unescape_html(&tag_re.replace_all(&lyrics_text, ""));
 
         let lines: Vec<LyricsLine> = cleaned_lyrics.lines()
             .map(|l| l.trim())
             .filter(|l| !l.is_empty())
+            .filter(|l| !(l.starts_with('[') && l.ends_with(']')))
             .map(|l| LyricsLine {
                 text: l.to_string(),
                 timestamp: 0,

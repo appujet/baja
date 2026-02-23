@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 use crate::api::models::{LyricsData, LyricsLine};
@@ -50,19 +51,60 @@ impl YandexProvider {
         }
         lines
     }
+
+    fn clean(&self, text: &str) -> String {
+        let patterns = [
+            r#"(?i)\s*\([^)]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^)]*\)"#,
+            r#"(?i)\s*\[[^\]]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^\]]*\]"#,
+            r#"(?i)\s*[([]\s*(?:ft\.?|feat\.?|featuring)\s+[^)\]]+[)\]]"#,
+            r#"(?i)\s*-\s*Topic$"#,
+            r#"(?i)VEVO$"#,
+            r#"(?i)\s*[(\[]\s*Remastered\s*[\)\]]"#,
+        ];
+
+        let mut result = text.to_string();
+        for pattern in patterns {
+            if let Ok(re) = regex::Regex::new(pattern) {
+                result = re.replace_all(&result, "").to_string();
+            }
+        }
+        result.trim().to_string()
+    }
 }
 
 #[async_trait]
 impl LyricsProvider for YandexProvider {
     fn name(&self) -> &'static str { "yandex" }
 
-    async fn load_lyrics(&self, track: &TrackInfo, _language: Option<String>) -> Option<LyricsData> {
+    async fn load_lyrics(
+        &self,
+        track: &TrackInfo,
+        _language: Option<String>,
+        _source_manager: Option<Arc<crate::sources::SourceManager>>,
+    ) -> Option<LyricsData> {
         let token = self.access_token.as_ref()?;
+        let title = self.clean(&track.title);
+        let author = self.clean(&track.author);
+
         let track_id = if track.source_name == "yandexmusic" {
             track.identifier.clone()
         } else {
-            // Need search logic if not directly from yandex
-            return None; 
+            // Search logic if not directly from yandex
+            let query = format!("{} {}", title, author);
+            let search_url = format!("https://api.music.yandex.net/search?text={}&type=track&page=0", urlencoding::encode(&query));
+            let search_resp = self.client.get(search_url)
+                .header("Authorization", format!("OAuth {}", token))
+                .header("X-Yandex-Music-Client", "YandexMusicAndroid/24023621")
+                .send()
+                .await.ok()?;
+            
+            let search_body: Value = search_resp.json().await.ok()?;
+            search_body["result"]["tracks"]["results"]
+                .as_array()?
+                .get(0)?
+                .get("id")?
+                .as_i64()?
+                .to_string()
         };
 
         let (sign, ts) = self.create_sign(&track_id);

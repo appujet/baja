@@ -8,9 +8,10 @@ pub mod genius;
 pub mod youtube;
 pub mod deezer;
 pub mod bilibili;
-mod musixmatch;
-mod letrasmus;
-mod yandex;
+pub mod musixmatch;
+pub mod letrasmus;
+pub mod yandex;
+pub mod netease;
 
 use self::genius::GeniusProvider;
 use self::lrclib::LrcLibProvider;
@@ -20,15 +21,22 @@ use self::bilibili::BilibiliProvider;
 use self::musixmatch::MusixmatchProvider;
 use letrasmus::LetrasMusProvider;
 use yandex::YandexProvider;
+use netease::NeteaseProvider;
 
 #[async_trait]
 pub trait LyricsProvider: Send + Sync {
     fn name(&self) -> &'static str;
-    async fn load_lyrics(&self, track: &TrackInfo, language: Option<String>) -> Option<LyricsData>;
+    async fn load_lyrics(
+        &self,
+        track: &TrackInfo,
+        language: Option<String>,
+        source_manager: Option<Arc<crate::sources::SourceManager>>,
+    ) -> Option<LyricsData>;
 }
 
 pub struct LyricsManager {
-    providers: Vec<Arc<dyn LyricsProvider>>,
+    pub providers: Vec<Arc<dyn LyricsProvider>>,
+    pub source_manager: Option<Arc<crate::sources::SourceManager>>,
 }
 
 impl LyricsManager {
@@ -51,6 +59,7 @@ impl LyricsManager {
         register_provider!(config.lyrics.bilibili, "Bilibili", BilibiliProvider::new());
         register_provider!(config.lyrics.musixmatch, "Musixmatch", MusixmatchProvider::new());
         register_provider!(config.lyrics.letrasmus, "Letras.mus", LetrasMusProvider::new());
+        register_provider!(config.lyrics.netease, "NetEase", NeteaseProvider::new());
         let yandex_token_provided = config
             .yandex
             .as_ref()
@@ -71,7 +80,14 @@ impl LyricsManager {
             );
         }
 
-        Self { providers }
+        Self {
+            providers,
+            source_manager: None,
+        }
+    }
+
+    pub fn set_source_manager(&mut self, source_manager: Arc<crate::sources::SourceManager>) {
+        self.source_manager = Some(source_manager);
     }
 
     pub async fn load_lyrics(&self, track: &TrackInfo, language: Option<String>) -> Option<LyricsData> {
@@ -93,8 +109,9 @@ impl LyricsManager {
             let provider = provider.clone();
             let track = track.clone();
             let language = language.clone();
+            let source_manager = self.source_manager.clone();
             futures.push(async move {
-                provider.load_lyrics(&track, language).await
+                provider.load_lyrics(&track, language, source_manager).await
             });
         }
 

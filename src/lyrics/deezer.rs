@@ -53,6 +53,25 @@ impl DeezerProvider {
         Some(token)
     }
 
+    fn clean(&self, text: &str) -> String {
+        let patterns = [
+            r#"(?i)\s*\([^)]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^)]*\)"#,
+            r#"(?i)\s*\[[^\]]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^\]]*\]"#,
+            r#"(?i)\s*[([]\s*(?:ft\.?|feat\.?|featuring)\s+[^)\]]+[)\]]"#,
+            r#"(?i)\s*-\s*Topic$"#,
+            r#"(?i)VEVO$"#,
+            r#"(?i)\s*[(\[]\s*Remastered\s*[\)\]]"#,
+        ];
+
+        let mut result = text.to_string();
+        for pattern in patterns {
+            if let Ok(re) = regex::Regex::new(pattern) {
+                result = re.replace_all(&result, "").to_string();
+            }
+        }
+        result.trim().to_string()
+    }
+
     async fn search_track(&self, title: &str, author: &str) -> Option<String> {
         let query = format!("{} {}", title, author);
         let resp = self.client.get("https://api.deezer.com/2.0/search")
@@ -73,13 +92,21 @@ impl DeezerProvider {
 impl LyricsProvider for DeezerProvider {
     fn name(&self) -> &'static str { "deezer" }
 
-    async fn load_lyrics(&self, track: &TrackInfo, _language: Option<String>) -> Option<LyricsData> {
+    async fn load_lyrics(
+        &self,
+        track: &TrackInfo,
+        _language: Option<String>,
+        _source_manager: Option<Arc<crate::sources::SourceManager>>,
+    ) -> Option<LyricsData> {
         let jwt = self.get_jwt().await?;
+
+        let title = self.clean(&track.title);
+        let author = self.clean(&track.author);
 
         let track_id = if track.source_name == "deezer" {
             track.identifier.clone()
         } else {
-            self.search_track(&track.title, &track.author).await?
+            self.search_track(&title, &author).await?
         };
 
         let query = r#"

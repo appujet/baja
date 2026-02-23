@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 use crate::api::models::{LyricsData, LyricsLine};
@@ -17,12 +18,16 @@ impl LetrasMusProvider {
     }
 
     fn clean(&self, text: &str) -> String {
-        let mut result = text.to_string();
         let patterns = [
             r#"(?i)\s*\([^)]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^)]*\)"#,
             r#"(?i)\s*\[[^\]]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^\]]*\]"#,
+            r#"(?i)\s*[([]\s*(?:ft\.?|feat\.?|featuring)\s+[^)\]]+[)\]]"#,
+            r#"(?i)\s*-\s*Topic$"#,
+            r#"(?i)VEVO$"#,
+            r#"(?i)\s*[(\[]\s*Remastered\s*[\)\]]"#,
         ];
 
+        let mut result = text.to_string();
         for pattern in patterns {
             if let Ok(re) = Regex::new(pattern) {
                 result = re.replace_all(&result, "").to_string();
@@ -44,7 +49,12 @@ impl LetrasMusProvider {
 impl LyricsProvider for LetrasMusProvider {
     fn name(&self) -> &'static str { "letrasmus" }
 
-    async fn load_lyrics(&self, track: &TrackInfo, language: Option<String>) -> Option<LyricsData> {
+    async fn load_lyrics(
+        &self,
+        track: &TrackInfo,
+        language: Option<String>,
+        _source_manager: Option<Arc<crate::sources::SourceManager>>,
+    ) -> Option<LyricsData> {
         let title = self.clean(&track.title);
         let author = self.clean(&track.author);
         let query = format!("{} {}", title, author);

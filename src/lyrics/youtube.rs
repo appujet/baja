@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 use crate::api::models::{LyricsData, LyricsLine};
@@ -20,43 +21,46 @@ impl YoutubeLyricsProvider {
 impl LyricsProvider for YoutubeLyricsProvider {
     fn name(&self) -> &'static str { "youtube" }
 
-    async fn load_lyrics(&self, track: &TrackInfo, language: Option<String>) -> Option<LyricsData> {
+    async fn load_lyrics(
+        &self,
+        track: &TrackInfo,
+        language: Option<String>,
+        source_manager: Option<Arc<crate::sources::SourceManager>>,
+    ) -> Option<LyricsData> {
         if track.source_name != "youtube" && track.source_name != "ytmusic" {
             return None;
         }
 
-        let body = serde_json::json!({
-            "videoId": track.identifier,
-            "context": {
-                "client": {
-                    "clientName": "WEB",
-                    "clientVersion": "2.20240210.01.00",
-                    "hl": "en",
-                    "gl": "US"
-                }
+        let captions = if let Some(sm) = source_manager {
+            let identifier = track.uri.as_deref().unwrap_or(&track.identifier);
+            match sm.load(identifier, None::<Arc<dyn crate::routeplanner::RoutePlanner>>).await {
+                crate::api::tracks::LoadResult::Track(t) => {
+                    t.plugin_info.get("captions").cloned()
+                },
+                crate::api::tracks::LoadResult::Search(tracks) => {
+                    tracks.first().and_then(|t| t.plugin_info.get("captions")).cloned()
+                },
+                _ => None
             }
-        });
+        } else {
+            None
+        }?;
 
-        let resp = self.client.post("https://www.youtube.com/youtubei/v1/player")
-            .json(&body)
-            .send()
-            .await.ok()?;
-        
-        let player_response: Value = resp.json().await.ok()?;
-        
-        // Extract captions
-        let captions = player_response["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"].as_array()?;
-        if captions.is_empty() { return None; }
+        let caption_tracks = captions.get("playerCaptionsTracklistRenderer")?
+            .get("captionTracks")?
+            .as_array()?;
+
+        if caption_tracks.is_empty() { return None; }
 
         // Find English or requested or first available
-        let caption_track = captions.iter().find(|c| {
+        let caption_track = caption_tracks.iter().find(|c| {
             if let Some(lang) = &language {
                 c["languageCode"].as_str() == Some(lang)
             } else {
                 c["languageCode"].as_str().unwrap_or("").starts_with("en")
             }
-        }).or_else(|| captions.iter().find(|c| c["kind"].as_str() != Some("asr")))
-          .or_else(|| captions.get(0))?;
+        }).or_else(|| caption_tracks.iter().find(|c| c["kind"].as_str() != Some("asr")))
+          .or_else(|| caption_tracks.get(0))?;
 
         let base_url = caption_track["baseUrl"].as_str()?;
         let mut url = if base_url.contains("fmt=") {

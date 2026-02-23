@@ -45,6 +45,7 @@ bilibili = true
 musixmatch = true
 letrasmus = true
 yandex = false
+netease = true
 
 [yandex.lyrics]
 # access_token = "your access token"

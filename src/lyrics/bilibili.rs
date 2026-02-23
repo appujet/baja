@@ -6,6 +6,7 @@ use md5::{Md5, Digest};
 use crate::api::models::{LyricsData, LyricsLine};
 use crate::api::tracks::TrackInfo;
 use super::LyricsProvider;
+use regex::Regex;
 
 const MIXIN_KEY_ENC_TAB: [usize; 64] = [
     46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
@@ -92,13 +93,37 @@ impl BilibiliProvider {
         
         params.push(("w_rid".to_string(), w_rid));
     }
+
+    fn clean(&self, text: &str) -> String {
+        let patterns = [
+            r#"(?i)\s*\([^)]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^)]*\)"#,
+            r#"(?i)\s*\[[^\]]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^\]]*\]"#,
+            r#"(?i)\s*[([]\s*(?:ft\.?|feat\.?|featuring)\s+[^)\]]+[)\]]"#,
+            r#"(?i)\s*-\s*Topic$"#,
+            r#"(?i)VEVO$"#,
+            r#"(?i)\s*[(\[]\s*Remastered\s*[\)\]]"#,
+        ];
+
+        let mut result = text.to_string();
+        for pattern in patterns {
+            if let Ok(re) = Regex::new(pattern) {
+                result = re.replace_all(&result, "").into_owned();
+            }
+        }
+        result.trim().to_string()
+    }
 }
 
 #[async_trait]
 impl LyricsProvider for BilibiliProvider {
     fn name(&self) -> &'static str { "bilibili" }
 
-    async fn load_lyrics(&self, track: &TrackInfo, _language: Option<String>) -> Option<LyricsData> {
+    async fn load_lyrics(
+        &self,
+        track: &TrackInfo,
+        _language: Option<String>,
+        _source_manager: Option<Arc<crate::sources::SourceManager>>,
+    ) -> Option<LyricsData> {
         if track.source_name != "bilibili" {
             return None;
         }
@@ -165,8 +190,8 @@ impl LyricsProvider for BilibiliProvider {
         let full_text = lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n");
 
         Some(LyricsData {
-            name: track.title.clone(),
-            author: track.author.clone(),
+            name: self.clean(&track.title),
+            author: self.clean(&track.author),
             provider: "bilibili".to_string(),
             text: full_text,
             lines: Some(lines),

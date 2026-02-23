@@ -34,7 +34,7 @@ pub fn extract_from_player(body: &Value, source_name: &str) -> Option<Track> {
         .and_then(|url| url.as_str())
         .map(|s| s.to_string());
 
-    Some(Track::new(TrackInfo {
+    let mut track = Track::new(TrackInfo {
         identifier: video_id.to_string(),
         is_seekable: !is_stream,
         author,
@@ -50,7 +50,13 @@ pub fn extract_from_player(body: &Value, source_name: &str) -> Option<Track> {
         artwork_url,
         isrc: None,
         source_name: source_name.to_string(),
-    }))
+    });
+
+    if let Some(captions) = body.get("captions") {
+        track.plugin_info["captions"] = captions.clone();
+    }
+
+    Some(track)
 }
 
 pub fn extract_from_next(body: &Value, source_name: &str) -> Option<(Vec<Track>, String)> {

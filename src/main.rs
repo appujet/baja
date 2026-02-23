@@ -52,12 +52,17 @@ async fn main() -> AnyResult<()> {
         None
     };
 
+    let source_manager = Arc::new(rustalink::sources::SourceManager::new(&config));
+    let mut lyrics_manager = rustalink::lyrics::LyricsManager::new(&config);
+    lyrics_manager.set_source_manager(source_manager.clone());
+    let lyrics_manager = Arc::new(lyrics_manager);
+
     let shared_state = Arc::new(AppState {
         sessions: DashMap::new(),
         resumable_sessions: DashMap::new(),
         routeplanner,
-        source_manager: Arc::new(rustalink::sources::SourceManager::new(&config)),
-        lyrics_manager: Arc::new(rustalink::lyrics::LyricsManager::new(&config)),
+        source_manager,
+        lyrics_manager,
         config: config.clone(),
     });
 
