@@ -123,8 +123,13 @@ pub async fn start_playback(
     let track_info_clone = track_info.clone();
     let session_lyrics_clone = session.clone();
     let guild_id_lyrics = player.guild_id.clone();
+    let lyrics_subscribed_on_start = player.lyrics_subscribed.clone();
 
     tokio::spawn(async move {
+        if !lyrics_subscribed_on_start.load(Ordering::Relaxed) {
+            return;
+        }
+        
         if let Some(lyrics) = lyrics_manager_clone.load_lyrics(&track_info_clone).await {
             {
                 let mut lock = lyrics_data_arc.lock().await;

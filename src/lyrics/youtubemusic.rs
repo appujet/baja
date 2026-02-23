@@ -177,15 +177,12 @@ impl LyricsProvider for YoutubeMusicLyricsProvider {
         }
 
         let video_id = video_id?;
-        tracing::debug!("YTMusic: Using videoId {}", video_id);
 
         let next_response = self
             .send_request("next", json!({ "videoId": video_id }), false)
             .await?;
-        tracing::debug!("YTMusic: next response extracted");
 
         let tabs = next_response.pointer("/contents/singleColumnMusicWatchNextResultsRenderer/tabbedRenderer/watchNextTabbedResultsRenderer/tabs").and_then(|v| v.as_array())?;
-        tracing::debug!("YTMusic: found {} tabs", tabs.len());
 
         if tabs.len() < 2 {
             return None;
@@ -194,7 +191,6 @@ impl LyricsProvider for YoutubeMusicLyricsProvider {
         let browse_id = tabs[1]
             .pointer("/tabRenderer/endpoint/browseEndpoint/browseId")
             .and_then(|v| v.as_str())?;
-        tracing::debug!("YTMusic: Using browseId {}", browse_id);
 
         // Try extracting timed lyrics
         if let Some(mobile_response) = self
