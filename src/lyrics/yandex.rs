@@ -4,6 +4,7 @@ use serde_json::Value;
 use crate::api::models::{LyricsData, LyricsLine};
 use crate::api::tracks::TrackInfo;
 use crate::configs::lyrics::YandexLyricsConfig;
+use crate::configs::HttpProxyConfig;
 use super::LyricsProvider;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -15,9 +16,27 @@ pub struct YandexProvider {
 }
 
 impl YandexProvider {
-    pub fn new(config: &YandexLyricsConfig) -> Self {
+    pub fn new(config: &YandexLyricsConfig, proxy_config: Option<&HttpProxyConfig>) -> Self {
+        let mut client_builder = reqwest::Client::builder();
+
+        if let Some(proxy_cfg) = proxy_config {
+            if let Some(url) = &proxy_cfg.url {
+                if let Ok(mut proxy_obj) = reqwest::Proxy::all(url) {
+                    if let Some(user) = &proxy_cfg.username {
+                        if let Some(pass) = &proxy_cfg.password {
+                            proxy_obj = proxy_obj.basic_auth(user, pass);
+                        }
+                    }
+                    client_builder = client_builder.proxy(proxy_obj);
+                    tracing::info!("Yandex Lyrics Provider: HTTP Proxy configured");
+                } else {
+                    tracing::warn!("Yandex Lyrics Provider: Invalid proxy URL: {}", url);
+                }
+            }
+        }
+
         Self {
-            client: reqwest::Client::new(),
+            client: client_builder.build().unwrap_or_else(|_| reqwest::Client::new()),
             access_token: config.access_token.clone(),
         }
     }

@@ -55,7 +55,10 @@ impl LyricsManager {
         register_provider!(config.lyrics.youtube, "YouTube", YoutubeLyricsProvider::new());
         register_provider!(config.lyrics.lrclib, "LRCLib", LrcLibProvider::new());
         register_provider!(config.lyrics.genius, "Genius", GeniusProvider::new());
-        register_provider!(config.lyrics.deezer, "Deezer", DeezerProvider::new());
+        
+        let deezer_proxy = config.deezer.as_ref().and_then(|d| d.proxy.as_ref());
+        register_provider!(config.lyrics.deezer, "Deezer", DeezerProvider::new(deezer_proxy));
+        
         register_provider!(config.lyrics.bilibili, "Bilibili", BilibiliProvider::new());
         register_provider!(config.lyrics.musixmatch, "Musixmatch", MusixmatchProvider::new());
         register_provider!(config.lyrics.letrasmus, "Letras.mus", LetrasMusProvider::new());
@@ -73,10 +76,11 @@ impl LyricsManager {
         }
 
         if let Some(yandex_lyrics_cfg) = config.yandex.as_ref().and_then(|y| y.lyrics.as_ref()) {
+            let yandex_proxy = config.yandexmusic.as_ref().and_then(|y| y.proxy.as_ref());
             register_provider!(
                 config.lyrics.yandex && yandex_token_provided,
                 "Yandex Music",
-                YandexProvider::new(yandex_lyrics_cfg)
+                YandexProvider::new(yandex_lyrics_cfg, yandex_proxy)
             );
         }
 
