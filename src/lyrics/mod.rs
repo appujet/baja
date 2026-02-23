@@ -15,7 +15,7 @@ pub mod netease;
 
 use self::genius::GeniusProvider;
 use self::lrclib::LrcLibProvider;
-use self::youtubemusic::YoutubeLyricsProvider;
+use self::youtubemusic::YoutubeMusicLyricsProvider;
 use self::deezer::DeezerProvider;
 use self::bilibili::BilibiliProvider;
 use self::musixmatch::MusixmatchProvider;
@@ -49,7 +49,7 @@ impl LyricsManager {
             };
         }
 
-        register_provider!(config.lyrics.youtube, "YouTube", YoutubeLyricsProvider::new());
+        register_provider!(config.lyrics.youtubemusic, "YoutubeMusic", YoutubeMusicLyricsProvider::new());
         register_provider!(config.lyrics.lrclib, "LRCLib", LrcLibProvider::new());
         register_provider!(config.lyrics.genius, "Genius", GeniusProvider::new());
         

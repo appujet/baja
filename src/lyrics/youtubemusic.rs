@@ -9,11 +9,11 @@ const YTM_BASE_API: &str = "https://music.youtube.com/youtubei/v1/";
 const YTM_PARAMS: &str = "?alt=json";
 const YTM_PARAMS_KEY: &str = "&key=AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30";
 
-pub struct YoutubeLyricsProvider {
+pub struct YoutubeMusicLyricsProvider {
     client: reqwest::Client,
 }
 
-impl YoutubeLyricsProvider {
+impl YoutubeMusicLyricsProvider {
     pub fn new() -> Self {
         Self {
             client: reqwest::Client::builder()
@@ -83,7 +83,7 @@ impl YoutubeLyricsProvider {
 }
 
 #[async_trait]
-impl LyricsProvider for YoutubeLyricsProvider {
+impl LyricsProvider for YoutubeMusicLyricsProvider {
     fn name(&self) -> &'static str { "youtubemusic" }
 
     async fn load_lyrics(

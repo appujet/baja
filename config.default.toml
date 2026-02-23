@@ -37,7 +37,7 @@ audius = true
 yandexmusic = true
 
 [lyrics]
-youtube = true
+youtubemusic = true
 lrclib = true
 genius = true
 deezer = true
