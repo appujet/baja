@@ -118,38 +118,6 @@ impl SpotifySearch {
                 }
             }
         }
-
-        // Parse Episodes (mapped to tracks)
-        if all_types || types.contains(&"track".to_string()) || types.contains(&"episode".to_string()) {
-            if let Some(items) = data
-                .pointer("/data/searchV2/episodes/items")
-                .or_else(|| data.pointer("/data/searchV2/episodesV2/items"))
-                .and_then(|v| v.as_array())
-            {
-                for item in items {
-                    if let Some(episode_data) = item
-                        .get("item")
-                        .or_else(|| item.get("itemV2"))
-                        .and_then(|v| v.get("data"))
-                        .or_else(|| item.get("data"))
-                    {
-                        if let Some(track_info) = SpotifyParser::parse_track_inner(episode_data, None)
-                        {
-                            let mut track = Track::new(track_info);
-                            track.plugin_info = json!({
-                              "save_uri": track.info.uri,
-                              "previewUrl": null,
-                              "isPreview": false,
-                              "isLocal": false,
-                              "type": "episode"
-                            });
-                            tracks.push(track);
-                        }
-                    }
-                }
-            }
-        }
-
         // Parse Albums
         if all_types || types.contains(&"album".to_string()) {
             if let Some(items) = data
