@@ -231,6 +231,16 @@ distortion = true
 rotation = true
 channel_mix = true
 low_pass = true
+echo = true
+high_pass = true
+normalization = true
+chorus = true
+compressor = true
+flanger = true
+phaser = true
+phonograph = true
+reverb = true
+spatial = true
 
 [logging]
 level = "info"

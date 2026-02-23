@@ -176,6 +176,16 @@ define_filters! {
     rotation: RotationFilter => "rotation",
     channel_mix: ChannelMixFilter => "channelMix",
     low_pass: LowPassFilter => "lowPass",
+    echo: EchoFilter => "echo",
+    high_pass: HighPassFilter => "highPass",
+    normalization: NormalizationFilter => "normalization",
+    chorus: ChorusFilter => "chorus",
+    compressor: CompressorFilter => "compressor",
+    flanger: FlangerFilter => "flanger",
+    phaser: PhaserFilter => "phaser",
+    phonograph: PhonographFilter => "phonograph",
+    reverb: ReverbFilter => "reverb",
+    spatial: SpatialFilter => "spatial",
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,4 +257,93 @@ pub struct ChannelMixFilter {
 #[serde(rename_all = "camelCase")]
 pub struct LowPassFilter {
     pub smoothing: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EchoFilter {
+    pub echo_length: Option<f32>,
+    pub decay: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HighPassFilter {
+    pub cutoff_frequency: Option<i32>,
+    pub boost_factor: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizationFilter {
+    pub max_amplitude: Option<f32>,
+    pub adaptive: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChorusFilter {
+    pub rate: Option<f32>,
+    pub depth: Option<f32>,
+    pub delay: Option<f32>,
+    pub mix: Option<f32>,
+    pub feedback: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompressorFilter {
+    pub threshold: Option<f32>,
+    pub ratio: Option<f32>,
+    pub attack: Option<f32>,
+    pub release: Option<f32>,
+    pub makeup_gain: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlangerFilter {
+    pub rate: Option<f32>,
+    pub depth: Option<f32>,
+    pub feedback: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhaserFilter {
+    pub stages: Option<i32>,
+    pub rate: Option<f32>,
+    pub depth: Option<f32>,
+    pub feedback: Option<f32>,
+    pub mix: Option<f32>,
+    pub min_frequency: Option<f32>,
+    pub max_frequency: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhonographFilter {
+    pub frequency: Option<f32>,
+    pub depth: Option<f32>,
+    pub crackle: Option<f32>,
+    pub flutter: Option<f32>,
+    pub room: Option<f32>,
+    pub mic_agc: Option<f32>,
+    pub drive: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReverbFilter {
+    pub mix: Option<f32>,
+    pub room_size: Option<f32>,
+    pub damping: Option<f32>,
+    pub width: Option<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpatialFilter {
+    pub depth: Option<f32>,
+    pub rate: Option<f32>,
 }

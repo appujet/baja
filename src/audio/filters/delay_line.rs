@@ -19,18 +19,18 @@ impl DelayLine {
         self.write_index = (self.write_index + 1) % self.size;
     }
 
-    pub fn read(&self, delay_in_samples: f64) -> f32 {
-        let safe_delay = delay_in_samples.max(0.0).min((self.size - 1) as f64);
+    pub fn read(&self, delay_in_samples: f32) -> f32 {
+        let safe_delay = delay_in_samples.max(0.0).min((self.size - 1) as f32);
         let int_delay = safe_delay as usize;
-        let frac = safe_delay - int_delay as f64;
+        let frac = safe_delay - int_delay as f32;
 
         let idx0 = (self.write_index + self.size - int_delay) % self.size;
         let idx1 = (self.write_index + self.size - int_delay - 1) % self.size;
 
         // Linear interpolation between adjacent samples for smooth delay
-        let s0 = self.buffer[idx0] as f64;
-        let s1 = self.buffer[idx1] as f64;
-        (s0 * (1.0 - frac) + s1 * frac) as f32
+        let s0 = self.buffer[idx0];
+        let s1 = self.buffer[idx1];
+        s0 * (1.0 - frac) + s1 * frac
     }
 
     pub fn clear(&mut self) {
