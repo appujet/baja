@@ -1,8 +1,8 @@
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{Value, json};
-
 
 use crate::{
     api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
@@ -56,7 +56,9 @@ impl AudiusSource {
     async fn api_request(&self, endpoint: &str) -> Option<Value> {
         let url = format!("https://discoveryprovider.audius.co{}", endpoint);
         let mut url_obj = reqwest::Url::parse(&url).ok()?;
-        url_obj.query_pairs_mut().append_pair("app_name", &self.app_name);
+        url_obj
+            .query_pairs_mut()
+            .append_pair("app_name", &self.app_name);
 
         let resp = self.client.get(url_obj).send().await.ok()?;
         if !resp.status().is_success() {
@@ -130,7 +132,11 @@ impl AudiusSource {
             None => return LoadResult::Empty {},
         };
 
-        let limit = if _type == "playlist" { self.playlist_load_limit } else { self.album_load_limit };
+        let limit = if _type == "playlist" {
+            self.playlist_load_limit
+        } else {
+            self.album_load_limit
+        };
         let tracks_endpoint = format!("/v1/playlists/{}/tracks?limit={}", id, limit);
         let tracks_data = match self.api_request(&tracks_endpoint).await {
             Some(d) => d,
@@ -142,7 +148,10 @@ impl AudiusSource {
             return LoadResult::Empty {};
         }
 
-        let name = data["playlist_name"].as_str().unwrap_or("Audius Playlist").to_string();
+        let name = data["playlist_name"]
+            .as_str()
+            .unwrap_or("Audius Playlist")
+            .to_string();
 
         LoadResult::Playlist(PlaylistData {
             info: PlaylistInfo {
@@ -207,7 +216,11 @@ impl AudiusSource {
         let author = data["user"]["name"].as_str().unwrap_or("Unknown Artist");
         let duration = (data["duration"].as_f64().unwrap_or(0.0) * 1000.0) as u64;
         let uri = data["permalink"].as_str().map(|p| {
-            if p.starts_with("http") { p.to_string() } else { format!("https://audius.co{}", p) }
+            if p.starts_with("http") {
+                p.to_string()
+            } else {
+                format!("https://audius.co{}", p)
+            }
         });
         let artwork_url = self.get_artwork_url(&data["artwork"]);
 
@@ -227,15 +240,25 @@ impl AudiusSource {
     }
 
     fn get_artwork_url(&self, artwork: &Value) -> Option<String> {
-        if artwork.is_null() { return None; }
-        
+        if artwork.is_null() {
+            return None;
+        }
+
         if let Some(url) = artwork.as_str() {
-            return Some(if url.starts_with("/") { format!("https://audius.co{}", url) } else { url.to_string() });
+            return Some(if url.starts_with("/") {
+                format!("https://audius.co{}", url)
+            } else {
+                url.to_string()
+            });
         }
 
         for size in &["480x480", "1000x1000", "150x150"] {
             if let Some(url) = artwork[size].as_str() {
-                return Some(if url.starts_with("/") { format!("https://audius.co{}", url) } else { url.to_string() });
+                return Some(if url.starts_with("/") {
+                    format!("https://audius.co{}", url)
+                } else {
+                    url.to_string()
+                });
             }
         }
         None
@@ -249,7 +272,9 @@ impl SourcePlugin for AudiusSource {
     }
 
     fn can_handle(&self, identifier: &str) -> bool {
-        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+        self.search_prefixes
+            .iter()
+            .any(|p| identifier.starts_with(p))
             || self.track_pattern.is_match(identifier)
             || self.playlist_pattern.is_match(identifier)
             || self.album_pattern.is_match(identifier)
@@ -280,9 +305,9 @@ impl SourcePlugin for AudiusSource {
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> Option<BoxedTrack> {
         let track_id = if _identifier.starts_with("http") {
-             let endpoint = format!("/v1/resolve?url={}", urlencoding::encode(_identifier));
-             let data = self.api_request(&endpoint).await?;
-             data["id"].as_str()?.to_string()
+            let endpoint = format!("/v1/resolve?url={}", urlencoding::encode(_identifier));
+            let data = self.api_request(&endpoint).await?;
+            data["id"].as_str()?.to_string()
         } else {
             _identifier.to_string()
         };

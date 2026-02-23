@@ -4,13 +4,15 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use super::{
-  YouTubeClient,
-  common::{INNERTUBE_API, resolve_format_url, select_best_audio_format},
+    YouTubeClient,
+    common::{INNERTUBE_API, resolve_format_url, select_best_audio_format},
 };
 use crate::{
-  api::tracks::Track,
-  common::types::AnyResult,
-  sources::youtube::{cipher::YouTubeCipherManager, extractor::extract_track, oauth::YouTubeOAuth},
+    api::tracks::Track,
+    common::types::AnyResult,
+    sources::youtube::{
+        cipher::YouTubeCipherManager, extractor::extract_track, oauth::YouTubeOAuth,
+    },
 };
 
 const CLIENT_NAME: &str = "ANDROID_VR";
@@ -21,242 +23,243 @@ const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro Build/UQ1A
      Chrome/121.0.6167.164 Mobile Safari/537.36 YouTubeVR/1.61.48 (gzip)";
 
 pub struct AndroidVrClient {
-  http: reqwest::Client,
+    http: reqwest::Client,
 }
 
 impl AndroidVrClient {
-  pub fn new() -> Self {
-    let http = reqwest::Client::builder()
-      .user_agent(USER_AGENT)
-      .timeout(std::time::Duration::from_secs(10))
-      .build()
-      .expect("Failed to build AndroidVR HTTP client");
+    pub fn new() -> Self {
+        let http = reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("Failed to build AndroidVR HTTP client");
 
-    Self { http }
-  }
-
-  fn build_context(&self, visitor_data: Option<&str>) -> Value {
-    let mut client = json!({
-        "clientName": CLIENT_NAME,
-        "clientVersion": CLIENT_VERSION,
-        "userAgent": USER_AGENT,
-        "androidSdkVersion": 34,
-        "deviceMake": "Google",
-        "deviceModel": "Pixel 8 Pro",
-        "osName": "Android",
-        "osVersion": "14",
-        "hl": "en",
-        "gl": "US"
-    });
-
-    if let Some(vd) = visitor_data {
-      if let Some(obj) = client.as_object_mut() {
-        obj.insert("visitorData".to_string(), vd.into());
-      }
+        Self { http }
     }
 
-    json!({
-        "client": client,
-        "user": { "lockedSafetyMode": false },
-        "request": { "useSsl": true }
-    })
-  }
+    fn build_context(&self, visitor_data: Option<&str>) -> Value {
+        let mut client = json!({
+            "clientName": CLIENT_NAME,
+            "clientVersion": CLIENT_VERSION,
+            "userAgent": USER_AGENT,
+            "androidSdkVersion": 34,
+            "deviceMake": "Google",
+            "deviceModel": "Pixel 8 Pro",
+            "osName": "Android",
+            "osVersion": "14",
+            "hl": "en",
+            "gl": "US"
+        });
 
-  async fn player_request(
-    &self,
-    video_id: &str,
-    visitor_data: Option<&str>,
-    signature_timestamp: Option<u32>,
-    _oauth: &Arc<YouTubeOAuth>,
-  ) -> AnyResult<Value> {
-    crate::sources::youtube::clients::common::make_player_request(
-      &self.http,
-      video_id,
-      self.build_context(visitor_data),
-      CLIENT_ID,
-      CLIENT_VERSION,
-      None,
-      visitor_data,
-      signature_timestamp,
-      None,
-      None,
-      None,
-      None,
-    )
-    .await
-  }
+        if let Some(vd) = visitor_data {
+            if let Some(obj) = client.as_object_mut() {
+                obj.insert("visitorData".to_string(), vd.into());
+            }
+        }
+
+        json!({
+            "client": client,
+            "user": { "lockedSafetyMode": false },
+            "request": { "useSsl": true }
+        })
+    }
+
+    async fn player_request(
+        &self,
+        video_id: &str,
+        visitor_data: Option<&str>,
+        signature_timestamp: Option<u32>,
+        _oauth: &Arc<YouTubeOAuth>,
+    ) -> AnyResult<Value> {
+        crate::sources::youtube::clients::common::make_player_request(
+            &self.http,
+            video_id,
+            self.build_context(visitor_data),
+            CLIENT_ID,
+            CLIENT_VERSION,
+            None,
+            visitor_data,
+            signature_timestamp,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+    }
 }
 
 #[async_trait]
 impl YouTubeClient for AndroidVrClient {
-  fn name(&self) -> &str {
-    "AndroidVR"
-  }
-  fn client_name(&self) -> &str {
-    CLIENT_NAME
-  }
-  fn client_version(&self) -> &str {
-    CLIENT_VERSION
-  }
-  fn user_agent(&self) -> &str {
-    USER_AGENT
-  }
-
-  async fn search(
-    &self,
-    query: &str,
-    context: &Value,
-    _oauth: Arc<YouTubeOAuth>,
-  ) -> AnyResult<Vec<Track>> {
-    let visitor_data = context
-      .get("client")
-      .and_then(|c| c.get("visitorData"))
-      .and_then(|v| v.as_str())
-      .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
-
-    let body = json!({
-        "context": self.build_context(visitor_data),
-        "query": query,
-        "params": "EgIQAQ%3D%3D"
-    });
-
-    let url = format!("{}/youtubei/v1/search?prettyPrint=false", INNERTUBE_API);
-
-    let mut req = self
-      .http
-      .post(&url)
-      .header("X-YouTube-Client-Name", CLIENT_ID)
-      .header("X-YouTube-Client-Version", CLIENT_VERSION)
-      .header("X-Goog-Api-Format-Version", "2");
-
-    if let Some(vd) = visitor_data {
-      req = req.header("X-Goog-Visitor-Id", vd);
+    fn name(&self) -> &str {
+        "AndroidVR"
+    }
+    fn client_name(&self) -> &str {
+        CLIENT_NAME
+    }
+    fn client_version(&self) -> &str {
+        CLIENT_VERSION
+    }
+    fn user_agent(&self) -> &str {
+        USER_AGENT
     }
 
-    let req = req.json(&body);
+    async fn search(
+        &self,
+        query: &str,
+        context: &Value,
+        _oauth: Arc<YouTubeOAuth>,
+    ) -> AnyResult<Vec<Track>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
-    let res = req.send().await?;
-    if !res.status().is_success() {
-      return Err(format!("AndroidVR search failed: {}", res.status()).into());
-    }
+        let body = json!({
+            "context": self.build_context(visitor_data),
+            "query": query,
+            "params": "EgIQAQ%3D%3D"
+        });
 
-    let response: Value = res.json().await?;
-    let mut tracks = Vec::new();
+        let url = format!("{}/youtubei/v1/search?prettyPrint=false", INNERTUBE_API);
 
-    if let Some(sections) = response
-      .get("contents")
-      .and_then(|c| c.get("sectionListRenderer"))
-      .and_then(|s| s.get("contents"))
-      .and_then(|c| c.as_array())
-    {
-      for section in sections {
-        if let Some(items) = section
-          .get("itemSectionRenderer")
-          .and_then(|i| i.get("contents"))
-          .and_then(|c| c.as_array())
-        {
-          for item in items {
-            if let Some(track) = extract_track(item, "youtube") {
-              tracks.push(track);
-            }
-          }
+        let mut req = self
+            .http
+            .post(&url)
+            .header("X-YouTube-Client-Name", CLIENT_ID)
+            .header("X-YouTube-Client-Version", CLIENT_VERSION)
+            .header("X-Goog-Api-Format-Version", "2");
+
+        if let Some(vd) = visitor_data {
+            req = req.header("X-Goog-Visitor-Id", vd);
         }
-      }
+
+        let req = req.json(&body);
+
+        let res = req.send().await?;
+        if !res.status().is_success() {
+            return Err(format!("AndroidVR search failed: {}", res.status()).into());
+        }
+
+        let response: Value = res.json().await?;
+        let mut tracks = Vec::new();
+
+        if let Some(sections) = response
+            .get("contents")
+            .and_then(|c| c.get("sectionListRenderer"))
+            .and_then(|s| s.get("contents"))
+            .and_then(|c| c.as_array())
+        {
+            for section in sections {
+                if let Some(items) = section
+                    .get("itemSectionRenderer")
+                    .and_then(|i| i.get("contents"))
+                    .and_then(|c| c.as_array())
+                {
+                    for item in items {
+                        if let Some(track) = extract_track(item, "youtube") {
+                            tracks.push(track);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(tracks)
     }
 
-    Ok(tracks)
-  }
-
-  async fn get_track_info(
-    &self,
-    _track_id: &str,
-    _context: &Value,
-    _oauth: Arc<YouTubeOAuth>,
-  ) -> AnyResult<Option<Track>> {
-    tracing::debug!("{} client does not support get_track_info", self.name());
-    Ok(None)
-  }
-
-  async fn get_playlist(
-    &self,
-    _playlist_id: &str,
-    _context: &Value,
-    _oauth: Arc<YouTubeOAuth>,
-  ) -> AnyResult<Option<(Vec<Track>, String)>> {
-    tracing::debug!("{} client does not support get_playlist", self.name());
-    Ok(None)
-  }
-
-  async fn resolve_url(
-    &self,
-    _url: &str,
-    _context: &Value,
-    _oauth: Arc<YouTubeOAuth>,
-  ) -> AnyResult<Option<Track>> {
-    tracing::debug!("{} client does not support resolve_url", self.name());
-    Ok(None)
-  }
-
-  async fn get_track_url(
-    &self,
-    track_id: &str,
-    context: &Value,
-    cipher_manager: Arc<YouTubeCipherManager>,
-    oauth: Arc<YouTubeOAuth>,
-  ) -> AnyResult<Option<String>> {
-    let visitor_data = context
-      .get("client")
-      .and_then(|c| c.get("visitorData"))
-      .and_then(|v| v.as_str())
-      .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
-
-    let body = self
-      .player_request(track_id, visitor_data, None, &oauth)
-      .await?;
-
-    let playability = body
-      .get("playabilityStatus")
-      .and_then(|p| p.get("status"))
-      .and_then(|s| s.as_str())
-      .unwrap_or("UNKNOWN");
-
-    if playability != "OK" {
-      tracing::warn!(
-        "AndroidVR player: video {} not playable (status={})",
-        track_id,
-        playability
-      );
-      return Ok(None);
+    async fn get_track_info(
+        &self,
+        _track_id: &str,
+        _context: &Value,
+        _oauth: Arc<YouTubeOAuth>,
+    ) -> AnyResult<Option<Track>> {
+        tracing::debug!("{} client does not support get_track_info", self.name());
+        Ok(None)
     }
 
-    let streaming_data = match body.get("streamingData") {
-      Some(sd) => sd,
-      None => {
-        tracing::error!("AndroidVR player: no streamingData for {}", track_id);
-        return Ok(None);
-      }
-    };
-
-    // HLS for live content
-    if let Some(hls) = streaming_data
-      .get("hlsManifestUrl")
-      .and_then(|v| v.as_str())
-    {
-      return Ok(Some(hls.to_string()));
+    async fn get_playlist(
+        &self,
+        _playlist_id: &str,
+        _context: &Value,
+        _oauth: Arc<YouTubeOAuth>,
+    ) -> AnyResult<Option<(Vec<Track>, String)>> {
+        tracing::debug!("{} client does not support get_playlist", self.name());
+        Ok(None)
     }
 
-    let adaptive = streaming_data
-      .get("adaptiveFormats")
-      .and_then(|v| v.as_array());
-    let formats = streaming_data.get("formats").and_then(|v| v.as_array());
-    let player_page_url = format!("https://www.youtube.com/watch?v={}", track_id);
-
-    if let Some(best) = select_best_audio_format(adaptive, formats) {
-      if let Ok(Some(url)) = resolve_format_url(best, &player_page_url, &cipher_manager).await {
-        return Ok(Some(url));
-      }
+    async fn resolve_url(
+        &self,
+        _url: &str,
+        _context: &Value,
+        _oauth: Arc<YouTubeOAuth>,
+    ) -> AnyResult<Option<Track>> {
+        tracing::debug!("{} client does not support resolve_url", self.name());
+        Ok(None)
     }
 
-    Ok(None)
-  }
+    async fn get_track_url(
+        &self,
+        track_id: &str,
+        context: &Value,
+        cipher_manager: Arc<YouTubeCipherManager>,
+        oauth: Arc<YouTubeOAuth>,
+    ) -> AnyResult<Option<String>> {
+        let visitor_data = context
+            .get("client")
+            .and_then(|c| c.get("visitorData"))
+            .and_then(|v| v.as_str())
+            .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
+
+        let body = self
+            .player_request(track_id, visitor_data, None, &oauth)
+            .await?;
+
+        let playability = body
+            .get("playabilityStatus")
+            .and_then(|p| p.get("status"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("UNKNOWN");
+
+        if playability != "OK" {
+            tracing::warn!(
+                "AndroidVR player: video {} not playable (status={})",
+                track_id,
+                playability
+            );
+            return Ok(None);
+        }
+
+        let streaming_data = match body.get("streamingData") {
+            Some(sd) => sd,
+            None => {
+                tracing::error!("AndroidVR player: no streamingData for {}", track_id);
+                return Ok(None);
+            }
+        };
+
+        // HLS for live content
+        if let Some(hls) = streaming_data
+            .get("hlsManifestUrl")
+            .and_then(|v| v.as_str())
+        {
+            return Ok(Some(hls.to_string()));
+        }
+
+        let adaptive = streaming_data
+            .get("adaptiveFormats")
+            .and_then(|v| v.as_array());
+        let formats = streaming_data.get("formats").and_then(|v| v.as_array());
+        let player_page_url = format!("https://www.youtube.com/watch?v={}", track_id);
+
+        if let Some(best) = select_best_audio_format(adaptive, formats) {
+            if let Ok(Some(url)) = resolve_format_url(best, &player_page_url, &cipher_manager).await
+            {
+                return Ok(Some(url));
+            }
+        }
+
+        Ok(None)
+    }
 }

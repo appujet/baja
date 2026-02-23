@@ -1,5 +1,7 @@
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use serde_json::Value;
 use tokio::sync::RwLock;
@@ -70,7 +72,10 @@ impl PandoraTokenTracker {
         debug!("Refreshing Pandora tokens...");
 
         let (csrf_raw, csrf_parsed) = if let Some(csrf) = &self.csrf_override {
-            (format!("csrftoken={};Path=/;Domain=.pandora.com;Secure", csrf), csrf.clone())
+            (
+                format!("csrftoken={};Path=/;Domain=.pandora.com;Secure", csrf),
+                csrf.clone(),
+            )
         } else {
             match self.fetch_csrf_token().await {
                 Ok(res) => res,
@@ -103,7 +108,9 @@ impl PandoraTokenTracker {
     }
 
     async fn fetch_csrf_token(&self) -> Result<(String, String), String> {
-        let resp = self.client.head("https://www.pandora.com")
+        let resp = self
+            .client
+            .head("https://www.pandora.com")
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -126,8 +133,14 @@ impl PandoraTokenTracker {
         Err("CSRF token not found in cookies".to_string())
     }
 
-    async fn perform_anonymous_login(&self, csrf_raw: &str, csrf_parsed: &str) -> Result<String, String> {
-        let resp = self.client.post("https://www.pandora.com/api/v1/auth/anonymousLogin")
+    async fn perform_anonymous_login(
+        &self,
+        csrf_raw: &str,
+        csrf_parsed: &str,
+    ) -> Result<String, String> {
+        let resp = self
+            .client
+            .post("https://www.pandora.com/api/v1/auth/anonymousLogin")
             .header("Cookie", csrf_raw)
             .header("X-CsrfToken", csrf_parsed)
             .header("Content-Type", "application/json")
@@ -138,11 +151,14 @@ impl PandoraTokenTracker {
             .map_err(|e| e.to_string())?;
 
         if !resp.status().is_success() {
-            return Err(format!("Anonymous login failed with status: {}", resp.status()));
+            return Err(format!(
+                "Anonymous login failed with status: {}",
+                resp.status()
+            ));
         }
 
         let body: Value = resp.json().await.map_err(|e| e.to_string())?;
-        
+
         if let Some(error_code) = body.get("errorCode") {
             if error_code.as_i64() == Some(0) {
                 return Err("Anonymous login returned error code 0".to_string());

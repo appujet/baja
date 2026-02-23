@@ -14,13 +14,7 @@ pub struct MixcloudTrack {
 }
 
 impl PlayableTrack for MixcloudTrack {
-    fn start_decoding(
-        &self,
-    ) -> (
-        Receiver<Vec<i16>>,
-        Sender<DecoderCommand>,
-        Receiver<String>,
-    ) {
+    fn start_decoding(&self) -> (Receiver<Vec<i16>>, Sender<DecoderCommand>, Receiver<String>) {
         let (tx, rx) = flume::bounded::<Vec<i16>>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
@@ -38,15 +32,22 @@ impl PlayableTrack for MixcloudTrack {
                 let (hls_url, stream_url) = if hls_url_opt.is_some() || stream_url_opt.is_some() {
                     (hls_url_opt, stream_url_opt)
                 } else {
-                    let (enc_hls, enc_url) = super::fetch_track_stream_info(&client, &uri).await.unwrap_or((None, None));
-                    (enc_hls.map(|s| super::decrypt(&s)), enc_url.map(|s| super::decrypt(&s)))
+                    let (enc_hls, enc_url) = super::fetch_track_stream_info(&client, &uri)
+                        .await
+                        .unwrap_or((None, None));
+                    (
+                        enc_hls.map(|s| super::decrypt(&s)),
+                        enc_url.map(|s| super::decrypt(&s)),
+                    )
                 };
 
                 let (reader, kind) = if let Some(url) = hls_url {
-                    match crate::sources::youtube::hls::HlsReader::new(&url, local_addr, None, None, None) {
+                    match crate::sources::youtube::hls::HlsReader::new(
+                        &url, local_addr, None, None, None,
+                    ) {
                         Ok(r) => (
                             Some(Box::new(r) as Box<dyn symphonia::core::io::MediaSource>),
-                            Some(crate::common::types::AudioKind::Aac)
+                            Some(crate::common::types::AudioKind::Aac),
                         ),
                         Err(e) => {
                             tracing::error!("Mixcloud HlsReader failed to initialize: {}", e);
@@ -61,7 +62,7 @@ impl PlayableTrack for MixcloudTrack {
                                 .extension()
                                 .and_then(|s| s.to_str())
                                 .and_then(crate::common::types::AudioKind::from_ext)
-                                .or(Some(crate::common::types::AudioKind::Mp4))
+                                .or(Some(crate::common::types::AudioKind::Mp4)),
                         ),
                         Err(e) => {
                             tracing::error!("MixcloudReader failed to initialize: {}", e);

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{Value, json};
@@ -42,8 +43,11 @@ impl BandcampSource {
     }
 
     async fn search(&self, query: &str) -> LoadResult {
-        let url = format!("https://bandcamp.com/search?q={}&item_type=t&from=results", urlencoding::encode(query));
-        
+        let url = format!(
+            "https://bandcamp.com/search?q={}&item_type=t&from=results",
+            urlencoding::encode(query)
+        );
+
         let resp = match self.client.get(url).send().await {
             Ok(r) => r,
             Err(e) => {
@@ -61,26 +65,35 @@ impl BandcampSource {
             Err(_) => return LoadResult::Empty {},
         };
 
-        let result_blocks_re = Regex::new(r"(?s)<li class=.searchresult data-search.[\s\S]*?</li>").unwrap();
+        let result_blocks_re =
+            Regex::new(r"(?s)<li class=.searchresult data-search.[\s\S]*?</li>").unwrap();
         let url_re = Regex::new(r#"<a class="artcont" href="([^"]+)">"#).unwrap();
-        let title_re = Regex::new(r#"(?s)<div class="heading">\s*<a[^>]*>\s*(.+?)\s*</a>"#).unwrap();
+        let title_re =
+            Regex::new(r#"(?s)<div class="heading">\s*<a[^>]*>\s*(.+?)\s*</a>"#).unwrap();
         let subhead_re = Regex::new(r#"(?s)<div class="subhead">([\s\S]*?)</div>"#).unwrap();
         let artwork_re = Regex::new(r#"(?s)<div class="art">\s*<img src="([^"]+)""#).unwrap();
 
         let mut tracks = Vec::new();
         for block in result_blocks_re.find_iter(&body) {
             let block_str = block.as_str();
-            
+
             let url_match = url_re.captures(block_str);
             let title_match = title_re.captures(block_str);
             let subhead_match = subhead_re.captures(block_str);
             let artwork_match = artwork_re.captures(block_str);
 
-            if let (Some(url_m), Some(title_m), Some(subhead_m)) = (url_match, title_match, subhead_match) {
+            if let (Some(url_m), Some(title_m), Some(subhead_m)) =
+                (url_match, title_match, subhead_match)
+            {
                 let uri = url_m[1].split('?').next().unwrap_or(&url_m[1]).to_string();
                 let title = title_m[1].trim().to_string();
                 let subhead = subhead_m[1].trim();
-                let artist = subhead.split(" de ").last().unwrap_or(subhead).trim().to_string();
+                let artist = subhead
+                    .split(" de ")
+                    .last()
+                    .unwrap_or(subhead)
+                    .trim()
+                    .to_string();
                 let artwork_url = artwork_match.map(|m| m[1].to_string());
 
                 let info = TrackInfo {
@@ -97,7 +110,7 @@ impl BandcampSource {
                     source_name: "bandcamp".to_string(),
                 };
                 tracks.push(Track::new(info));
-                
+
                 if tracks.len() >= self.search_limit {
                     break;
                 }
@@ -117,7 +130,10 @@ impl BandcampSource {
             None => return LoadResult::Empty {},
         };
 
-        let artist = tralbum_data["artist"].as_str().unwrap_or("Unknown Artist").to_string();
+        let artist = tralbum_data["artist"]
+            .as_str()
+            .unwrap_or("Unknown Artist")
+            .to_string();
         let art_id = tralbum_data["art_id"].as_u64();
         let artwork_url = art_id.map(|id| format!("https://f4.bcbits.com/img/a{}_10.jpg", id));
 
@@ -139,7 +155,9 @@ impl BandcampSource {
                         };
 
                         let duration = (item["duration"].as_f64().unwrap_or(0.0) * 1000.0) as u64;
-                        let identifier = item["track_id"].as_u64().or(item["id"].as_u64())
+                        let identifier = item["track_id"]
+                            .as_u64()
+                            .or(item["id"].as_u64())
                             .map(|id| id.to_string())
                             .unwrap_or_else(|| self.get_identifier_from_url(&track_url));
 
@@ -159,7 +177,10 @@ impl BandcampSource {
                     }
                 }
 
-                let playlist_name = tralbum_data["current"]["title"].as_str().unwrap_or("Bandcamp Album").to_string();
+                let playlist_name = tralbum_data["current"]["title"]
+                    .as_str()
+                    .unwrap_or("Bandcamp Album")
+                    .to_string();
 
                 return LoadResult::Playlist(PlaylistData {
                     info: PlaylistInfo {
@@ -170,9 +191,14 @@ impl BandcampSource {
                     tracks,
                 });
             } else if let Some(track_data) = trackinfo.first() {
-                let title = track_data["title"].as_str().unwrap_or("Unknown Title").to_string();
+                let title = track_data["title"]
+                    .as_str()
+                    .unwrap_or("Unknown Title")
+                    .to_string();
                 let duration = (track_data["duration"].as_f64().unwrap_or(0.0) * 1000.0) as u64;
-                let identifier = track_data["track_id"].as_u64().or(track_data["id"].as_u64())
+                let identifier = track_data["track_id"]
+                    .as_u64()
+                    .or(track_data["id"].as_u64())
                     .map(|id| id.to_string())
                     .unwrap_or_else(|| self.get_identifier_from_url(url));
 
@@ -202,7 +228,7 @@ impl BandcampSource {
         }
 
         let body = resp.text().await.ok()?;
-        
+
         let tralbum_re = Regex::new(r#"data-tralbum=["'](.+?)["']"#).unwrap();
         let tralbum_data = if let Some(match_cap) = tralbum_re.captures(&body) {
             let decoded = match_cap[1].replace("&quot;", "\"");
@@ -212,7 +238,9 @@ impl BandcampSource {
         };
 
         let stream_re = Regex::new(r"https?://t4\.bcbits\.com/stream/[a-zA-Z0-9]+/mp3-128/\d+\?p=\d+&amp;ts=\d+&amp;t=[a-zA-Z0-9]+&amp;token=\d+_[a-zA-Z0-9]+").unwrap();
-        let stream_url = stream_re.find(&body).map(|m| m.as_str().replace("&amp;", "&"));
+        let stream_url = stream_re
+            .find(&body)
+            .map(|m| m.as_str().replace("&amp;", "&"));
 
         Some((tralbum_data, stream_url))
     }
@@ -232,7 +260,9 @@ impl SourcePlugin for BandcampSource {
     }
 
     fn can_handle(&self, identifier: &str) -> bool {
-        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+        self.search_prefixes
+            .iter()
+            .any(|p| identifier.starts_with(p))
             || self.pattern.is_match(identifier)
             || self.identifier_pattern.is_match(identifier)
     }
@@ -257,7 +287,10 @@ impl SourcePlugin for BandcampSource {
         }
 
         if let Some(caps) = self.identifier_pattern.captures(identifier) {
-            let url = format!("https://{}.bandcamp.com/track/{}", &caps["subdomain"], &caps["slug"]);
+            let url = format!(
+                "https://{}.bandcamp.com/track/{}",
+                &caps["subdomain"], &caps["slug"]
+            );
             return self.resolve(&url).await;
         }
 
@@ -272,7 +305,10 @@ impl SourcePlugin for BandcampSource {
         let url = if identifier.starts_with("http") {
             identifier.to_string()
         } else if let Some(caps) = self.identifier_pattern.captures(identifier) {
-            format!("https://{}.bandcamp.com/track/{}", &caps["subdomain"], &caps["slug"])
+            format!(
+                "https://{}.bandcamp.com/track/{}",
+                &caps["subdomain"], &caps["slug"]
+            )
         } else {
             return None;
         };

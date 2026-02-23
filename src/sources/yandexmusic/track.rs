@@ -1,13 +1,14 @@
 use std::net::IpAddr;
-use flume::{Receiver, Sender};
-use tracing::{debug, error};
-use regex::Regex;
 
+use flume::{Receiver, Sender};
+use regex::Regex;
+use tracing::{debug, error};
+
+use super::utils;
 use crate::{
     audio::processor::DecoderCommand,
     sources::{http::HttpTrack, plugin::PlayableTrack},
 };
-use super::utils;
 
 pub struct YandexMusicTrack {
     pub client: reqwest::Client,
@@ -17,13 +18,7 @@ pub struct YandexMusicTrack {
 }
 
 impl PlayableTrack for YandexMusicTrack {
-    fn start_decoding(
-        &self,
-    ) -> (
-        Receiver<Vec<i16>>,
-        Sender<DecoderCommand>,
-        Receiver<String>,
-    ) {
+    fn start_decoding(&self) -> (Receiver<Vec<i16>>, Sender<DecoderCommand>, Receiver<String>) {
         let (tx, rx) = flume::bounded::<Vec<i16>>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
@@ -73,7 +68,10 @@ impl PlayableTrack for YandexMusicTrack {
                         }
                     }
                     None => {
-                        error!("Failed to fetch Yandex Music stream URL for track ID {}", track_id);
+                        error!(
+                            "Failed to fetch Yandex Music stream URL for track ID {}",
+                            track_id
+                        );
                         let _ = err_tx.send("Failed to fetch stream URL".to_string());
                     }
                 }
@@ -90,12 +88,13 @@ async fn fetch_download_url(client: &reqwest::Client, id: &str) -> Option<String
     let data: serde_json::Value = resp.json().await.ok()?;
 
     let results = data["result"].as_array()?;
-    
+
     // Find MP3 with highest bitrate
-    let mut mp3_items: Vec<_> = results.iter()
+    let mut mp3_items: Vec<_> = results
+        .iter()
         .filter(|item| item["codec"].as_str() == Some("mp3"))
         .collect();
-    
+
     mp3_items.sort_by_key(|item| item["bitrateInKbps"].as_u64().unwrap_or(0));
     let best_mp3 = mp3_items.last()?;
     let download_info_url = best_mp3["downloadInfoUrl"].as_str()?;

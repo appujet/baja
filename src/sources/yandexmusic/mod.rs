@@ -1,4 +1,5 @@
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{Value, json};
@@ -33,31 +34,34 @@ const API_BASE: &str = "https://api.music.yandex.net";
 impl YandexMusicSource {
     pub fn new(config: Option<crate::configs::YandexMusicConfig>) -> Result<Self, String> {
         let config = config.ok_or("Yandex Music configuration is missing")?;
-        let access_token = config.access_token.ok_or("Yandex Music access token is missing")?;
+        let access_token = config
+            .access_token
+            .ok_or("Yandex Music access token is missing")?;
 
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::USER_AGENT,
-            "Yandex-Music-API".parse().unwrap()
+            "Yandex-Music-API".parse().unwrap(),
         );
         headers.insert(
             "X-Yandex-Music-Client",
-            "YandexMusicAndroid/24023621".parse().unwrap()
+            "YandexMusicAndroid/24023621".parse().unwrap(),
         );
         headers.insert(
             reqwest::header::AUTHORIZATION,
-            format!("OAuth {}", access_token).parse().unwrap()
+            format!("OAuth {}", access_token).parse().unwrap(),
         );
 
-        let mut client_builder = reqwest::Client::builder()
-            .default_headers(headers);
+        let mut client_builder = reqwest::Client::builder().default_headers(headers);
 
         if let Some(proxy_config) = &config.proxy {
             if let Some(url) = &proxy_config.url {
                 debug!("Configuring proxy for YandexMusicSource: {}", url);
                 if let Ok(proxy_obj) = reqwest::Proxy::all(url) {
                     let mut proxy_obj = proxy_obj;
-                    if let (Some(username), Some(password)) = (&proxy_config.username, &proxy_config.password) {
+                    if let (Some(username), Some(password)) =
+                        (&proxy_config.username, &proxy_config.password)
+                    {
                         proxy_obj = proxy_obj.basic_auth(username, password);
                     }
                     client_builder = client_builder.proxy(proxy_obj);
@@ -109,11 +113,13 @@ impl YandexMusicSource {
     }
 
     async fn search(&self, query: &str) -> LoadResult {
-        let data = match self.api_request("/search", Some(&[
-            ("text", query),
-            ("type", "all"),
-            ("page", "0"),
-        ])).await {
+        let data = match self
+            .api_request(
+                "/search",
+                Some(&[("text", query), ("type", "all"), ("page", "0")]),
+            )
+            .await
+        {
             Some(d) => d,
             None => return LoadResult::Empty {},
         };
@@ -127,14 +133,15 @@ impl YandexMusicSource {
     }
 
     async fn load_search_internal(&self, query: &str) -> Option<crate::api::tracks::SearchResult> {
-        let data = self.api_request("/search", Some(&[
-            ("text", query),
-            ("type", "all"),
-            ("page", "0"),
-        ])).await?;
+        let data = self
+            .api_request(
+                "/search",
+                Some(&[("text", query), ("type", "all"), ("page", "0")]),
+            )
+            .await?;
 
         let tracks = self.parse_tracks(&data["tracks"]["results"]);
-        
+
         let mut albums = Vec::new();
         if let Some(arr) = data["albums"]["results"].as_array() {
             for item in arr.iter().take(self.search_limit) {
@@ -193,33 +200,33 @@ impl YandexMusicSource {
     }
 
     async fn resolve_url(&self, url: &str) -> LoadResult {
-       if let Some(caps) = self.playlist_pattern.captures(url) {
-           let user = caps.name("user").map(|m| m.as_str()).unwrap();
-           let id = caps.name("id").map(|m| m.as_str()).unwrap();
-           return self.get_playlist(user, id).await;
-       }
-       if let Some(caps) = self.playlist_uuid_pattern.captures(url) {
-           let uuid = caps.name("uuid").map(|m| m.as_str()).unwrap();
-           return self.get_playlist_uuid(uuid).await;
-       }
-       if let Some(caps) = self.url_pattern.captures(url) {
-           let type1 = caps.get(2).map(|m| m.as_str()).unwrap();
-           let id1 = caps.name("id1").map(|m| m.as_str()).unwrap();
-           
-           match type1 {
-               "track" => return self.get_track_internal(id1).await,
-               "album" => {
-                   if let Some(id2) = caps.name("id2") {
-                       return self.get_track_internal(id2.as_str()).await;
-                   }
-                   return self.get_album(id1).await;
-               }
-               "artist" => return self.get_artist(id1).await,
-               _ => {}
-           }
-       }
+        if let Some(caps) = self.playlist_pattern.captures(url) {
+            let user = caps.name("user").map(|m| m.as_str()).unwrap();
+            let id = caps.name("id").map(|m| m.as_str()).unwrap();
+            return self.get_playlist(user, id).await;
+        }
+        if let Some(caps) = self.playlist_uuid_pattern.captures(url) {
+            let uuid = caps.name("uuid").map(|m| m.as_str()).unwrap();
+            return self.get_playlist_uuid(uuid).await;
+        }
+        if let Some(caps) = self.url_pattern.captures(url) {
+            let type1 = caps.get(2).map(|m| m.as_str()).unwrap();
+            let id1 = caps.name("id1").map(|m| m.as_str()).unwrap();
 
-       LoadResult::Empty {}
+            match type1 {
+                "track" => return self.get_track_internal(id1).await,
+                "album" => {
+                    if let Some(id2) = caps.name("id2") {
+                        return self.get_track_internal(id2.as_str()).await;
+                    }
+                    return self.get_album(id1).await;
+                }
+                "artist" => return self.get_artist(id1).await,
+                _ => {}
+            }
+        }
+
+        LoadResult::Empty {}
     }
 
     async fn get_track_internal(&self, id: &str) -> LoadResult {
@@ -237,9 +244,13 @@ impl YandexMusicSource {
 
     async fn get_album(&self, id: &str) -> LoadResult {
         let page_size = (self.album_load_limit * 50).max(50).to_string();
-        let data = match self.api_request(&format!("/albums/{}/with-tracks", id), Some(&[
-            ("page-size", &page_size)
-        ])).await {
+        let data = match self
+            .api_request(
+                &format!("/albums/{}/with-tracks", id),
+                Some(&[("page-size", &page_size)]),
+            )
+            .await
+        {
             Some(d) => d,
             None => return LoadResult::Empty {},
         };
@@ -258,12 +269,15 @@ impl YandexMusicSource {
         }
 
         if tracks.is_empty() {
-             return LoadResult::Empty {};
+            return LoadResult::Empty {};
         }
 
         LoadResult::Playlist(PlaylistData {
             info: PlaylistInfo {
-                name: data["title"].as_str().unwrap_or("Yandex Music Album").to_string(),
+                name: data["title"]
+                    .as_str()
+                    .unwrap_or("Yandex Music Album")
+                    .to_string(),
                 selected_track: 0,
             },
             plugin_info: json!({ "type": "album" }),
@@ -273,9 +287,13 @@ impl YandexMusicSource {
 
     async fn get_artist(&self, id: &str) -> LoadResult {
         let page_size = (self.artist_load_limit * 10).max(10).to_string();
-        let data = match self.api_request(&format!("/artists/{}/tracks", id), Some(&[
-            ("page-size", &page_size)
-        ])).await {
+        let data = match self
+            .api_request(
+                &format!("/artists/{}/tracks", id),
+                Some(&[("page-size", &page_size)]),
+            )
+            .await
+        {
             Some(d) => d,
             None => return LoadResult::Empty {},
         };
@@ -304,10 +322,13 @@ impl YandexMusicSource {
 
     async fn get_playlist(&self, user: &str, id: &str) -> LoadResult {
         let page_size = (self.playlist_load_limit * 100).max(100).to_string();
-        let data = match self.api_request(&format!("/users/{}/playlists/{}", user, id), Some(&[
-            ("page-size", &page_size),
-            ("rich-tracks", "true")
-        ])).await {
+        let data = match self
+            .api_request(
+                &format!("/users/{}/playlists/{}", user, id),
+                Some(&[("page-size", &page_size), ("rich-tracks", "true")]),
+            )
+            .await
+        {
             Some(d) => d,
             None => return LoadResult::Empty {},
         };
@@ -317,10 +338,13 @@ impl YandexMusicSource {
 
     async fn get_playlist_uuid(&self, uuid: &str) -> LoadResult {
         let page_size = (self.playlist_load_limit * 100).max(100).to_string();
-        let data = match self.api_request(&format!("/playlist/{}", uuid), Some(&[
-            ("page-size", &page_size),
-            ("rich-tracks", "true")
-        ])).await {
+        let data = match self
+            .api_request(
+                &format!("/playlist/{}", uuid),
+                Some(&[("page-size", &page_size), ("rich-tracks", "true")]),
+            )
+            .await
+        {
             Some(d) => d,
             None => return LoadResult::Empty {},
         };
@@ -331,14 +355,20 @@ impl YandexMusicSource {
     fn build_playlist_result(&self, data: Value) -> LoadResult {
         let tracks = self.parse_tracks(&data["tracks"]);
         if tracks.is_empty() {
-             return LoadResult::Empty {};
+            return LoadResult::Empty {};
         }
 
         let title = if data["kind"].as_u64() == Some(3) {
-            let owner = data["owner"]["name"].as_str().or(data["owner"]["login"].as_str()).unwrap_or("User");
+            let owner = data["owner"]["name"]
+                .as_str()
+                .or(data["owner"]["login"].as_str())
+                .unwrap_or("User");
             format!("{}'s liked songs", owner)
         } else {
-            data["title"].as_str().unwrap_or("Yandex Music Playlist").to_string()
+            data["title"]
+                .as_str()
+                .unwrap_or("Yandex Music Playlist")
+                .to_string()
         };
 
         LoadResult::Playlist(PlaylistData {
@@ -355,7 +385,11 @@ impl YandexMusicSource {
         let mut tracks = Vec::new();
         if let Some(arr) = data.as_array() {
             for item in arr {
-                let track_json = if item.get("track").is_some() { &item["track"] } else { item };
+                let track_json = if item.get("track").is_some() {
+                    &item["track"]
+                } else {
+                    item
+                };
                 if let Some(track) = self.build_track(track_json) {
                     tracks.push(track);
                 }
@@ -369,7 +403,10 @@ impl YandexMusicSource {
             return None;
         }
 
-        let id = data["id"].as_u64().map(|n| n.to_string()).or(data["id"].as_str().map(|s| s.to_string()))?;
+        let id = data["id"]
+            .as_u64()
+            .map(|n| n.to_string())
+            .or(data["id"].as_str().map(|s| s.to_string()))?;
         let title = data["title"].as_str()?;
         let author = self.parse_artist(data);
         let duration = data["durationMs"].as_u64().unwrap_or(0);
@@ -393,7 +430,8 @@ impl YandexMusicSource {
 
     fn parse_artist(&self, data: &Value) -> String {
         if let Some(arr) = data["artists"].as_array() {
-            return arr.iter()
+            return arr
+                .iter()
                 .filter_map(|a| a["name"].as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -402,10 +440,11 @@ impl YandexMusicSource {
     }
 
     fn parse_cover_uri(&self, data: &Value) -> Option<String> {
-        let uri = data["ogImage"].as_str()
+        let uri = data["ogImage"]
+            .as_str()
             .or(data["coverUri"].as_str())
             .or(data["cover"]["uri"].as_str())?;
-        
+
         Some(format!("https://{}", uri.replace("%%", "400x400")))
     }
 }
@@ -417,7 +456,9 @@ impl SourcePlugin for YandexMusicSource {
     }
 
     fn can_handle(&self, identifier: &str) -> bool {
-        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+        self.search_prefixes
+            .iter()
+            .any(|p| identifier.starts_with(p))
             || self.rec_prefixes.iter().any(|p| identifier.starts_with(p))
             || self.url_pattern.is_match(identifier)
             || self.playlist_pattern.is_match(identifier)
@@ -437,12 +478,20 @@ impl SourcePlugin for YandexMusicSource {
         identifier: &str,
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
-        if let Some(prefix) = self.search_prefixes.iter().find(|p| identifier.starts_with(*p)) {
+        if let Some(prefix) = self
+            .search_prefixes
+            .iter()
+            .find(|p| identifier.starts_with(*p))
+        {
             return self.search(identifier.strip_prefix(prefix).unwrap()).await;
         }
 
-        if let Some(prefix) = self.rec_prefixes.iter().find(|p| identifier.starts_with(*p)) {
-            // For now, ymrec: query maps to search as Yandex recommendations 
+        if let Some(prefix) = self
+            .rec_prefixes
+            .iter()
+            .find(|p| identifier.starts_with(*p))
+        {
+            // For now, ymrec: query maps to search as Yandex recommendations
             // usually require a track/artist ID which search helps find.
             return self.search(identifier.strip_prefix(prefix).unwrap()).await;
         }
@@ -465,11 +514,13 @@ impl SourcePlugin for YandexMusicSource {
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> Option<BoxedTrack> {
         let track_id = if identifier.starts_with("http") {
-             if let Some(caps) = self.url_pattern.captures(identifier) {
-                 caps.name("id2").or(caps.name("id1")).map(|m| m.as_str().to_string())?
-             } else {
-                 return None;
-             }
+            if let Some(caps) = self.url_pattern.captures(identifier) {
+                caps.name("id2")
+                    .or(caps.name("id1"))
+                    .map(|m| m.as_str().to_string())?
+            } else {
+                return None;
+            }
         } else {
             identifier.to_string()
         };

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use base64::{Engine as _, engine::general_purpose};
 use regex::Regex;
 use tokio::sync::RwLock;
-use tracing::{info, debug, error};
+use tracing::{debug, error, info};
 
 const WEB_PLAYER_BASE_URL: &str = "https://play.qobuz.com";
 
@@ -103,7 +103,9 @@ impl QobuzTokenTracker {
     }
 
     async fn fetch_credentials_from_web(&self) -> Result<(String, String), String> {
-        let login_page = self.client.get(format!("{}/login", WEB_PLAYER_BASE_URL))
+        let login_page = self
+            .client
+            .get(format!("{}/login", WEB_PLAYER_BASE_URL))
             .send()
             .await
             .map_err(|e| e.to_string())?
@@ -111,13 +113,18 @@ impl QobuzTokenTracker {
             .await
             .map_err(|e| e.to_string())?;
 
-        let bundle_regex = Regex::new(r#"<script src="(/resources/\d+\.\d+\.\d+-[a-z]\d{3}/bundle\.js)""#).unwrap();
-        let bundle_path = bundle_regex.captures(&login_page)
+        let bundle_regex =
+            Regex::new(r#"<script src="(/resources/\d+\.\d+\.\d+-[a-z]\d{3}/bundle\.js)""#)
+                .unwrap();
+        let bundle_path = bundle_regex
+            .captures(&login_page)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str())
             .ok_or_else(|| "Failed to find bundle.js path in Qobuz login page".to_string())?;
 
-        let bundle_js = self.client.get(format!("{}{}", WEB_PLAYER_BASE_URL, bundle_path))
+        let bundle_js = self
+            .client
+            .get(format!("{}{}", WEB_PLAYER_BASE_URL, bundle_path))
             .send()
             .await
             .map_err(|e| e.to_string())?
@@ -126,21 +133,33 @@ impl QobuzTokenTracker {
             .map_err(|e| e.to_string())?;
 
         let app_id_regex = Regex::new(r#"production:\{api:\{appId:"(.*?)""#).unwrap();
-        let app_id = app_id_regex.captures(&bundle_js)
+        let app_id = app_id_regex
+            .captures(&bundle_js)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_string())
             .ok_or_else(|| "Failed to extract appId from bundle.js".to_string())?;
 
-        let seed_regex = Regex::new(r#"\):[a-z]\.initialSeed\("(.*?)",window\.utimezone\.(.*?)\)"#).unwrap();
-        let seed_captures = seed_regex.captures(&bundle_js)
+        let seed_regex =
+            Regex::new(r#"\):[a-z]\.initialSeed\("(.*?)",window\.utimezone\.(.*?)\)"#).unwrap();
+        let seed_captures = seed_regex
+            .captures(&bundle_js)
             .ok_or_else(|| "Failed to extract seed and timezone from bundle.js".to_string())?;
 
         let seed = seed_captures.get(1).unwrap().as_str();
         let timezone_raw = seed_captures.get(2).unwrap().as_str();
-        let timezone = format!("{}{}", &timezone_raw[..1].to_uppercase(), &timezone_raw[1..].to_lowercase());
+        let timezone = format!(
+            "{}{}",
+            &timezone_raw[..1].to_uppercase(),
+            &timezone_raw[1..].to_lowercase()
+        );
 
-        let info_extras_regex = Regex::new(&format!(r#"(?s)timezones:\[.*?name:.*?/{}",info:"(?P<info>.*?)",extras:"(?P<extras>.*?)""#, regex::escape(&timezone))).unwrap();
-        let info_extras = info_extras_regex.captures(&bundle_js)
+        let info_extras_regex = Regex::new(&format!(
+            r#"(?s)timezones:\[.*?name:.*?/{}",info:"(?P<info>.*?)",extras:"(?P<extras>.*?)""#,
+            regex::escape(&timezone)
+        ))
+        .unwrap();
+        let info_extras = info_extras_regex
+            .captures(&bundle_js)
             .ok_or_else(|| format!("Failed to extract info/extras for timezone {}", timezone))?;
 
         let info = info_extras.name("info").unwrap().as_str();
@@ -149,11 +168,12 @@ impl QobuzTokenTracker {
         let encoded = format!("{}{}{}", seed, info, extras);
         let encoded = &encoded[..encoded.len() - 44];
 
-        let decoded = general_purpose::STANDARD.decode(encoded)
+        let decoded = general_purpose::STANDARD
+            .decode(encoded)
             .map_err(|e| format!("Failed to decode appSecret: {}", e))?;
 
-        let app_secret = String::from_utf8(decoded)
-            .map_err(|e| format!("Invalid UTF-8 in appSecret: {}", e))?;
+        let app_secret =
+            String::from_utf8(decoded).map_err(|e| format!("Invalid UTF-8 in appSecret: {}", e))?;
 
         Ok((app_id, app_secret))
     }

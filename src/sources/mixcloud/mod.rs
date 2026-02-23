@@ -1,4 +1,5 @@
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose};
 use regex::Regex;
@@ -9,8 +10,8 @@ use crate::{
     sources::{SourcePlugin, plugin::BoxedTrack},
 };
 
-pub mod track;
 pub mod reader;
+pub mod track;
 
 const DECRYPTION_KEY: &[u8] = b"IFYOUWANTTHEARTISTSTOGETPAIDDONOTDOWNLOADFROMMIXCLOUD";
 const GRAPHQL_URL: &str = "https://app.mixcloud.com/graphql";
@@ -58,17 +59,17 @@ impl MixcloudSource {
 }
 
 pub fn decrypt(ciphertext_b64: &str) -> String {
-        let ciphertext: Vec<u8> = match general_purpose::STANDARD.decode(ciphertext_b64) {
-            Ok(b) => b,
-            Err(_) => return String::new(),
-        };
+    let ciphertext: Vec<u8> = match general_purpose::STANDARD.decode(ciphertext_b64) {
+        Ok(b) => b,
+        Err(_) => return String::new(),
+    };
 
-        let mut decrypted = Vec::with_capacity(ciphertext.len());
-        for (i, &byte) in ciphertext.iter().enumerate() {
-            decrypted.push(byte ^ DECRYPTION_KEY[i % DECRYPTION_KEY.len()]);
-        }
+    let mut decrypted = Vec::with_capacity(ciphertext.len());
+    for (i, &byte) in ciphertext.iter().enumerate() {
+        decrypted.push(byte ^ DECRYPTION_KEY[i % DECRYPTION_KEY.len()]);
+    }
 
-        String::from_utf8(decrypted).unwrap_or_default()
+    String::from_utf8(decrypted).unwrap_or_default()
 }
 
 impl MixcloudSource {
@@ -182,7 +183,9 @@ impl MixcloudSource {
       }}",
                 user,
                 slug,
-                cursor.map(|c| format!(", after: \"{}\"", c)).unwrap_or_default()
+                cursor
+                    .map(|c| format!(", after: \"{}\"", c))
+                    .unwrap_or_default()
             )
         };
 
@@ -241,7 +244,11 @@ impl MixcloudSource {
     }
 
     async fn resolve_user(&self, username: &str, list_type: &str) -> LoadResult {
-        let query_type = if list_type == "stream" { "stream" } else { list_type };
+        let query_type = if list_type == "stream" {
+            "stream"
+        } else {
+            list_type
+        };
         let node_query = if list_type == "stream" {
             "... on Cloudcast { audioLength name url owner { displayName username } picture(width: 1024, height: 1024) { url } streamInfo { hlsUrl url } }"
         } else {
@@ -265,7 +272,9 @@ impl MixcloudSource {
       }}",
                 username,
                 query_type,
-                cursor.map(|c| format!(", after: \"{}\"", c)).unwrap_or_default(),
+                cursor
+                    .map(|c| format!(", after: \"{}\"", c))
+                    .unwrap_or_default(),
                 node_query
             )
         };
@@ -393,35 +402,46 @@ impl MixcloudSource {
     }
 }
 
-pub async fn fetch_track_stream_info(client: &reqwest::Client, url: &str) -> Option<(Option<String>, Option<String>)> {
-        let path_parts: Vec<&str> = url
-            .split("mixcloud.com/")
-            .nth(1)?
-            .split('/')
-            .filter(|s| !s.is_empty())
-            .collect();
+pub async fn fetch_track_stream_info(
+    client: &reqwest::Client,
+    url: &str,
+) -> Option<(Option<String>, Option<String>)> {
+    let path_parts: Vec<&str> = url
+        .split("mixcloud.com/")
+        .nth(1)?
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect();
 
-        if path_parts.len() < 2 {
-            return None;
-        }
+    if path_parts.len() < 2 {
+        return None;
+    }
 
-        let query = format!(
-            "{{
+    let query = format!(
+        "{{
         cloudcastLookup(lookup: {{username: \"{}\", slug: \"{}\"}}) {{
           streamInfo {{ hlsUrl url }}
         }}
       }}",
-            path_parts[0], path_parts[1]
-        );
+        path_parts[0], path_parts[1]
+    );
 
-        let body = graphql_request_internal(client, &query).await?;
-        let data = body["data"]["cloudcastLookup"].as_object()?;
-        
-        let hls = data.get("streamInfo")?.get("hlsUrl")?.as_str().map(|s| s.to_string());
-        let stream = data.get("streamInfo")?.get("url")?.as_str().map(|s| s.to_string());
+    let body = graphql_request_internal(client, &query).await?;
+    let data = body["data"]["cloudcastLookup"].as_object()?;
 
-        Some((hls, stream))
-    }
+    let hls = data
+        .get("streamInfo")?
+        .get("hlsUrl")?
+        .as_str()
+        .map(|s| s.to_string());
+    let stream = data
+        .get("streamInfo")?
+        .get("url")?
+        .as_str()
+        .map(|s| s.to_string());
+
+    Some((hls, stream))
+}
 
 #[async_trait]
 impl SourcePlugin for MixcloudSource {
@@ -430,7 +450,9 @@ impl SourcePlugin for MixcloudSource {
     }
 
     fn can_handle(&self, identifier: &str) -> bool {
-        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+        self.search_prefixes
+            .iter()
+            .any(|p| identifier.starts_with(p))
             || self.track_url_re.is_match(identifier)
             || self.playlist_url_re.is_match(identifier)
             || self.user_url_re.is_match(identifier)
@@ -468,9 +490,7 @@ impl SourcePlugin for MixcloudSource {
 
         if let Some(caps) = self.track_url_re.captures(identifier) {
             // Because this is checked last, we assume it's a track (not 'uploads', etc.)
-            return self
-                .resolve_track(&caps["user"], &caps["slug"])
-                .await;
+            return self.resolve_track(&caps["user"], &caps["slug"]).await;
         }
 
         LoadResult::Empty {}
@@ -486,8 +506,10 @@ impl SourcePlugin for MixcloudSource {
             _ => return None,
         };
 
-        let (enc_hls, enc_url) = fetch_track_stream_info(&self.client, &url).await.unwrap_or((None, None));
-        
+        let (enc_hls, enc_url) = fetch_track_stream_info(&self.client, &url)
+            .await
+            .unwrap_or((None, None));
+
         let hls_url = enc_hls.map(|s| decrypt(&s));
         let stream_url = enc_url.map(|s| decrypt(&s));
 

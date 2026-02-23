@@ -1,4 +1,5 @@
 use std::net::IpAddr;
+
 use flume::{Receiver, Sender};
 use tracing::{debug, error};
 
@@ -18,13 +19,7 @@ pub struct AudiusTrack {
 const API_BASE: &str = "https://discoveryprovider.audius.co";
 
 impl PlayableTrack for AudiusTrack {
-    fn start_decoding(
-        &self,
-    ) -> (
-        Receiver<Vec<i16>>,
-        Sender<DecoderCommand>,
-        Receiver<String>,
-    ) {
+    fn start_decoding(&self) -> (Receiver<Vec<i16>>, Sender<DecoderCommand>, Receiver<String>) {
         let (tx, rx) = flume::bounded::<Vec<i16>>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
@@ -81,7 +76,10 @@ impl PlayableTrack for AudiusTrack {
                         }
                     }
                     None => {
-                        error!("Failed to fetch Audius stream URL for track ID {}", track_id);
+                        error!(
+                            "Failed to fetch Audius stream URL for track ID {}",
+                            track_id
+                        );
                         let _ = err_tx.send("Failed to fetch stream URL".to_string());
                     }
                 }
@@ -92,7 +90,11 @@ impl PlayableTrack for AudiusTrack {
     }
 }
 
-pub async fn fetch_stream_url(client: &reqwest::Client, track_id: &str, app_name: &str) -> Option<String> {
+pub async fn fetch_stream_url(
+    client: &reqwest::Client,
+    track_id: &str,
+    app_name: &str,
+) -> Option<String> {
     let url = format!(
         "{}/v1/tracks/{}/stream?app_name={}&no_redirect=true",
         API_BASE,

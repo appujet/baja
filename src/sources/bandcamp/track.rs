@@ -1,4 +1,5 @@
 use std::net::IpAddr;
+
 use flume::{Receiver, Sender};
 use regex::Regex;
 use tracing::{debug, error};
@@ -16,13 +17,7 @@ pub struct BandcampTrack {
 }
 
 impl PlayableTrack for BandcampTrack {
-    fn start_decoding(
-        &self,
-    ) -> (
-        Receiver<Vec<i16>>,
-        Sender<DecoderCommand>,
-        Receiver<String>,
-    ) {
+    fn start_decoding(&self) -> (Receiver<Vec<i16>>, Sender<DecoderCommand>, Receiver<String>) {
         let (tx, rx) = flume::bounded::<Vec<i16>>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
@@ -96,9 +91,9 @@ async fn fetch_stream_url(client: &reqwest::Client, uri: &str) -> Option<String>
     }
 
     let body = resp.text().await.ok()?;
-    
+
     let stream_re = Regex::new(r"https?://t4\.bcbits\.com/stream/[a-zA-Z0-9]+/mp3-128/\d+\?p=\d+&amp;ts=\d+&amp;t=[a-zA-Z0-9]+&amp;token=\d+_[a-zA-Z0-9]+").unwrap();
-    
+
     if let Some(m) = stream_re.find(&body) {
         return Some(m.as_str().replace("&amp;", "&"));
     }
