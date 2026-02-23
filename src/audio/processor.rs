@@ -10,7 +10,10 @@ use symphonia::core::{
 };
 use tracing::{Level, debug, info, span, warn};
 
-use crate::audio::pipeline::resampler::Resampler;
+use crate::audio::{
+    buffer::{PooledBuffer, get_pool},
+    pipeline::resampler::Resampler,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecoderCommand {
@@ -31,16 +34,10 @@ pub struct AudioProcessor {
     decoder: Box<dyn Decoder>,
     resampler: Resampler,
     track_id: u32,
-    tx: Sender<Vec<i16>>,
+    tx: Sender<PooledBuffer>,
     cmd_rx: Receiver<DecoderCommand>,
-    /// When set, fatal mid-playback errors are forwarded here so the
-    /// playback loop can emit a `TrackExceptionEvent` instead of a
-    /// silent `TrackEnd(Finished)`.
     error_tx: Option<flume::Sender<String>>,
     sample_buf: Option<SampleBuffer<i16>>,
-    /// Scratch buffer for resampler output — reused each packet to avoid
-    /// allocating a new Vec per decoded frame (H1 fix).
-    resample_buf: Vec<i16>,
 
     // Audio specs
     source_rate: u32,
@@ -49,11 +46,10 @@ pub struct AudioProcessor {
 }
 
 impl AudioProcessor {
-    /// Initializes the processor by probing the source and setting up the codec.
     pub fn new(
         source: Box<dyn MediaSource>,
         kind: Option<crate::common::types::AudioKind>,
-        tx: Sender<Vec<i16>>,
+        tx: Sender<PooledBuffer>,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
     ) -> Result<Self, Error> {
@@ -100,7 +96,6 @@ impl AudioProcessor {
             cmd_rx,
             error_tx,
             sample_buf: None,
-            resample_buf: Vec::with_capacity(4096), // pre-allocated; reused each packet
             source_rate,
             target_rate,
             channels,
@@ -114,6 +109,8 @@ impl AudioProcessor {
             "Starting playback loop: {}Hz {}ch -> {}Hz",
             self.source_rate, self.channels, self.target_rate
         );
+
+        let pool = get_pool();
 
         loop {
             // 1. Handle External Commands
@@ -149,20 +146,18 @@ impl AudioProcessor {
                     buf.copy_interleaved_ref(decoded);
                     let samples = buf.samples();
 
-                    if self.source_rate != self.target_rate {
-                        // H1: resampler fills resample_buf.
-                        // H2: send the whole buffer as one Vec<i16> — one channel op per packet.
-                        self.resample_buf.clear();
-                        self.resampler.process(samples, &mut self.resample_buf);
-                        if !self.resample_buf.is_empty() {
-                            if self.tx.send(self.resample_buf.clone()).is_err() {
+                    if !samples.is_empty() {
+                        let mut pooled = pool.acquire();
+                        if self.source_rate != self.target_rate {
+                            self.resampler.process(samples, &mut pooled);
+                        } else {
+                            pooled.extend_from_slice(samples);
+                        }
+
+                        if !pooled.is_empty() {
+                            if self.tx.send(pooled).is_err() {
                                 return Ok(()); // Mixer disconnected
                             }
-                        }
-                    } else {
-                        // H2: one channel op per decoded packet instead of per sample.
-                        if !samples.is_empty() && self.tx.send(samples.to_vec()).is_err() {
-                            return Ok(()); // Mixer disconnected
                         }
                     }
                     self.sample_buf = Some(buf);

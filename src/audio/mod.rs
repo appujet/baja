@@ -4,3 +4,5 @@ pub mod playback;
 pub mod processor;
 pub mod remote_reader;
 pub use remote_reader::BaseRemoteReader;
+pub mod buffer;
+pub use buffer::PooledBuffer;

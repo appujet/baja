@@ -13,7 +13,7 @@ use super::{
     local::LocalSource,
     mixcloud::MixcloudSource,
     pandora::PandoraSource,
-    plugin::{BoxedSource, BoxedTrack, PlayableTrack},
+    plugin::{BoxedSource, BoxedTrack},
     qobuz::QobuzSource,
     shazam::ShazamSource,
     soundcloud::SoundCloudSource,
@@ -22,7 +22,6 @@ use super::{
     yandexmusic::YandexMusicSource,
     youtube::{YouTubeSource, cipher::YouTubeCipherManager},
 };
-use crate::audio::processor::DecoderCommand;
 
 /// Source Manager
 pub struct SourceManager {
@@ -220,7 +219,6 @@ impl SourceManager {
         identifier: &str,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> crate::api::tracks::LoadResult {
-        // Try each source in order
         for source in &self.sources {
             if source.can_handle(identifier) {
                 tracing::trace!("Loading '{}' with source: {}", identifier, source.name());
@@ -276,55 +274,72 @@ impl SourceManager {
             let isrc = track_info.isrc.as_deref().unwrap_or("");
             let query = format!("{} - {}", track_info.title, track_info.author);
 
-            if isrc.is_empty() {
-                tracing::trace!("Track has no ISRC");
-            }
+            let provider_queries: Vec<String> = mirrors
+                .providers
+                .iter()
+                .filter_map(|p| {
+                    if isrc.is_empty() && p.contains("%ISRC%") {
+                        None
+                    } else {
+                        Some(p.replace("%ISRC%", isrc).replace("%QUERY%", &query))
+                    }
+                })
+                .collect();
 
-            for provider in &mirrors.providers {
-                let search_query = provider.replace("%ISRC%", isrc).replace("%QUERY%", &query);
+            if !provider_queries.is_empty() {
+                use futures::stream::{FuturesUnordered, StreamExt};
 
-                if isrc.is_empty() && provider.contains("%ISRC%") {
-                    continue;
-                }
+                let timeout_dur = std::time::Duration::from_millis(mirrors.timeout_ms);
+                let this = self;
+                let n = provider_queries.len();
 
-                tracing::trace!("Attempting mirror provider: {}", search_query);
-
-                match self.load(&search_query, routeplanner.clone()).await {
-                    crate::api::tracks::LoadResult::Track(track) => {
-                        let nested_id = track.info.uri.as_deref().unwrap_or(&track.info.identifier);
-                        if let Some(playable) = self
-                            .resolve_nested_track(nested_id, routeplanner.clone())
+                let mut futs: FuturesUnordered<_> = provider_queries
+                    .into_iter()
+                    .enumerate()
+                    .map(|(p_idx, sq)| {
+                        let rp = routeplanner.clone();
+                        async move {
+                            let res = tokio::time::timeout(timeout_dur, async move {
+                                match this.load(&sq, rp.clone()).await {
+                                    crate::api::tracks::LoadResult::Track(t) => {
+                                        let id =
+                                            t.info.uri.as_deref().unwrap_or(&t.info.identifier);
+                                        this.resolve_nested_track(id, rp).await
+                                    }
+                                    crate::api::tracks::LoadResult::Search(tracks) => {
+                                        if let Some(first) = tracks.first() {
+                                            let id = first
+                                                .info
+                                                .uri
+                                                .as_deref()
+                                                .unwrap_or(&first.info.identifier);
+                                            this.resolve_nested_track(id, rp).await
+                                        } else {
+                                            None
+                                        }
+                                    }
+                                    _ => None,
+                                }
+                            })
                             .await
-                        {
-                            tracing::trace!(
-                                "Mirror success: {} -> {}",
-                                search_query,
-                                track.info.identifier
-                            );
-                            return Some(playable);
+                            .unwrap_or(None);
+                            (p_idx, res)
+                        }
+                    })
+                    .collect();
+
+                let mut slots: Vec<Option<Option<BoxedTrack>>> = (0..n).map(|_| None).collect();
+
+                while let Some((idx, res)) = futs.next().await {
+                    slots[idx] = Some(res);
+
+                    for slot in slots.iter_mut() {
+                        match slot {
+                            Some(Some(_)) => return slot.take().flatten(),
+                            Some(None) => continue,
+                            None => break,
                         }
                     }
-                    crate::api::tracks::LoadResult::Search(tracks) => {
-                        if let Some(first_track) = tracks.first() {
-                            let nested_id = first_track
-                                .info
-                                .uri
-                                .as_deref()
-                                .unwrap_or(&first_track.info.identifier);
-                            if let Some(playable) = self
-                                .resolve_nested_track(nested_id, routeplanner.clone())
-                                .await
-                            {
-                                tracing::trace!(
-                                    "Mirror success (search): {} -> {}",
-                                    search_query,
-                                    first_track.info.identifier
-                                );
-                                return Some(playable);
-                            }
-                        }
-                    }
-                    _ => {}
                 }
             }
         }
@@ -333,7 +348,6 @@ impl SourceManager {
         None
     }
 
-    /// Helper to resolve a nested ID found via mirror search
     async fn resolve_nested_track(
         &self,
         identifier: &str,
@@ -358,66 +372,5 @@ impl SourceManager {
             .iter()
             .find(|s| s.name() == source_name)
             .and_then(|s| s.get_proxy_config())
-    }
-}
-
-pub struct MirroredTrack {
-    pub query: String,
-    pub source_manager: Arc<SourceManager>,
-}
-
-impl PlayableTrack for MirroredTrack {
-    fn start_decoding(
-        &self,
-    ) -> (
-        flume::Receiver<Vec<i16>>,
-        flume::Sender<DecoderCommand>,
-        flume::Receiver<String>,
-    ) {
-        let (tx, rx) = flume::bounded::<Vec<i16>>(64);
-        let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
-        let (err_tx, err_rx) = flume::bounded::<String>(1);
-
-        let query = self.query.clone();
-        let manager = self.source_manager.clone();
-
-        tokio::spawn(async move {
-            if let crate::api::tracks::LoadResult::Search(tracks) = manager.load(&query, None).await
-            {
-                if let Some(first) = tracks.first() {
-                    if let Some(playable) = manager.get_track(&first.info, None).await {
-                        let (inner_rx, inner_cmd_tx, inner_err_rx) = playable.start_decoding();
-
-                        // Proxy commands: forward outer cmd_rx -> inner decoder
-                        let cmd_rx_task = cmd_rx.clone();
-                        let inner_cmd_tx_task = inner_cmd_tx.clone();
-                        tokio::spawn(async move {
-                            while let Ok(cmd) = cmd_rx_task.recv_async().await {
-                                if inner_cmd_tx_task.send(cmd).is_err() {
-                                    break;
-                                }
-                            }
-                        });
-
-                        // Proxy errors
-                        let err_tx_task = err_tx.clone();
-                        tokio::spawn(async move {
-                            if let Ok(err) = inner_err_rx.recv_async().await {
-                                let _ = err_tx_task.send(err);
-                            }
-                        });
-
-                        // Proxy PCM samples
-                        while let Ok(sample) = inner_rx.recv_async().await {
-                            if tx.send(sample).is_err() {
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        (rx, cmd_tx, err_rx)
     }
 }

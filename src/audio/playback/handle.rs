@@ -5,6 +5,8 @@ use std::sync::{
 
 use crate::audio::processor::DecoderCommand;
 
+const OPUS_SAMPLE_RATE: u64 = 48_000;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum PlaybackState {
@@ -78,8 +80,10 @@ impl TrackHandle {
     }
 
     pub fn stop(&self) {
+        // SeqCst matches the ordering used by stop_signal in start_playback,
+        // ensuring the stopped state is visible to all threads immediately.
         self.state
-            .store(PlaybackState::Stopped as u8, Ordering::Release);
+            .store(PlaybackState::Stopped as u8, Ordering::SeqCst);
     }
 
     pub fn set_volume(&self, vol: f32) {
@@ -99,11 +103,11 @@ impl TrackHandle {
 
     pub fn get_position(&self) -> u64 {
         let samples = self.position.load(Ordering::Acquire);
-        (samples * 1000) / 48000
+        (samples * 1000) / OPUS_SAMPLE_RATE
     }
 
     pub fn seek(&self, position_ms: u64) {
-        let samples = (position_ms * 48000) / 1000;
+        let samples = (position_ms * OPUS_SAMPLE_RATE) / 1000;
         self.position.store(samples, Ordering::Release);
         let _ = self.command_tx.send(DecoderCommand::Seek(position_ms));
     }

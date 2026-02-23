@@ -47,7 +47,7 @@ impl TransitionEffect for TapeEffect {
         out_len: usize,
         vol: f32,
         stash: &mut Vec<i16>,
-        rx: &flume::Receiver<Vec<i16>>,
+        rx: &flume::Receiver<crate::audio::buffer::PooledBuffer>,
         state_atomic: &Arc<AtomicU8>,
         position_atomic: &Arc<AtomicU64>,
     ) -> bool {

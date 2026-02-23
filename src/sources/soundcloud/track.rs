@@ -39,11 +39,11 @@ impl PlayableTrack for SoundCloudTrack {
     fn start_decoding(
         &self,
     ) -> (
-        Receiver<Vec<i16>>,
+        Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
     ) {
-        let (tx, rx) = flume::bounded::<Vec<i16>>(64);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -184,7 +184,7 @@ impl PlayableTrack for SoundCloudTrack {
 fn run_processor(
     reader: Box<dyn symphonia::core::io::MediaSource>,
     kind: Option<crate::common::types::AudioKind>,
-    tx: flume::Sender<Vec<i16>>,
+    tx: flume::Sender<crate::audio::buffer::PooledBuffer>,
     cmd_rx: flume::Receiver<DecoderCommand>,
     err_tx: flume::Sender<String>,
 ) {

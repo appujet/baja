@@ -10,13 +10,22 @@ use tracing::{debug, trace, warn};
 
 use crate::common::types::AnyResult;
 
-const CHUNK_SIZE: usize = 512 * 1024; // 512KB chunks
-const PREFETCH_CHUNKS: usize = 32; // 16MB prefetch window
-const MAX_CONCURRENT_FETCHES: usize = 6;
+/// Size of each independently-fetched chunk. Larger chunks improve throughput
+/// and reduce request overhead, especially for high-bitrate audio.
+const CHUNK_SIZE: usize = 1024 * 1024; // 1 MB (was 128 KB)
+
+/// How many chunks ahead of the read cursor to keep pre-fetched.
+const PREFETCH_CHUNKS: usize = 16; // 16 MB window (was 32 * 128KB = 4MB)
+
+/// Number of parallel download workers.
+const MAX_CONCURRENT_FETCHES: usize = 3; // Reduced slightly to avoid YouTube rate limits
+
+/// Timeout for each chunk fetch to prevent worker hangs.
+const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 #[derive(Clone)]
 enum ChunkState {
-    Empty,
+    Empty(usize), // retry count
     Downloading,
     Ready(Arc<Vec<u8>>),
 }
@@ -26,6 +35,7 @@ struct ReaderState {
     current_pos: u64,
     total_len: u64,
     is_terminated: bool,
+    fatal_error: Option<String>,
 }
 
 pub struct SegmentedRemoteReader {
@@ -38,33 +48,39 @@ pub struct SegmentedRemoteReader {
 impl SegmentedRemoteReader {
     pub fn new(client: reqwest::Client, url: &str) -> AnyResult<Self> {
         let handle = tokio::runtime::Handle::current();
-        // 1. Initial request to get length and first chunk
-        let response = handle.block_on(Self::fetch_range(&client, url, 0, CHUNK_SIZE as u64))?;
 
-        let len = response
+        let probe_req = client
+            .get(url)
+            .header("Range", "bytes=0-0")
+            .header("Connection", "close")
+            .timeout(std::time::Duration::from_secs(10))
+            .send();
+
+        let probe = handle.block_on(probe_req)?;
+
+        let len = probe
             .headers()
             .get(reqwest::header::CONTENT_RANGE)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.split('/').last())
             .and_then(|v| v.parse::<u64>().ok())
-            .or_else(|| response.content_length())
-            .ok_or("Failed to get content length")?;
+            .or_else(|| probe.content_length())
+            .ok_or("SegmentedRemoteReader: could not determine content length")?;
 
-        let content_type = response
+        let content_type = probe
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
 
         debug!(
-            "Opened SegmentedRemoteReader: {} (len={}, type={:?})",
-            url, len, content_type
+            "Opened SegmentedRemoteReader: (len={}, type={:?})",
+            len, content_type
         );
 
-        let first_chunk = handle.block_on(response.bytes())?.to_vec();
-
+        // Mark chunk 0 as Empty so the first worker picks it up with high priority.
         let mut chunks = HashMap::new();
-        chunks.insert(0, ChunkState::Ready(Arc::new(first_chunk)));
+        chunks.insert(0, ChunkState::Empty(0));
 
         let shared = Arc::new((
             Mutex::new(ReaderState {
@@ -72,11 +88,13 @@ impl SegmentedRemoteReader {
                 current_pos: 0,
                 total_len: len,
                 is_terminated: false,
+                fatal_error: None,
             }),
             Condvar::new(),
         ));
 
-        // 2. Spawn background workers
+        // Spawn concurrent background workers — they race to fill chunk 0 first,
+        // then fan out across the prefetch window.
         for i in 0..MAX_CONCURRENT_FETCHES {
             let shared_clone = shared.clone();
             let client_clone = client.clone();
@@ -85,7 +103,7 @@ impl SegmentedRemoteReader {
             thread::Builder::new()
                 .name(format!("segmented-fetch-{}", i))
                 .spawn(move || {
-                    fetch_worker(shared_clone, client_clone, url_str, handle_clone);
+                    fetch_worker(i, shared_clone, client_clone, url_str, handle_clone);
                 })?;
         }
 
@@ -108,12 +126,12 @@ impl SegmentedRemoteReader {
             .get(url)
             .header("Range", range)
             .header("Accept", "*/*")
-            .header("Connection", "keep-alive")
+            .timeout(FETCH_TIMEOUT)
             .send()
             .await?;
 
         if !res.status().is_success() && res.status() != reqwest::StatusCode::PARTIAL_CONTENT {
-            return Err(format!("Fetch failed: {}", res.status()).into());
+            return Err(format!("Fetch failed: status={}", res.status()).into());
         }
         Ok(res)
     }
@@ -124,6 +142,7 @@ impl SegmentedRemoteReader {
 }
 
 fn fetch_worker(
+    i: usize,
     shared: Arc<(Mutex<ReaderState>, Condvar)>,
     client: reqwest::Client,
     url: String,
@@ -142,23 +161,30 @@ fn fetch_worker(
 
             let current_chunk_idx = (state.current_pos / CHUNK_SIZE as u64) as usize;
 
-            // 1. High priority: check if the chunk we're currently at is needed
-            if let Some(ChunkState::Empty) = state.chunks.get(&current_chunk_idx) {
-                state
-                    .chunks
-                    .insert(current_chunk_idx, ChunkState::Downloading);
+            // High priority: current read position chunk.
+            let entry = state
+                .chunks
+                .entry(current_chunk_idx)
+                .or_insert(ChunkState::Empty(0));
+            if let ChunkState::Empty(_) = entry {
+                *entry = ChunkState::Downloading;
                 target_chunk_idx = Some(current_chunk_idx);
-            }
-            // 2. Next: fill the rest of the prefetch window as fast as possible
-            else {
-                for i in 0..PREFETCH_CHUNKS {
-                    let idx = current_chunk_idx + i;
+            } else {
+                let cursor_ready = matches!(
+                    state.chunks.get(&current_chunk_idx),
+                    Some(ChunkState::Ready(_))
+                );
+                let window_limit = if cursor_ready { PREFETCH_CHUNKS } else { 2 };
+
+                // Fill the prefetch window ahead of current position.
+                for j in 1..window_limit {
+                    let idx = current_chunk_idx + j;
                     if (idx * CHUNK_SIZE) as u64 >= state.total_len {
                         break;
                     }
 
-                    let entry = state.chunks.entry(idx).or_insert(ChunkState::Empty);
-                    if matches!(entry, ChunkState::Empty) {
+                    let entry = state.chunks.entry(idx).or_insert(ChunkState::Empty(0));
+                    if matches!(entry, ChunkState::Empty(_)) {
                         *entry = ChunkState::Downloading;
                         target_chunk_idx = Some(idx);
                         break;
@@ -167,7 +193,7 @@ fn fetch_worker(
             }
 
             if target_chunk_idx.is_none() {
-                // Nothing to do, wait for position change or timeout (short wait for fast reaction)
+                // Nothing to fetch — wait for the read cursor to advance.
                 let _ = cvar
                     .wait_timeout(state, std::time::Duration::from_millis(50))
                     .unwrap();
@@ -180,33 +206,41 @@ fn fetch_worker(
             let stream_len = lock.lock().unwrap_or_else(|e| e.into_inner()).total_len;
             let size = CHUNK_SIZE.min((stream_len - offset) as usize);
 
-            match handle.block_on(SegmentedRemoteReader::fetch_range(
-                &client,
-                &url,
-                offset,
-                size as u64,
-            )) {
+            trace!("Worker {}: Requesting chunk {} (offset={})", i, idx, offset);
+
+            let fetch_fut = SegmentedRemoteReader::fetch_range(&client, &url, offset, size as u64);
+            match handle.block_on(fetch_fut) {
                 Ok(res) => {
-                    if let Ok(data) = handle.block_on(res.bytes()) {
+                    let bytes_fut = res.bytes();
+                    if let Ok(data) = handle.block_on(bytes_fut) {
                         let data = data.to_vec();
                         let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
                         let actual_len = data.len();
                         state.chunks.insert(idx, ChunkState::Ready(Arc::new(data)));
-                        trace!(
-                            "SegmentedRemoteReader worker filled chunk {} ({} bytes)",
-                            idx, actual_len
-                        );
+                        trace!("Worker {}: Filled chunk {} ({} bytes)", i, idx, actual_len);
                         cvar.notify_all();
                     } else {
+                        warn!("Worker {}: Failed to read body for chunk {}", i, idx);
                         let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
-                        state.chunks.insert(idx, ChunkState::Empty);
+                        state.chunks.insert(idx, ChunkState::Empty(0));
                         cvar.notify_all();
                     }
                 }
                 Err(e) => {
-                    warn!("SegmentedRemoteReader fetch error for chunk {}: {}", idx, e);
+                    warn!("Worker {}: Fetch failed for chunk {}: {}", i, idx, e);
                     let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
-                    state.chunks.insert(idx, ChunkState::Empty);
+
+                    let retries = if let Some(ChunkState::Empty(r)) = state.chunks.get(&idx) {
+                        *r
+                    } else {
+                        0
+                    };
+                    if retries > 5 {
+                        state.fatal_error = Some(format!("Failed to fetch chunk {}: {}", idx, e));
+                    } else {
+                        state.chunks.insert(idx, ChunkState::Empty(retries + 1));
+                    }
+
                     cvar.notify_all();
                     thread::sleep(std::time::Duration::from_millis(500));
                 }
@@ -224,10 +258,14 @@ impl Read for SegmentedRemoteReader {
         let (lock, cvar) = &*self.shared;
         let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
 
-        // Sync our position with the background workers
+        // Keep workers informed of our current read position.
         state.current_pos = self.pos;
 
         loop {
+            if let Some(ref err) = state.fatal_error {
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, err.clone()));
+            }
+
             let chunk_idx = (self.pos / CHUNK_SIZE as u64) as usize;
             let offset_in_chunk = (self.pos % CHUNK_SIZE as u64) as usize;
 
@@ -238,7 +276,7 @@ impl Read for SegmentedRemoteReader {
                         if self.pos >= self.len {
                             return Ok(0);
                         }
-                        // Move to the next chunk boundary
+                        // Advance to next chunk boundary.
                         self.pos = ((chunk_idx + 1) * CHUNK_SIZE) as u64;
                         state.current_pos = self.pos;
                         continue;
@@ -249,32 +287,24 @@ impl Read for SegmentedRemoteReader {
                     self.pos += n as u64;
                     state.current_pos = self.pos;
 
-                    // Proactively clean up old chunks to save memory
+                    // Evict old chunks to bound memory usage (keep 4 chunks behind cursor).
                     if chunk_idx > 8 {
                         state.chunks.retain(|&idx, _| idx >= chunk_idx - 4);
                     }
                     return Ok(n);
                 }
-                Some(ChunkState::Downloading) | Some(ChunkState::Empty) => {
-                    if let Some(ChunkState::Empty) = state.chunks.get(&chunk_idx) {
-                        state.chunks.insert(chunk_idx, ChunkState::Downloading);
-                    }
-                    cvar.notify_all();
+                Some(ChunkState::Downloading) | Some(ChunkState::Empty(_)) => {
+                    cvar.notify_all(); // Wake workers if they're sleeping
 
-                    let (new_state, result) = cvar
-                        .wait_timeout(state, std::time::Duration::from_millis(1000))
+                    trace!("Waiting for chunk {}", chunk_idx);
+                    let (new_state, _timeout) = cvar
+                        .wait_timeout(state, std::time::Duration::from_millis(500))
                         .unwrap();
                     state = new_state;
-
-                    if result.timed_out() {
-                        trace!(
-                            "SegmentedRemoteReader read wait timed out for chunk {}",
-                            chunk_idx
-                        );
-                    }
                 }
                 None => {
-                    state.chunks.insert(chunk_idx, ChunkState::Empty);
+                    // Chunk not yet queued — insert and wake workers.
+                    state.chunks.insert(chunk_idx, ChunkState::Empty(0));
                     cvar.notify_all();
                 }
             }
@@ -290,11 +320,7 @@ impl Seek for SegmentedRemoteReader {
             SeekFrom::End(delta) => self.len.saturating_add_signed(delta),
         };
 
-        if new_pos > self.len {
-            self.pos = self.len;
-        } else {
-            self.pos = new_pos;
-        }
+        self.pos = new_pos.min(self.len);
 
         let (lock, cvar) = &*self.shared;
         let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
