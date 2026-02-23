@@ -5,7 +5,7 @@ use crate::{api::models::LyricsData, api::tracks::TrackInfo, configs::Config};
 
 pub mod lrclib;
 pub mod genius;
-pub mod youtube;
+pub mod youtubemusic;
 pub mod deezer;
 pub mod bilibili;
 pub mod musixmatch;
@@ -15,7 +15,7 @@ pub mod netease;
 
 use self::genius::GeniusProvider;
 use self::lrclib::LrcLibProvider;
-use self::youtube::YoutubeLyricsProvider;
+use self::youtubemusic::YoutubeLyricsProvider;
 use self::deezer::DeezerProvider;
 use self::bilibili::BilibiliProvider;
 use self::musixmatch::MusixmatchProvider;

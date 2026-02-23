@@ -84,7 +84,7 @@ impl YoutubeLyricsProvider {
 
 #[async_trait]
 impl LyricsProvider for YoutubeLyricsProvider {
-    fn name(&self) -> &'static str { "ytmusic" }
+    fn name(&self) -> &'static str { "youtubemusic" }
 
     async fn load_lyrics(
         &self,
@@ -180,7 +180,7 @@ impl LyricsProvider for YoutubeLyricsProvider {
                     return Some(LyricsData {
                         name: track.title.clone(),
                         author: track.author.clone(),
-                        provider: "ytmusic".to_string(),
+                        provider: "youtubemusic".to_string(),
                         text: lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n"),
                         lines: Some(lines),
                     });
@@ -209,7 +209,7 @@ impl LyricsProvider for YoutubeLyricsProvider {
                             return Some(LyricsData {
                                 name: track.title.clone(),
                                 author: track.author.clone(),
-                                provider: "ytmusic".to_string(),
+                                provider: "youtubemusic".to_string(),
                                 text: lyrics_text.to_string(),
                                 lines: Some(lines),
                             });
