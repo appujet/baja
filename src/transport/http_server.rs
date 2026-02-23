@@ -66,6 +66,7 @@ pub fn router(state: Arc<AppState>) -> Router {
                 .patch(player::update_player)
                 .delete(player::destroy_player),
         )
+        .route("/v4/sessions/{session_id}", patch(player::update_session))
         .route("/v4/loadlyrics", get(lyrics::load_lyrics))
         .route("/v4/lyrics", get(lyrics::get_lyrics))
         .route(
@@ -76,7 +77,6 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/v4/sessions/{session_id}/players/{guild_id}/track/lyrics",
             get(lyrics::get_player_lyrics),
         )
-        .route("/v4/sessions/{session_id}", patch(player::update_session))
         .route("/v4/routeplanner/status", get(stats::routeplanner_status))
         .route(
             "/v4/routeplanner/free/address",
