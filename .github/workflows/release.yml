@@ -18,134 +18,128 @@ env:
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
 jobs:
-  build:
-    name: Build - ${{ matrix.platform.os_name }}
-    runs-on: ${{ matrix.platform.os }}
+  # Build Linux binaries with cross-compilation (fast)
+  build-linux:
+    name: Build Linux Binaries
+    runs-on: ubuntu-22.04
     strategy:
-      fail-fast: false
       matrix:
-        platform:
-          - os: ubuntu-22.04
-            os_name: Linux (x86_64)
-            target: x86_64-unknown-linux-gnu
-            bin: rustalink
-            name: rustalink-linux-amd64
-          - os: ubuntu-22.04
-            os_name: Linux (aarch64)
-            target: aarch64-unknown-linux-gnu
-            bin: rustalink
-            name: rustalink-linux-arm64
+        include:
+          - target: x86_64-unknown-linux-gnu
+            arch: amd64
+          - target: aarch64-unknown-linux-gnu
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake pkg-config libclang-dev clang gcc g++ make perl
+          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          fi
+      
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustalink-linux-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/release/rustalink
+
+  # Build non-Linux binaries (can run in parallel)
+  build-other:
+    name: Build ${{ matrix.os_name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
           - os: macos-latest
             os_name: macOS Intel
             target: x86_64-apple-darwin
-            bin: rustalink
             name: rustalink-macos-amd64
           - os: macos-latest
             os_name: macOS ARM
             target: aarch64-apple-darwin
-            bin: rustalink
             name: rustalink-macos-arm64
           - os: windows-latest
-            os_name: Windows
+            os_name: Windows x64
             target: x86_64-pc-windows-msvc
-            bin: rustalink.exe
             name: rustalink-windows-amd64.exe
-
+          - os: windows-latest
+            os_name: Windows ARM64
+            target: aarch64-pc-windows-msvc
+            name: rustalink-windows-arm64.exe
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform.target }}
-
-      - name: Install dependencies (Ubuntu)
-        if: startsWith(matrix.platform.os, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake pkg-config libclang-dev clang gcc g++ make perl tzdata
-          if [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-gnu" ]]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          fi
-
+          targets: ${{ matrix.target }}
+      
       - name: Install dependencies (macOS)
-        if: startsWith(matrix.platform.os, 'macos')
-        run: |
-          brew install cmake pkg-config
-
-      - name: Install dependencies (Windows)
-        if: startsWith(matrix.platform.os, 'windows')
-        shell: bash
-        run: |
-          echo "LIBCLANG_PATH=C:/Program Files/LLVM/bin" >> $GITHUB_ENV
-
+        if: startsWith(matrix.os, 'macos')
+        run: brew install cmake pkg-config
+      
       - name: Build binary
-        run: cargo build --release --locked --target ${{ matrix.platform.target }}
-
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      
       - name: Rename binary (Unix)
-        if: "!startsWith(matrix.platform.os, 'windows')"
-        run: mv target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} target/${{ matrix.platform.target }}/release/${{ matrix.platform.name }}
-
+        if: "!startsWith(matrix.os, 'windows')"
+        run: mv target/${{ matrix.target }}/release/rustalink target/${{ matrix.target }}/release/${{ matrix.name }}
+      
       - name: Rename binary (Windows)
-        if: startsWith(matrix.platform.os, 'windows')
+        if: startsWith(matrix.os, 'windows')"
         shell: bash
-        run: mv target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} target/${{ matrix.platform.target }}/release/${{ matrix.platform.name }}
-
+        run: mv target/${{ matrix.target }}/release/rustalink.exe target/${{ matrix.target }}/release/${{ matrix.name }}
+      
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform.name }}
-          path: target/${{ matrix.platform.target }}/release/${{ matrix.platform.name }}
+          name: ${{ matrix.name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.name }}
 
-  release:
-    name: Publish Release
-    needs: build
+  # Fast Docker build - no QEMU needed!
+  docker:
+    name: Build & Push Docker
+    needs: build-linux  # Only needs Linux binaries
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download artifacts
+      - uses: actions/checkout@v4
+      
+      - name: Download Linux binaries
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
-
-      - name: Display structure of downloaded files
-        run: ls -R artifacts
-
-      - name: Publish Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/**/*
-          fail_on_unmatched_files: false
-          generate_release_notes: true
-
-  docker:
-    name: Build & Publish Docker
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
+          path: bin
+          pattern: rustalink-linux-*
+      
+      - name: Organize binaries
+        run: |
+          mkdir -p bin/linux/amd64 bin/linux/arm64
+          mv bin/rustalink-linux-amd64/rustalink bin/linux/amd64/rustalink
+          mv bin/rustalink-linux-arm64/rustalink bin/linux/arm64/rustalink
+          chmod +x bin/linux/amd64/rustalink bin/linux/arm64/rustalink
+      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
+      
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata (tags, labels) for Docker
+      
+      - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -154,15 +148,34 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-
-      - name: Build and push Multi-Arch Docker image
+      
+      # FAST: Native multi-arch build without QEMU
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
-          push: true
           platforms: linux/amd64,linux/arm64
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # No cache needed - just copying binaries, not compiling
+
+  release:
+    name: Publish Release
+    needs: [build-linux, build-other]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          fail_on_unmatched_files: false
+          generate_release_notes: true

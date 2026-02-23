@@ -266,6 +266,7 @@ pub async fn start_playback(
                                 threshold_ms: stuck_threshold_ms,
                             });
                         session_clone.send_message(&stuck_event).await;
+
                         tracing::warn!("Track {} got stuck!", track_data_clone.info.title);
 
                         // Send a playerUpdate immediately after stuck — mirrors Rustalink behaviour.

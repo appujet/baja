@@ -73,9 +73,39 @@ Ready to use **rustalink**? Check out our comprehensive setup guide:
 rustalink is designed to be extremely lightweight, leveraging Rust's zero-cost abstractions and asynchronous runtime (**Tokio**) to handle hundreds of concurrent streams with minimal CPU and memory footprint.
 
 ## ⚙️ Requirements
-- **Rust** (Edition 2024)
-- **C Compiler** (for `audiopus` / `opus` dependencies)
-- **Discord Bot Token**
+
+### 🛠️ Build Requirements
+If you are building from source, you need the following installed on your system:
+
+- **Rust**: Latest stable version (Edition 2024).
+- **C/C++ Toolchain**: `gcc`, `g++`, `make`.
+- **CMake**: Required for building bundled C dependencies (`opus`).
+- **OpenSSL**: Development headers (e.g., `libssl-dev` or `openssl-devel`).
+- **Clang/LLVM**: Required for `bindgen` (e.g., `libclang-dev`).
+- **Pkg-config**: To locate system libraries.
+
+#### Platform Specific Install Commands:
+- **Ubuntu/Debian**:
+  ```bash
+  sudo apt-get update
+  sudo apt-get install -y cmake pkg-config libclang-dev clang gcc g++ make perl libssl-dev
+  ```
+- **Arch Linux**:
+  ```bash
+  sudo pacman -S cmake pkgconf clang gcc make perl openssl
+  ```
+- **macOS**:
+  ```bash
+  brew install cmake pkg-config
+  ```
+- **Windows**:
+  - [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with C++ workload.
+  - [LLVM/Clang](https://releases.llvm.org/download.html) (add to PATH).
+
+### 🏃 Runtime Requirements
+- **Docker** (Optional, recommended): For running the pre-built multi-arch image.
+- **OpenSSL**: Ensure system certificates are up to date (usually present by default).
+- **Visual C++ Redistributable**: (Windows only) Required for native binaries.
 
 
 
