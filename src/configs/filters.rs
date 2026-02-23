@@ -22,6 +22,26 @@ pub struct FiltersConfig {
     pub channel_mix: bool,
     #[serde(default = "default_true")]
     pub low_pass: bool,
+    #[serde(default = "default_true")]
+    pub echo: bool,
+    #[serde(default = "default_true")]
+    pub high_pass: bool,
+    #[serde(default = "default_true")]
+    pub normalization: bool,
+    #[serde(default = "default_true")]
+    pub chorus: bool,
+    #[serde(default = "default_true")]
+    pub compressor: bool,
+    #[serde(default = "default_true")]
+    pub flanger: bool,
+    #[serde(default = "default_true")]
+    pub phaser: bool,
+    #[serde(default = "default_true")]
+    pub phonograph: bool,
+    #[serde(default = "default_true")]
+    pub reverb: bool,
+    #[serde(default = "default_true")]
+    pub spatial: bool,
 }
 
 fn default_true() -> bool {
@@ -41,6 +61,16 @@ impl Default for FiltersConfig {
             rotation: true,
             channel_mix: true,
             low_pass: true,
+            echo: true,
+            high_pass: true,
+            normalization: true,
+            chorus: true,
+            compressor: true,
+            flanger: true,
+            phaser: true,
+            phonograph: true,
+            reverb: true,
+            spatial: true,
         }
     }
 }
@@ -58,6 +88,16 @@ impl FiltersConfig {
             "rotation" => self.rotation,
             "channel_mix" | "channelMix" => self.channel_mix,
             "low_pass" | "lowPass" => self.low_pass,
+            "echo" => self.echo,
+            "high_pass" | "highPass" => self.high_pass,
+            "normalization" => self.normalization,
+            "chorus" => self.chorus,
+            "compressor" => self.compressor,
+            "flanger" => self.flanger,
+            "phaser" => self.phaser,
+            "phonograph" => self.phonograph,
+            "reverb" => self.reverb,
+            "spatial" => self.spatial,
             _ => true,
         }
     }

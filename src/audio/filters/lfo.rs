@@ -50,4 +50,8 @@ impl Lfo {
     pub fn reset(&mut self) {
         self.phase = 0.0;
     }
+
+    pub fn set_phase(&mut self, phase: f64) {
+        self.phase = phase;
+    }
 }

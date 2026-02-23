@@ -45,13 +45,13 @@ impl AudioFilter for VibratoFilter {
             // Left channel
             let left_sample = samples[offset] as f32;
             self.left_delay.write(left_sample);
-            let delayed_left = self.left_delay.read(delay);
+            let delayed_left = self.left_delay.read(delay as f32);
             samples[offset] = (delayed_left as i32).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
 
             // Right channel
             let right_sample = samples[offset + 1] as f32;
             self.right_delay.write(right_sample);
-            let delayed_right = self.right_delay.read(delay);
+            let delayed_right = self.right_delay.read(delay as f32);
             samples[offset + 1] =
                 (delayed_right as i32).clamp(i16::MIN as i32, i16::MAX as i32) as i16;
         }
