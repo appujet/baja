@@ -44,6 +44,8 @@ impl BilibiliProvider {
         }
 
         let resp = self.client.get("https://api.bilibili.com/x/web-interface/nav")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+            .header("Referer", "https://www.bilibili.com/")
             .send()
             .await.ok()?;
         
@@ -70,7 +72,7 @@ impl BilibiliProvider {
         Some(final_key)
     }
 
-    fn sign_wbi(&self, params: &mut Vec<(String, String)>, mixin_key: &str) {
+    fn sign_wbi(&self, params: &mut Vec<(String, String)>, mixin_key: &str) -> String {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -91,7 +93,7 @@ impl BilibiliProvider {
         hasher.update(format!("{}{}", query, mixin_key).as_bytes());
         let w_rid = format!("{:x}", hasher.finalize());
         
-        params.push(("w_rid".to_string(), w_rid));
+        format!("{}&w_rid={}", query, w_rid)
     }
 
     fn clean(&self, text: &str) -> String {
@@ -134,24 +136,30 @@ impl LyricsProvider for BilibiliProvider {
         }
 
         let cid = {
-            let resp = self.client.get(format!("https://api.bilibili.com/x/web-interface/view?bvid={}", bvid))
+            let url = format!("https://api.bilibili.com/x/web-interface/view?bvid={}", bvid);
+            let resp = self.client.get(&url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+                .header("Referer", "https://www.bilibili.com/")
                 .send()
                 .await.ok()?;
             let body: Value = resp.json().await.ok()?;
             if body.get("code")?.as_i64() != Some(0) { return None; }
             let data = body.get("data")?;
-            data.get("cid")?.to_string()
+            data.get("cid")?.as_u64()?.to_string()
         };
 
         let mixin_key = self.get_wbi_keys().await?;
+
         let mut params = vec![
             ("bvid".to_string(), bvid),
             ("cid".to_string(), cid),
         ];
-        self.sign_wbi(&mut params, &mixin_key);
+        let signed_query = self.sign_wbi(&mut params, &mixin_key);
 
-        let resp = self.client.get("https://api.bilibili.com/x/player/wbi/v2")
-            .query(&params)
+        let url = format!("https://api.bilibili.com/x/player/wbi/v2?{}", signed_query);
+        let resp = self.client.get(&url)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+            .header("Referer", "https://www.bilibili.com/")
             .send()
             .await.ok()?;
         
