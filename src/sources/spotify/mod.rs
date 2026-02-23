@@ -106,6 +106,7 @@ impl SpotifySource {
             query,
             types,
             self.search_limit,
+            &self.isrc_binary_regex,
         )
         .await
     }
@@ -165,6 +166,7 @@ impl SourcePlugin for SpotifySource {
                 &self.mix_regex,
                 self.recommendations_limit,
                 self.search_limit,
+                &self.isrc_binary_regex,
             )
             .await
             {

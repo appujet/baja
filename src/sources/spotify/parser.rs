@@ -152,6 +152,19 @@ impl SpotifyParser {
             }
         }
 
+        // Shape 4: Podcasts/Episodes (publisher, show name)
+        if let Some(author) = track
+            .pointer("/podcastV2/data/publisher/name")
+            .or_else(|| track.pointer("/podcast/publisher/name"))
+            .or_else(|| track.pointer("/podcastV2/data/name"))
+            .or_else(|| track.pointer("/podcast/name"))
+            .or_else(|| track.pointer("/show/publisher/name"))
+            .or_else(|| track.pointer("/show/name"))
+            .and_then(|v| v.as_str())
+        {
+            return author.to_string();
+        }
+
         // Fallback
         track
             .get("artist")

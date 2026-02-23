@@ -5,9 +5,12 @@ use serde_json::json;
 use crate::{
     api::tracks::{PlaylistData, PlaylistInfo, SearchResult, Track},
     sources::spotify::{
-        helpers::SpotifyHelpers, parser::SpotifyParser, token::SpotifyTokenTracker,
+        helpers::SpotifyHelpers, metadata::SpotifyMetadata, parser::SpotifyParser,
+        token::SpotifyTokenTracker,
     },
 };
+use std::time::Duration;
+use tokio::time::timeout;
 
 pub struct SpotifySearch;
 
@@ -18,206 +21,9 @@ impl SpotifySearch {
         query: &str,
         types: &[String],
         search_limit: usize,
+        isrc_binary_regex: &Arc<regex::Regex>,
     ) -> Option<SearchResult> {
-        let token = token_tracker.get_token().await?;
-
-        let search_types = if types.is_empty() {
-            "track,album,artist,playlist"
-        } else {
-            &types.join(",")
-        };
-
-        let url = format!(
-            "https://api.spotify.com/v1/search?q={}&type={}&limit={}",
-            urlencoding::encode(query),
-            search_types,
-            search_limit
-        );
-
-        let res = match client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await
-        {
-            Ok(r) => r,
-            Err(_) => return None,
-        };
-
-        if !res.status().is_success() {
-            if res.status() == 401 || res.status() == 403 {
-                // Fallback to internal search if public API fails
-                return Self::search_full(client, token_tracker, query, types, search_limit).await;
-            }
-            return None;
-        }
-
-        let data: serde_json::Value = res.json().await.ok()?;
-
-        let mut tracks = Vec::new();
-        let mut albums = Vec::new();
-        let mut artists = Vec::new();
-        let mut playlists = Vec::new();
-
-        // Parse Tracks
-        if let Some(items) = data.pointer("/tracks/items").and_then(|v| v.as_array()) {
-            for item in items {
-                if let Some(track_info) = SpotifyParser::parse_track_inner(item, None) {
-                    let mut track = Track::new(track_info);
-
-                    track.plugin_info = json!({
-                      "save_uri": track.info.uri,
-                      "albumUrl": item.pointer("/album/external_urls/spotify").and_then(|v| v.as_str()),
-                      "albumName": item.pointer("/album/name").and_then(|v| v.as_str()),
-                      "previewUrl": item.get("preview_url").and_then(|v| v.as_str()),
-                      "isPreview": false,
-                      "artistUrl": item.pointer("/artists/0/external_urls/spotify").and_then(|v| v.as_str()),
-                      "artistArtworkUrl": null,
-                      "isLocal": item.get("is_local").and_then(|v| v.as_bool()).unwrap_or(false)
-                    });
-
-                    tracks.push(track);
-                }
-            }
-        }
-
-        // Parse Albums
-        if let Some(items) = data.pointer("/albums/items").and_then(|v| v.as_array()) {
-            for item in items {
-                let name = item
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown Album");
-                let url = item
-                    .get("external_urls")
-                    .and_then(|v| v.get("spotify"))
-                    .and_then(|v| v.as_str());
-
-                if url.is_none() || name == "Unknown Album" {
-                    continue;
-                }
-
-                let artwork = item
-                    .get("images")
-                    .and_then(|v| v.get(0))
-                    .and_then(|v| v.get("url"))
-                    .and_then(|v| v.as_str());
-                let author = item
-                    .get("artists")
-                    .and_then(|v| v.get(0))
-                    .and_then(|v| v.get("name"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown Artist");
-                let total_tracks = item.get("total_tracks").and_then(|v| v.as_i64());
-
-                albums.push(PlaylistData {
-                    info: PlaylistInfo {
-                        name: name.to_string(),
-                        selected_track: -1,
-                    },
-                    plugin_info: json!({
-                      "type": "album",
-                      "url": url,
-                      "artworkUrl": artwork,
-                      "author": author,
-                      "totalTracks": total_tracks
-                    }),
-                    tracks: Vec::new(),
-                });
-            }
-        }
-
-        // Parse Artists
-        if let Some(items) = data.pointer("/artists/items").and_then(|v| v.as_array()) {
-            for item in items {
-                let name = item
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown Artist");
-                let url = item
-                    .get("external_urls")
-                    .and_then(|v| v.get("spotify"))
-                    .and_then(|v| v.as_str());
-
-                if url.is_none() || name == "Unknown Artist" {
-                    continue;
-                }
-
-                let artwork = item
-                    .get("images")
-                    .and_then(|v| v.get(0))
-                    .and_then(|v| v.get("url"))
-                    .and_then(|v| v.as_str());
-
-                artists.push(PlaylistData {
-                    info: PlaylistInfo {
-                        name: format!("{}'s Top Tracks", name),
-                        selected_track: -1,
-                    },
-                    plugin_info: json!({
-                      "type": "artist",
-                      "url": url,
-                      "artworkUrl": artwork,
-                      "author": name,
-                      "totalTracks": null
-                    }),
-                    tracks: Vec::new(),
-                });
-            }
-        }
-
-        // Parse Playlists
-        if let Some(items) = data.pointer("/playlists/items").and_then(|v| v.as_array()) {
-            for item in items {
-                let name = item
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown Playlist");
-                let url = item
-                    .get("external_urls")
-                    .and_then(|v| v.get("spotify"))
-                    .and_then(|v| v.as_str());
-
-                if url.is_none() || name == "Unknown Playlist" {
-                    continue;
-                }
-
-                let artwork = item
-                    .get("images")
-                    .and_then(|v| v.get(0))
-                    .and_then(|v| v.get("url"))
-                    .and_then(|v| v.as_str());
-                let author = item
-                    .get("owner")
-                    .and_then(|v| v.get("display_name"))
-                    .and_then(|v| v.as_str());
-                let total_tracks = item.pointer("/tracks/total").and_then(|v| v.as_i64());
-
-                playlists.push(PlaylistData {
-                    info: PlaylistInfo {
-                        name: name.to_string(),
-                        selected_track: -1,
-                    },
-                    plugin_info: json!({
-                      "type": "playlist",
-                      "url": url,
-                      "artworkUrl": artwork,
-                      "author": author,
-                      "totalTracks": total_tracks
-                    }),
-                    tracks: Vec::new(),
-                });
-            }
-        }
-
-        Some(SearchResult {
-            tracks,
-            albums,
-            artists,
-            playlists,
-            texts: Vec::new(),
-            plugin: json!({}),
-        })
+        Self::search_full(client, token_tracker, query, types, search_limit, isrc_binary_regex).await
     }
 
     pub async fn search_full(
@@ -226,6 +32,7 @@ impl SpotifySearch {
         query: &str,
         types: &[String],
         search_limit: usize,
+        isrc_binary_regex: &Arc<regex::Regex>,
     ) -> Option<SearchResult> {
         let variables = json!({
             "searchTerm": query,
@@ -239,14 +46,19 @@ impl SpotifySearch {
 
         let hash = "fcad5a3e0d5af727fb76966f06971c19cfa2275e6ff7671196753e008611873c";
 
-        let data = SpotifyHelpers::partner_api_request(
+        let data = match SpotifyHelpers::partner_api_request(
             client,
             token_tracker,
             "searchDesktop",
             variables,
             hash,
         )
-        .await?;
+        .await {
+            Some(d) => d,
+            None => {
+                return None;
+            }
+        };
 
         let mut tracks = Vec::new();
         let mut albums = Vec::new();
@@ -267,6 +79,7 @@ impl SpotifySearch {
                         .get("item")
                         .or_else(|| item.get("itemV2"))
                         .and_then(|v| v.get("data"))
+                        .or_else(|| item.get("data"))
                     {
                         if let Some(track_info) = SpotifyParser::parse_track_inner(track_data, None)
                         {
@@ -283,6 +96,53 @@ impl SpotifySearch {
                               "isLocal": false
                             });
 
+                            if track.info.isrc.is_none() {
+                                if let Ok(Some(isrc)) = timeout(
+                                    Duration::from_secs(2),
+                                    SpotifyMetadata::fetch_metadata_isrc(
+                                        client,
+                                        token_tracker,
+                                        &track.info.identifier,
+                                        isrc_binary_regex,
+                                    ),
+                                )
+                                .await
+                                {
+                                    track.info.isrc = Some(isrc);
+                                }
+                            }
+
+                            tracks.push(track);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Parse Episodes (mapped to tracks)
+        if all_types || types.contains(&"track".to_string()) || types.contains(&"episode".to_string()) {
+            if let Some(items) = data
+                .pointer("/data/searchV2/episodes/items")
+                .or_else(|| data.pointer("/data/searchV2/episodesV2/items"))
+                .and_then(|v| v.as_array())
+            {
+                for item in items {
+                    if let Some(episode_data) = item
+                        .get("item")
+                        .or_else(|| item.get("itemV2"))
+                        .and_then(|v| v.get("data"))
+                        .or_else(|| item.get("data"))
+                    {
+                        if let Some(track_info) = SpotifyParser::parse_track_inner(episode_data, None)
+                        {
+                            let mut track = Track::new(track_info);
+                            track.plugin_info = json!({
+                              "save_uri": track.info.uri,
+                              "previewUrl": null,
+                              "isPreview": false,
+                              "isLocal": false,
+                              "type": "episode"
+                            });
                             tracks.push(track);
                         }
                     }
@@ -302,6 +162,7 @@ impl SpotifySearch {
                         .get("item")
                         .or_else(|| item.get("itemV2"))
                         .and_then(|v| v.get("data"))
+                        .or_else(|| item.get("data"))
                     {
                         let name = album_data
                             .get("name")
@@ -327,7 +188,7 @@ impl SpotifySearch {
                               "url": format!("https://open.spotify.com/album/{}", id),
                               "artworkUrl": artwork,
                               "author": author,
-                              "totalTracks": null
+                              "totalTracks": 0
                             }),
                             tracks: Vec::new(),
                         });
@@ -341,6 +202,8 @@ impl SpotifySearch {
             if let Some(items) = data
                 .pointer("/data/searchV2/artistsV2/items")
                 .or_else(|| data.pointer("/data/searchV2/artists/items"))
+                .or_else(|| data.pointer("/data/searchV2/profilesV2/items"))
+                .or_else(|| data.pointer("/data/searchV2/profiles/items"))
                 .and_then(|v| v.as_array())
             {
                 for item in items {
@@ -348,9 +211,11 @@ impl SpotifySearch {
                         .get("item")
                         .or_else(|| item.get("itemV2"))
                         .and_then(|v| v.get("data"))
+                        .or_else(|| item.get("data"))
                     {
                         let name = artist_data
                             .pointer("/profile/name")
+                            .or_else(|| artist_data.get("name"))
                             .and_then(|v| v.as_str())
                             .unwrap_or("Unknown Artist");
                         let uri = artist_data
@@ -359,7 +224,8 @@ impl SpotifySearch {
                             .unwrap_or("");
                         let id = uri.split(':').last().unwrap_or("");
                         let artwork = artist_data
-                            .pointer("/visuals/avatar/sources/0/url")
+                            .pointer("/visuals/avatarImage/sources/0/url")
+                            .or_else(|| artist_data.pointer("/images/items/0/sources/0/url"))
                             .and_then(|v| v.as_str());
 
                         artists.push(PlaylistData {
@@ -372,7 +238,7 @@ impl SpotifySearch {
                               "url": format!("https://open.spotify.com/artist/{}", id),
                               "artworkUrl": artwork,
                               "author": name,
-                              "totalTracks": null
+                              "totalTracks": 0
                             }),
                             tracks: Vec::new(),
                         });
@@ -383,46 +249,57 @@ impl SpotifySearch {
 
         // Parse Playlists
         if all_types || types.contains(&"playlist".to_string()) {
-            if let Some(items) = data
-                .pointer("/data/searchV2/playlistsV2/items")
-                .and_then(|v| v.as_array())
-            {
-                for item in items {
-                    if let Some(playlist_data) = item
-                        .get("item")
-                        .or_else(|| item.get("itemV2"))
-                        .and_then(|v| v.get("data"))
-                    {
-                        let name = playlist_data
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("Unknown Playlist");
-                        let uri = playlist_data
-                            .get("uri")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
-                        let id = uri.split(':').last().unwrap_or("");
-                        let artwork = playlist_data
-                            .pointer("/images/items/0/sources/0/url")
-                            .and_then(|v| v.as_str());
-                        let author = playlist_data
-                            .pointer("/ownerV2/name")
-                            .and_then(|v| v.as_str());
+            let playlist_paths = [
+              "/data/searchV2/playlistsV2/items",
+              "/data/searchV2/playlists/items",
+            ];
 
-                        playlists.push(PlaylistData {
-                            info: PlaylistInfo {
-                                name: name.to_string(),
-                                selected_track: -1,
-                            },
-                            plugin_info: json!({
-                              "type": "playlist",
-                              "url": format!("https://open.spotify.com/playlist/{}", id),
-                              "artworkUrl": artwork,
-                              "author": author,
-                              "totalTracks": null
-                            }),
-                            tracks: Vec::new(),
-                        });
+            for path in playlist_paths {
+                if let Some(items) = data.pointer(path).and_then(|v| v.as_array()) {
+                    for item in items {
+                        if let Some(playlist_data) = item
+                            .get("item")
+                            .or_else(|| item.get("itemV2"))
+                            .and_then(|v| v.get("data"))
+                            .or_else(|| item.get("data"))
+                        {
+                            let name = playlist_data
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("Unknown");
+                            let uri = playlist_data
+                                .get("uri")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let parts: Vec<&str> = uri.split(':').collect();
+                            let type_str = parts.get(1).unwrap_or(&"playlist");
+                            let id = parts.last().unwrap_or(&"");
+
+                            let artwork = playlist_data
+                                .pointer("/images/items/0/sources/0/url")
+                                .or_else(|| playlist_data.pointer("/coverArt/sources/0/url"))
+                                .and_then(|v| v.as_str());
+                            
+                            let author = playlist_data
+                                .pointer("/ownerV2/data/name")
+                                .or_else(|| playlist_data.pointer("/ownerV2/name"))
+                                .and_then(|v| v.as_str());
+
+                            playlists.push(PlaylistData {
+                                info: PlaylistInfo {
+                                    name: name.to_string(),
+                                    selected_track: -1,
+                                },
+                                plugin_info: json!({
+                                  "type": type_str,
+                                  "url": format!("https://open.spotify.com/{}/{}", type_str, id),
+                                  "artworkUrl": artwork,
+                                  "author": author,
+                                  "totalTracks": 0
+                                }),
+                                tracks: Vec::new(),
+                            });
+                        }
                     }
                 }
             }

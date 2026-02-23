@@ -21,6 +21,7 @@ impl SpotifyRecommendations {
         mix_regex: &regex::Regex,
         recommendations_limit: usize,
         search_limit: usize,
+        isrc_binary_regex: &Arc<regex::Regex>,
     ) -> Result<LoadResult, String> {
         let mut seed = query.to_string();
 
@@ -35,6 +36,7 @@ impl SpotifyRecommendations {
                     &format!("isrc:{}", seed),
                     &["track".to_string()],
                     search_limit,
+                    isrc_binary_regex,
                 )
                 .await
                 {
