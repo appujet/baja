@@ -116,21 +116,21 @@ pub async fn start_playback(
             return;
         }
     };
-    
+
     // Attempt to fetch lyrics
     let lyrics_data_arc = player.lyrics_data.clone();
     let lyrics_manager_clone = lyrics_manager.clone();
     let track_info_clone = track_info.clone();
     let session_lyrics_clone = session.clone();
     let guild_id_lyrics = player.guild_id.clone();
-    
+
     tokio::spawn(async move {
         if let Some(lyrics) = lyrics_manager_clone.load_lyrics(&track_info_clone).await {
             {
                 let mut lock = lyrics_data_arc.lock().await;
                 *lock = Some(lyrics.clone());
             }
-            
+
             let event = api::OutgoingMessage::Event(api::LavalinkEvent::LyricsFound {
                 guild_id: guild_id_lyrics,
                 lyrics: super::super::api::models::LavalinkLyrics {
@@ -138,12 +138,15 @@ pub async fn start_playback(
                     provider: Some(lyrics.provider),
                     text: Some(lyrics.text),
                     lines: lyrics.lines.map(|lines| {
-                        lines.into_iter().map(|l| super::super::api::models::LavalinkLyricsLine {
-                            timestamp: l.timestamp,
-                            duration: Some(l.duration),
-                            line: l.text,
-                            plugin: serde_json::json!({}),
-                        }).collect()
+                        lines
+                            .into_iter()
+                            .map(|l| super::super::api::models::LavalinkLyricsLine {
+                                timestamp: l.timestamp,
+                                duration: Some(l.duration),
+                                line: l.text,
+                                plugin: serde_json::json!({}),
+                            })
+                            .collect()
                     }),
                     plugin: serde_json::json!({}),
                 },
@@ -163,12 +166,12 @@ pub async fn start_playback(
     );
 
     let (rx, cmd_tx, error_rx) = playable_track.start_decoding();
-    let (handle, audio_state, vol, pos) = TrackHandle::new(cmd_tx);
+    let (handle, audio_state, vol, pos) = TrackHandle::new(cmd_tx, player.tape_stop.clone());
 
     {
         let engine = player.engine.lock().await;
         let mut mixer = engine.mixer.lock().await;
-        mixer.add_track(rx, audio_state, vol, pos);
+        mixer.add_track(rx, audio_state, vol, pos, player.config.clone());
     }
 
     player.track_handle = Some(handle.clone());
@@ -195,7 +198,7 @@ pub async fn start_playback(
     let stop_signal = player.stop_signal.clone();
     let track_data_clone = track_data.clone();
     let ping = player.ping.clone();
-    let stuck_threshold_ms = player.stuck_threshold_ms;
+    let stuck_threshold_ms = player.config.stuck_threshold_ms;
     let lyrics_subscribed = player.lyrics_subscribed.clone();
     let lyrics_data = player.lyrics_data.clone();
     let last_lyric_index = player.last_lyric_index.clone();
@@ -310,7 +313,7 @@ pub async fn start_playback(
                 if let Some(lyrics) = &*lyrics_lock {
                     if let Some(lines) = &lyrics.lines {
                         let last_index = last_lyric_index.load(Ordering::Relaxed);
-                        
+
                         // Find the current target index based on position
                         let mut target_index = -1i64;
                         for (i, line) in lines.iter().enumerate() {
@@ -326,17 +329,18 @@ pub async fn start_playback(
                             for i in (last_index + 1)..=target_index {
                                 let line = &lines[i as usize];
                                 let is_final = i == target_index;
-                                let event = api::OutgoingMessage::Event(api::LavalinkEvent::LyricsLine {
-                                    guild_id: guild_id.clone(),
-                                    line_index: i as i32,
-                                    line: api::models::LavalinkLyricsLine {
-                                        line: line.text.clone(),
-                                        timestamp: line.timestamp,
-                                        duration: Some(line.duration),
-                                        plugin: serde_json::json!({}),
-                                    },
-                                    skipped: !is_final,
-                                });
+                                let event =
+                                    api::OutgoingMessage::Event(api::LavalinkEvent::LyricsLine {
+                                        guild_id: guild_id.clone(),
+                                        line_index: i as i32,
+                                        line: api::models::LavalinkLyricsLine {
+                                            line: line.text.clone(),
+                                            timestamp: line.timestamp,
+                                            duration: Some(line.duration),
+                                            plugin: serde_json::json!({}),
+                                        },
+                                        skipped: !is_final,
+                                    });
                                 session_clone.send_message(&event).await;
                             }
                             last_lyric_index.store(target_index, Ordering::SeqCst);
@@ -344,17 +348,18 @@ pub async fn start_playback(
                             // Backward jump
                             if target_index != -1 {
                                 let line = &lines[target_index as usize];
-                                let event = api::OutgoingMessage::Event(api::LavalinkEvent::LyricsLine {
-                                    guild_id: guild_id.clone(),
-                                    line_index: target_index as i32,
-                                    line: api::models::LavalinkLyricsLine {
-                                        line: line.text.clone(),
-                                        timestamp: line.timestamp,
-                                        duration: Some(line.duration),
-                                        plugin: serde_json::json!({}),
-                                    },
-                                    skipped: false,
-                                });
+                                let event =
+                                    api::OutgoingMessage::Event(api::LavalinkEvent::LyricsLine {
+                                        guild_id: guild_id.clone(),
+                                        line_index: target_index as i32,
+                                        line: api::models::LavalinkLyricsLine {
+                                            line: line.text.clone(),
+                                            timestamp: line.timestamp,
+                                            duration: Some(line.duration),
+                                            plugin: serde_json::json!({}),
+                                        },
+                                        skipped: false,
+                                    });
                                 session_clone.send_message(&event).await;
                             }
                             last_lyric_index.store(target_index, Ordering::SeqCst);

@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use crate::{
     audio::{filters::FilterChain, playback::TrackHandle},
     common::types::Shared,
+    configs::player::PlayerConfig,
     player::state::{Filters, Player, PlayerState, VoiceConnectionState, VoiceState},
 };
 
@@ -31,14 +32,15 @@ pub struct PlayerContext {
     pub user_data: serde_json::Value,
     pub frames_sent: Arc<AtomicU64>,
     pub frames_nulled: Arc<AtomicU64>,
-    pub stuck_threshold_ms: u64,
+    pub config: PlayerConfig,
     pub lyrics_subscribed: Arc<AtomicBool>,
     pub lyrics_data: Arc<Mutex<Option<crate::api::models::LyricsData>>>,
     pub last_lyric_index: Arc<AtomicI64>,
+    pub tape_stop: Arc<AtomicBool>,
 }
 
 impl PlayerContext {
-    pub fn new(guild_id: crate::common::types::GuildId, stuck_threshold_ms: u64) -> Self {
+    pub fn new(guild_id: crate::common::types::GuildId, config: &PlayerConfig) -> Self {
         Self {
             guild_id,
             volume: 100,
@@ -59,10 +61,11 @@ impl PlayerContext {
             user_data: serde_json::json!({}),
             frames_sent: Arc::new(AtomicU64::new(0)),
             frames_nulled: Arc::new(AtomicU64::new(0)),
-            stuck_threshold_ms,
+            config: config.clone(),
             lyrics_subscribed: Arc::new(AtomicBool::new(false)),
             lyrics_data: Arc::new(Mutex::new(None)),
             last_lyric_index: Arc::new(AtomicI64::new(-1)),
+            tape_stop: Arc::new(AtomicBool::new(config.tape_stop)),
         }
     }
 

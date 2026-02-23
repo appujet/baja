@@ -3,7 +3,14 @@ use std::sync::{
     atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering},
 };
 
-use crate::audio::playback::handle::PlaybackState;
+use crate::audio::playback::{
+    effects::{
+        TransitionEffect,
+        tape::{TapeEffect, TapeState},
+    },
+    handle::PlaybackState,
+};
+use crate::configs::player::PlayerConfig;
 
 pub struct Mixer {
     tracks: Vec<MixerTrack>,
@@ -12,13 +19,15 @@ pub struct Mixer {
 
 struct MixerTrack {
     rx: flume::Receiver<Vec<i16>>,
-    /// Partially-consumed frame — leftover samples that didn't fit in the last
-    /// mix() call. Stored alongside the read cursor so we don't discard audio.
+    /// Partially-consumed frame — leftover samples.
     pending: Vec<i16>,
     pending_pos: usize,
     state: Arc<AtomicU8>,
     volume: Arc<AtomicU32>,
     position: Arc<AtomicU64>,
+    config: PlayerConfig,
+    /// Active transition effect (tape stop/start, etc.)
+    effect: Option<Box<dyn TransitionEffect>>,
 }
 
 impl Mixer {
@@ -35,6 +44,7 @@ impl Mixer {
         state: Arc<AtomicU8>,
         volume: Arc<AtomicU32>,
         position: Arc<AtomicU64>,
+        config: PlayerConfig,
     ) {
         self.tracks.push(MixerTrack {
             rx,
@@ -43,6 +53,8 @@ impl Mixer {
             state,
             volume,
             position,
+            config,
+            effect: None,
         });
     }
 
@@ -60,7 +72,6 @@ impl Mixer {
             self.mix_buf.resize(buf.len(), 0);
         }
 
-        // H3: SIMD-friendly zero-fill (LLVM emits vectorised memset for fill())
         self.mix_buf.fill(0);
 
         // Clean up stopped tracks
@@ -70,8 +81,11 @@ impl Mixer {
         let mut has_audio = false;
 
         for track in self.tracks.iter_mut() {
-            let state = track.state.load(Ordering::Acquire);
-            if state != PlaybackState::Playing as u8 {
+            let state_raw = track.state.load(Ordering::Acquire);
+            let state = PlaybackState::from_u8(state_raw);
+
+            if state == PlaybackState::Paused || state == PlaybackState::Stopped {
+                track.effect = None;
                 continue;
             }
 
@@ -83,53 +97,91 @@ impl Mixer {
             let mut finished = false;
             let mut track_contributed = false;
 
-            // ── 1. Drain leftover samples from the previous frame ─────────────
-            while i < out_len && track.pending_pos < track.pending.len() {
-                self.mix_buf[i] += (track.pending[track.pending_pos] as f32 * vol) as i32;
-                track.pending_pos += 1;
-                i += 1;
-                track_contributed = true;
-            }
-            if track.pending_pos >= track.pending.len() {
-                track.pending.clear();
-                track.pending_pos = 0;
-            }
+            // ── Transition Handling ───────────────────────────────────────────
+            let is_stopping = state == PlaybackState::Stopping;
+            let is_starting = state == PlaybackState::Starting;
 
-            // ── 2. H2: receive whole frame batches — one try_recv per packet ───
-            // Previously: 1920 try_recv() per frame per track.
-            // Now: O(decoded_packets_per_frame) ≈ 2 try_recv() per frame.
-            while i < out_len {
-                match track.rx.try_recv() {
-                    Ok(frame) => {
-                        let can_use = frame.len().min(out_len - i);
-                        for j in 0..can_use {
-                            self.mix_buf[i + j] += (frame[j] as f32 * vol) as i32;
-                        }
-                        i += can_use;
-                        track_contributed = true;
-
-                        // Stash overflow into pending for the next mix() call
-                        if can_use < frame.len() {
-                            track.pending = frame;
-                            track.pending_pos = can_use;
-                        }
-                    }
-                    Err(flume::TryRecvError::Disconnected) => {
-                        finished = true;
-                        break;
-                    }
-                    Err(flume::TryRecvError::Empty) => break,
+            if is_stopping || is_starting {
+                // Initialize effect if missing
+                if track.effect.is_none() {
+                    let tape_state = if is_stopping {
+                        TapeState::Stopping
+                    } else {
+                        TapeState::Starting
+                    };
+                    track.effect = Some(Box::new(TapeEffect::new(
+                        tape_state,
+                        track.config.tape_stop_duration_ms,
+                    )));
                 }
+
+                if let Some(ref mut effect) = track.effect {
+                    // Normalize pending buffer (stash)
+                    if track.pending_pos > 0 {
+                        track.pending.drain(..track.pending_pos);
+                        track.pending_pos = 0;
+                    }
+
+                    track_contributed = effect.process(
+                        &mut self.mix_buf,
+                        &mut i,
+                        out_len,
+                        vol,
+                        &mut track.pending,
+                        &track.rx,
+                        &track.state,
+                        &track.position,
+                    );
+                }
+            } else {
+                // ── Normal Playback (Rate 1.0) ────────────────────────────────────
+                track.effect = None; // Ensure effect is cleared
+
+                // ── 1. Drain leftover samples from the previous frame ─────────────
+                while i < out_len && track.pending_pos < track.pending.len() {
+                    self.mix_buf[i] += (track.pending[track.pending_pos] as f32 * vol) as i32;
+                    track.pending_pos += 1;
+                    i += 1;
+                    track_contributed = true;
+                }
+                if track.pending_pos >= track.pending.len() {
+                    track.pending.clear();
+                    track.pending_pos = 0;
+                }
+
+                // ── 2. receive whole frame batches ────────────────────────────────
+                while i < out_len {
+                    match track.rx.try_recv() {
+                        Ok(frame) => {
+                            let can_use = frame.len().min(out_len - i);
+                            for j in 0..can_use {
+                                self.mix_buf[i + j] += (frame[j] as f32 * vol) as i32;
+                            }
+                            i += can_use;
+                            track_contributed = true;
+
+                            if can_use < frame.len() {
+                                track.pending = frame;
+                                track.pending_pos = can_use;
+                            }
+                        }
+                        Err(flume::TryRecvError::Disconnected) => {
+                            finished = true;
+                            break;
+                        }
+                        Err(flume::TryRecvError::Empty) => break,
+                    }
+                }
+
+                // Track position for normal playback
+                track.position.fetch_add((i / 2) as u64, Ordering::Relaxed);
             }
 
             if track_contributed {
                 has_audio = true;
             }
 
-            // H4: position is read only for UI display — Relaxed is sufficient
-            track.position.fetch_add((i / 2) as u64, Ordering::Relaxed);
-
-            if finished {
+            if finished && track.pending.is_empty() {
                 track
                     .state
                     .store(PlaybackState::Stopped as u8, Ordering::Release);

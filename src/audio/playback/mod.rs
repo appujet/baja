@@ -1,3 +1,4 @@
+pub mod effects;
 pub mod handle;
 pub mod mixer;
 

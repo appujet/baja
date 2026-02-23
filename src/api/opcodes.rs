@@ -61,7 +61,7 @@ pub async fn handle_op(
             if !session.players.contains_key(&guild_id) {
                 session.players.insert(
                     guild_id.clone(),
-                    PlayerContext::new(guild_id.clone(), state.config.player.stuck_threshold_ms),
+                    PlayerContext::new(guild_id.clone(), &state.config.player),
                 );
             }
 
@@ -137,7 +137,7 @@ pub async fn handle_op(
             if !session.players.contains_key(&guild_id) {
                 session.players.insert(
                     guild_id.clone(),
-                    PlayerContext::new(guild_id.clone(), state.config.player.stuck_threshold_ms),
+                    PlayerContext::new(guild_id.clone(), &state.config.player),
                 );
             }
 
