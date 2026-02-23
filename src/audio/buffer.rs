@@ -1,11 +1,13 @@
-use std::sync::{Arc, Mutex, OnceLock};
+use parking_lot::Mutex;
 use std::ops::{Deref, DerefMut};
+use std::sync::{Arc, OnceLock};
 
 pub type SharedBufferPool = Arc<BufferPoolInner>;
 
 pub struct BufferPoolInner {
     pool: Mutex<Vec<Vec<i16>>>,
     buffer_size: usize,
+    max_buffers: usize,
 }
 
 impl BufferPoolInner {
@@ -13,51 +15,59 @@ impl BufferPoolInner {
         Arc::new(Self {
             pool: Mutex::new(Vec::with_capacity(64)),
             buffer_size,
+            max_buffers: 128,
         })
     }
 
     pub fn acquire(self: &Arc<Self>) -> PooledBuffer {
-        let mut pool = self.pool.lock().unwrap();
-        let mut vec = pool.pop().unwrap_or_else(|| Vec::with_capacity(self.buffer_size));
+        let mut pool = self.pool.lock();
+
+        let mut vec = pool
+            .pop()
+            .unwrap_or_else(|| Vec::with_capacity(self.buffer_size));
+
         vec.clear();
+
         PooledBuffer {
-            vec: Some(vec),
-            pool: Some(self.clone()),
+            vec,
+            pool: Arc::clone(self),
         }
     }
 
     fn release(&self, mut vec: Vec<i16>) {
-        let mut pool = self.pool.lock().unwrap();
-        if pool.len() < 128 {
+        let mut pool = self.pool.lock();
+
+        if pool.len() < self.max_buffers {
             vec.clear();
             pool.push(vec);
         }
+        // else: drop automatically
     }
 }
 
 pub struct PooledBuffer {
-    vec: Option<Vec<i16>>,
-    pool: Option<Arc<BufferPoolInner>>,
+    vec: Vec<i16>,
+    pool: Arc<BufferPoolInner>,
 }
 
 impl Deref for PooledBuffer {
     type Target = Vec<i16>;
+
     fn deref(&self) -> &Self::Target {
-        self.vec.as_ref().unwrap()
+        &self.vec
     }
 }
 
 impl DerefMut for PooledBuffer {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.vec.as_mut().unwrap()
+        &mut self.vec
     }
 }
 
 impl Drop for PooledBuffer {
     fn drop(&mut self) {
-        if let (Some(vec), Some(pool)) = (self.vec.take(), self.pool.take()) {
-            pool.release(vec);
-        }
+        let vec = std::mem::take(&mut self.vec);
+        self.pool.release(vec);
     }
 }
 
@@ -68,4 +78,3 @@ pub fn get_pool() -> Arc<BufferPoolInner> {
         .get_or_init(|| BufferPoolInner::new(4096))
         .clone()
 }
-

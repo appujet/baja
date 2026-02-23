@@ -290,21 +290,18 @@ impl SourceManager {
                 use futures::stream::{FuturesUnordered, StreamExt};
 
                 let timeout_dur = std::time::Duration::from_millis(mirrors.timeout_ms);
-                let this = self;
-                let n = provider_queries.len();
 
                 let mut futs: FuturesUnordered<_> = provider_queries
                     .into_iter()
-                    .enumerate()
-                    .map(|(p_idx, sq)| {
+                    .map(|sq| {
                         let rp = routeplanner.clone();
                         async move {
-                            let res = tokio::time::timeout(timeout_dur, async move {
-                                match this.load(&sq, rp.clone()).await {
+                            tokio::time::timeout(timeout_dur, async move {
+                                match self.load(&sq, rp.clone()).await {
                                     crate::api::tracks::LoadResult::Track(t) => {
                                         let id =
                                             t.info.uri.as_deref().unwrap_or(&t.info.identifier);
-                                        this.resolve_nested_track(id, rp).await
+                                        self.resolve_nested_track(id, rp).await
                                     }
                                     crate::api::tracks::LoadResult::Search(tracks) => {
                                         if let Some(first) = tracks.first() {
@@ -313,7 +310,7 @@ impl SourceManager {
                                                 .uri
                                                 .as_deref()
                                                 .unwrap_or(&first.info.identifier);
-                                            this.resolve_nested_track(id, rp).await
+                                            self.resolve_nested_track(id, rp).await
                                         } else {
                                             None
                                         }
@@ -322,23 +319,14 @@ impl SourceManager {
                                 }
                             })
                             .await
-                            .unwrap_or(None);
-                            (p_idx, res)
+                            .unwrap_or(None)
                         }
                     })
                     .collect();
 
-                let mut slots: Vec<Option<Option<BoxedTrack>>> = (0..n).map(|_| None).collect();
-
-                while let Some((idx, res)) = futs.next().await {
-                    slots[idx] = Some(res);
-
-                    for slot in slots.iter_mut() {
-                        match slot {
-                            Some(Some(_)) => return slot.take().flatten(),
-                            Some(None) => continue,
-                            None => break,
-                        }
+                while let Some(res) = futs.next().await {
+                    if res.is_some() {
+                        return res;
                     }
                 }
             }

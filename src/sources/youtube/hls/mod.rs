@@ -6,10 +6,11 @@ pub mod ts_demux;
 pub mod types;
 pub mod utils;
 
+use parking_lot::{Condvar, Mutex};
 use std::{
     io::{self, Read, Seek, SeekFrom},
     sync::{
-        Arc, Condvar, Mutex,
+        Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -92,7 +93,7 @@ impl Drop for HlsReader {
         self.abort_flag.store(true, Ordering::Relaxed);
         {
             let (lock, cvar) = &*self.shared;
-            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+            let mut state = lock.lock();
             state.command = PrefetchCommand::Stop;
             state.need_data = true;
             cvar.notify_one();
@@ -276,7 +277,7 @@ impl HlsReader {
             let (lock, cvar) = &*self.shared;
             // Set abort flag first so the thread's between-segment check bails immediately.
             self.abort_flag.store(true, Ordering::Relaxed);
-            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+            let mut state = lock.lock();
             state.command = PrefetchCommand::Seek(target_index);
             state.need_data = true;
             state.seek_done = false;
@@ -284,7 +285,7 @@ impl HlsReader {
 
             // Wait for the background thread to confirm seek is complete.
             while !state.seek_done {
-                state = cvar.wait(state).unwrap();
+                cvar.wait(&mut state);
             }
             state.seek_done = false;
             // Clear the flag — background thread is now fetching for the new position.
@@ -309,7 +310,7 @@ impl Read for HlsReader {
             let remaining = self.buf.len() - self.pos;
             if remaining <= LOW_WATER_BYTES {
                 let (lock, cvar) = &*self.shared;
-                if let Ok(mut state) = lock.try_lock() {
+                if let Some(mut state) = lock.try_lock() {
                     if !state.need_data && !state.eos {
                         state.need_data = true;
                         cvar.notify_one();
@@ -325,7 +326,7 @@ impl Read for HlsReader {
 
         // Active buffer exhausted — swap with the pre-filled next buffer.
         let (lock, cvar) = &*self.shared;
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
 
         // If the background thread hasn't finished yet, wait for it.
         // But first signal that we need data if not already signalled.
@@ -335,7 +336,7 @@ impl Read for HlsReader {
         }
 
         while state.next_buf.is_empty() && !state.eos {
-            state = cvar.wait(state).unwrap();
+            cvar.wait(&mut state);
         }
 
         if state.next_buf.is_empty() && state.eos {
@@ -397,9 +398,9 @@ fn prefetch_loop(
 
     loop {
         // Wait until the reader signals it needs data.
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
         while !state.need_data {
-            state = cvar.wait(state).unwrap();
+            cvar.wait(&mut state);
         }
 
         // Check for commands.
@@ -441,7 +442,7 @@ fn prefetch_loop(
                 }
 
                 // Re-acquire lock and store data.
-                let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+                let mut state = lock.lock();
                 state.next_buf.extend_from_slice(&tmp_buf);
                 state.current_segment_index += batch.len();
                 state.need_data = false;
@@ -499,7 +500,7 @@ fn prefetch_loop(
         }
 
         // Re-acquire lock and store the fetched data.
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
         if !matches!(state.command, PrefetchCommand::Continue) {
             // Re-enter the loop to immediately handle the new command (e.g. Seek)
             // without resetting need_data to false, which would cause a deadlock

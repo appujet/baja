@@ -1,8 +1,9 @@
 pub mod segmented;
 // Remove ua module as it's moved to youtube source
+use parking_lot::{Condvar, Mutex};
 use std::{
     io::{Read, Seek, SeekFrom},
-    sync::{Arc, Condvar, Mutex},
+    sync::Arc,
     thread,
 };
 
@@ -38,8 +39,8 @@ pub struct BaseRemoteReader {
 impl BaseRemoteReader {
     pub fn new(client: reqwest::Client, url: &str) -> AnyResult<Self> {
         let handle = tokio::runtime::Handle::current();
-        // Request just the first byte to get headers and total length safely and instantly.
-        let response = handle.block_on(Self::fetch_stream(&client, url, 0, Some(1)))?;
+        // Start downloading the stream instantly to avoid a redundant second round-trip.
+        let response = handle.block_on(Self::fetch_stream(&client, url, 0, None))?;
 
         let content_range_len = response
             .headers()
@@ -173,7 +174,7 @@ fn prefetch_loop(
         // 1. Check commands
         {
             let (lock, cvar) = &*shared;
-            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+            let mut state = lock.lock();
 
             match std::mem::replace(&mut state.command, PrefetchCommand::Continue) {
                 PrefetchCommand::Seek(pos) => {
@@ -189,7 +190,7 @@ fn prefetch_loop(
                         && matches!(state.command, PrefetchCommand::Continue)
                         && state.next_buf.len() >= 8 * 1024 * 1024
                     {
-                        state = cvar.wait(state).unwrap();
+                        cvar.wait(&mut state);
                     }
                     if matches!(state.command, PrefetchCommand::Stop) {
                         break;
@@ -245,7 +246,7 @@ fn prefetch_loop(
                     current_response = Some(fixed_res);
                     if !leftovers.is_empty() {
                         let (lock, cvar) = &*shared;
-                        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut state = lock.lock();
                         state.next_buf.extend_from_slice(&leftovers);
                         cvar.notify_all();
                     }
@@ -285,7 +286,7 @@ fn prefetch_loop(
                 Ok(Some(bytes)) => {
                     let n = bytes.len();
                     let (lock, cvar) = &*shared;
-                    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut state = lock.lock();
 
                     // If interrupted by a seek, drop this batch
                     if matches!(state.command, PrefetchCommand::Continue) {
@@ -301,7 +302,7 @@ fn prefetch_loop(
                 }
                 Ok(None) => {
                     let (lock, cvar) = &*shared;
-                    let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut state = lock.lock();
 
                     let is_eof = if let Some(l) = total_len {
                         current_pos >= l
@@ -316,7 +317,7 @@ fn prefetch_loop(
 
                         // Wait for new commands
                         while state.done && matches!(state.command, PrefetchCommand::Continue) {
-                            state = cvar.wait(state).unwrap();
+                            cvar.wait(&mut state);
                         }
                     } else {
                         // Chunk finished, but more data remains
@@ -348,13 +349,13 @@ impl Read for BaseRemoteReader {
 
         // Active buffer exhausted — pull from background thread
         let (lock, cvar) = &*self.shared;
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
 
         state.need_data = true;
         cvar.notify_one();
 
         while state.next_buf.is_empty() && !state.done {
-            state = cvar.wait(state).unwrap();
+            cvar.wait(&mut state);
         }
 
         if state.next_buf.is_empty() && state.done {
@@ -395,7 +396,7 @@ impl Seek for BaseRemoteReader {
             };
 
             let (lock, cvar) = &*self.shared;
-            let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+            let mut state = lock.lock();
 
             let buf_remaining = self.buf.len() as u64 - self.buf_pos as u64;
             let next_buf_remaining = state.next_buf.len() as u64;
@@ -451,7 +452,7 @@ impl MediaSource for BaseRemoteReader {
 impl Drop for BaseRemoteReader {
     fn drop(&mut self) {
         let (lock, cvar) = &*self.shared;
-        let mut state = lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = lock.lock();
         state.command = PrefetchCommand::Stop;
         state.need_data = true;
         cvar.notify_all();

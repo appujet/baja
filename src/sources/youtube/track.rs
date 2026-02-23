@@ -47,10 +47,6 @@ impl PlayableTrack for YoutubeTrack {
         let local_addr = self.local_addr;
         let proxy = self.proxy.clone();
 
-        // ── Phase 1: resolve URL asynchronously (no block_on) ────────────────
-        // URL resolution is a network call — running it inside a tokio::spawn
-        // keeps the async executor efficient. We send the result (url, client_name)
-        // over a oneshot to the blocking decode task below.
         let (url_tx, url_rx) = tokio::sync::oneshot::channel::<(String, String)>();
         let identifier_async = identifier.clone();
         let err_tx_async = err_tx.clone();
@@ -61,37 +57,35 @@ impl PlayableTrack for YoutubeTrack {
         tokio::spawn(async move {
             let context = serde_json::json!({ "visitorData": visitor_data });
 
-            for client in &clients_async {
-                let client_name = client.name().to_string();
-                debug!(
-                    "YoutubeTrack: Resolving '{}' using {}",
-                    identifier_async, client_name
-                );
+            use futures::stream::{FuturesUnordered, StreamExt};
+            let mut futs: FuturesUnordered<_> = clients_async
+                .into_iter()
+                .map(|client| {
+                    let id = identifier_async.clone();
+                    let ctx = context.clone();
+                    let cipher = cipher_manager_async.clone();
+                    let oauth_token = oauth_async.clone();
+                    async move {
+                        let client_name = client.name().to_string();
+                        debug!("YoutubeTrack: Resolving '{}' using {}", id, client_name);
+                        let res = client.get_track_url(&id, &ctx, cipher, oauth_token).await;
+                        (client_name, res)
+                    }
+                })
+                .collect();
 
-                match client
-                    .get_track_url(
-                        &identifier_async,
-                        &context,
-                        cipher_manager_async.clone(),
-                        oauth_async.clone(),
-                    )
-                    .await
-                {
+            while let Some((client_name, res)) = futs.next().await {
+                match res {
                     Ok(Some(url)) => {
                         debug!(
                             "YoutubeTrack: Resolved stream URL via {}: {}",
                             client_name, url
                         );
-                        // Best-effort send; decode task may have been dropped.
                         let _ = url_tx.send((url, client_name));
                         return;
                     }
-                    Ok(None) => {
-                        debug!("YoutubeTrack: {} returned no stream URL", client_name);
-                    }
-                    Err(e) => {
-                        debug!("YoutubeTrack: {} failed to resolve: {}", client_name, e);
-                    }
+                    Ok(None) => debug!("YoutubeTrack: {} returned no stream URL", client_name),
+                    Err(e) => debug!("YoutubeTrack: {} failed to resolve: {}", client_name, e),
                 }
             }
 
@@ -105,17 +99,14 @@ impl PlayableTrack for YoutubeTrack {
             // url_tx is dropped here → url_rx.await will return Err, decode task exits.
         });
 
-        // ── Phase 2: wait for URL then run CPU-bound decode in spawn_blocking ──
-        // spawn_blocking gets its own OS thread from tokio's blocking pool —
-        // appropriate for `AudioProcessor::run()` which loops synchronously.
+
         let tx_clone = tx;
         let cmd_rx_clone = cmd_rx;
         let err_tx_clone = err_tx;
         let identifier_decode = identifier;
         let cipher_manager_decode = cipher_manager;
         tokio::task::spawn_blocking(move || {
-            // Block this OS thread (blocking pool) until the URL arrives.
-            // This is cheaper than block_on(async { network call }) per client.
+       
             let (url, client_name) = match url_rx.blocking_recv() {
                 Ok(pair) => pair,
                 Err(_) => {
@@ -124,7 +115,6 @@ impl PlayableTrack for YoutubeTrack {
                 }
             };
 
-            // Reader creation is synchronous/cheap (1-byte probe or HLS bootstrap).
             let reader: Box<dyn symphonia::core::io::MediaSource> =
                 if url.contains(".m3u8") || url.contains("/playlist") {
                     let player_url = if url.contains("youtube.com") {

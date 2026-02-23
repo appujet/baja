@@ -1,8 +1,9 @@
+use parking_lot::Mutex;
 use std::{
     fs::{File, OpenOptions},
     io::{self, BufRead, BufReader, Write},
     path::Path,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 // Simple ANSI stripper to prevent the log file from being polluted with escape sequences
@@ -76,7 +77,7 @@ impl io::Write for CircularFileWriter {
 
         file.write_all(buf)?;
 
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let mut state = self.state.lock();
         let new_lines = buf.iter().filter(|&&b| b == b'\n').count() as u32;
         state.lines_since_prune += new_lines;
 
