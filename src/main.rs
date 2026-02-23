@@ -53,8 +53,7 @@ async fn main() -> AnyResult<()> {
     };
 
     let source_manager = Arc::new(rustalink::sources::SourceManager::new(&config));
-    let lyrics_manager = rustalink::lyrics::LyricsManager::new(&config);
-    let lyrics_manager = Arc::new(lyrics_manager);
+    let lyrics_manager = Arc::new(rustalink::lyrics::LyricsManager::new(&config));
 
     let shared_state = Arc::new(AppState {
         sessions: DashMap::new(),
