@@ -117,7 +117,6 @@ impl LyricsProvider for MusixmatchProvider {
         &self,
         track: &TrackInfo,
         _language: Option<String>,
-        _source_manager: Option<Arc<crate::sources::SourceManager>>,
     ) -> Option<LyricsData> {
         let token = self.get_token().await?;
         let title = Self::clean_title(&track.title);

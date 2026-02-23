@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use crate::api::models::{LyricsData, LyricsLine};
 use crate::api::tracks::TrackInfo;
@@ -95,7 +94,6 @@ impl LyricsProvider for LrcLibProvider {
         &self,
         track: &TrackInfo,
         _language: Option<String>,
-        _source_manager: Option<Arc<crate::sources::SourceManager>>,
     ) -> Option<LyricsData> {
         let title = self.clean(&track.title, true);
         let author = self.clean(&track.author, false);

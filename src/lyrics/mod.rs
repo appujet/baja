@@ -30,13 +30,11 @@ pub trait LyricsProvider: Send + Sync {
         &self,
         track: &TrackInfo,
         language: Option<String>,
-        source_manager: Option<Arc<crate::sources::SourceManager>>,
     ) -> Option<LyricsData>;
 }
 
 pub struct LyricsManager {
     pub providers: Vec<Arc<dyn LyricsProvider>>,
-    pub source_manager: Option<Arc<crate::sources::SourceManager>>,
 }
 
 impl LyricsManager {
@@ -86,12 +84,7 @@ impl LyricsManager {
 
         Self {
             providers,
-            source_manager: None,
         }
-    }
-
-    pub fn set_source_manager(&mut self, source_manager: Arc<crate::sources::SourceManager>) {
-        self.source_manager = Some(source_manager);
     }
 
     pub async fn load_lyrics(&self, track: &TrackInfo, language: Option<String>) -> Option<LyricsData> {
@@ -113,9 +106,8 @@ impl LyricsManager {
             let provider = provider.clone();
             let track = track.clone();
             let language = language.clone();
-            let source_manager = self.source_manager.clone();
             futures.push(async move {
-                provider.load_lyrics(&track, language, source_manager).await
+                provider.load_lyrics(&track, language).await
             });
         }
 

@@ -1,9 +1,13 @@
-use std::sync::Arc;
 use async_trait::async_trait;
-use serde_json::Value;
+use serde_json::{json, Value};
 use crate::api::models::{LyricsData, LyricsLine};
 use crate::api::tracks::TrackInfo;
 use super::LyricsProvider;
+
+const YTM_DOMAIN: &str = "https://music.youtube.com";
+const YTM_BASE_API: &str = "https://music.youtube.com/youtubei/v1/";
+const YTM_PARAMS: &str = "?alt=json";
+const YTM_PARAMS_KEY: &str = "&key=AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30";
 
 pub struct YoutubeLyricsProvider {
     client: reqwest::Client,
@@ -12,107 +16,210 @@ pub struct YoutubeLyricsProvider {
 impl YoutubeLyricsProvider {
     pub fn new() -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
         }
+    }
+
+    async fn send_request(&self, endpoint: &str, body: Value, is_mobile: bool) -> Option<Value> {
+        let client_name = if is_mobile { "ANDROID_MUSIC" } else { "WEB_REMIX" };
+        let client_version = if is_mobile {
+            "7.21.50"
+        } else {
+            "1.20240101.01.00"
+        };
+
+        let context = json!({
+            "context": {
+                "client": {
+                    "clientName": client_name,
+                    "clientVersion": client_version,
+                    "hl": "en",
+                    "gl": "US",
+                },
+                "user": {},
+            }
+        });
+
+        let mut final_body = body.as_object()?.clone();
+        for (k, v) in context.as_object()? {
+            final_body.insert(k.clone(), v.clone());
+        }
+
+        let url = format!("{}{}{}{}", YTM_BASE_API, endpoint, YTM_PARAMS, YTM_PARAMS_KEY);
+        let resp = self.client.post(&url)
+            .header("Content-Type", "application/json")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Origin", YTM_DOMAIN)
+            .header("Referer", YTM_DOMAIN)
+            .header("Cookie", "SOCS=CAI")
+            .json(&final_body)
+            .send().await.ok()?;
+
+        let json_resp: Value = resp.json().await.ok()?;
+        Some(json_resp)
+    }
+
+    fn clean(&self, text: &str) -> String {
+        let patterns = [
+            r#"(?i)\s*\([^)]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^)]*\)"#,
+            r#"(?i)\s*\[[^\]]*(?:official|lyrics?|video|audio|mv|visualizer|color\s*coded|hd|4k|prod\.)[^\]]*\]"#,
+            r#"(?i)\s*[([]\s*(?:ft\.?|feat\.?|featuring)\s+[^)\]]+[)\]]"#,
+            r#"(?i)\s*-\s*Topic$"#,
+            r#"(?i)VEVO$"#,
+            r#"(?i)\s*[(\[]\s*Remastered\s*[\)\]]"#,
+        ];
+
+        let mut result = text.to_string();
+        for pattern in patterns {
+            if let Ok(re) = regex::Regex::new(pattern) {
+                result = re.replace_all(&result, "").to_string();
+            }
+        }
+        result.trim().to_string()
     }
 }
 
 #[async_trait]
 impl LyricsProvider for YoutubeLyricsProvider {
-    fn name(&self) -> &'static str { "youtube" }
+    fn name(&self) -> &'static str { "ytmusic" }
 
     async fn load_lyrics(
         &self,
         track: &TrackInfo,
-        language: Option<String>,
-        source_manager: Option<Arc<crate::sources::SourceManager>>,
+        _language: Option<String>,
     ) -> Option<LyricsData> {
-        if track.source_name != "youtube" && track.source_name != "ytmusic" {
-            return None;
-        }
+        let mut video_id = None;
 
-        let captions = if let Some(sm) = source_manager {
-            let identifier = track.uri.as_deref().unwrap_or(&track.identifier);
-            match sm.load(identifier, None::<Arc<dyn crate::routeplanner::RoutePlanner>>).await {
-                crate::api::tracks::LoadResult::Track(t) => {
-                    t.plugin_info.get("captions").cloned()
-                },
-                crate::api::tracks::LoadResult::Search(tracks) => {
-                    tracks.first().and_then(|t| t.plugin_info.get("captions")).cloned()
-                },
-                _ => None
-            }
-        } else {
-            None
-        }?;
-
-        let caption_tracks = captions.get("playerCaptionsTracklistRenderer")?
-            .get("captionTracks")?
-            .as_array()?;
-
-        if caption_tracks.is_empty() { return None; }
-
-        // Find English or requested or first available
-        let caption_track = caption_tracks.iter().find(|c| {
-            if let Some(lang) = &language {
-                c["languageCode"].as_str() == Some(lang)
-            } else {
-                c["languageCode"].as_str().unwrap_or("").starts_with("en")
-            }
-        }).or_else(|| caption_tracks.iter().find(|c| c["kind"].as_str() != Some("asr")))
-          .or_else(|| caption_tracks.get(0))?;
-
-        let base_url = caption_track["baseUrl"].as_str()?;
-        let mut url = if base_url.contains("fmt=") {
-            base_url.replace("fmt=json3", "") + "&fmt=json3"
-        } else {
-            format!("{}&fmt=json3", base_url)
-        };
-
-        if let Some(lang) = language {
-            if caption_track["languageCode"].as_str() != Some(&lang) && caption_track["isTranslatable"].as_bool() == Some(true) {
-                url.push_str(&format!("&tlang={}", lang));
-            }
-        }
-
-        let lyrics_resp = self.client.get(url).send().await.ok()?;
-        let lyrics_json: Value = lyrics_resp.json().await.ok()?;
-
-        let events = lyrics_json["events"].as_array()?;
-        let mut lines = Vec::new();
-
-        for event in events {
-            let start_ms = event["tStartMs"].as_u64().unwrap_or(0);
-            let duration_ms = event["dDurationMs"].as_u64().unwrap_or(0);
-            
-            let text = event["segs"].as_array().map(|segs| {
-                segs.iter().map(|seg| seg["utf8"].as_str().unwrap_or("")).collect::<String>()
-            }).unwrap_or_default();
-
-            if text.trim().is_empty() { continue; }
-
-            // Unescape common HTML entities
-            let cleaned_text = text.replace("&amp;#39;", "'")
-                .replace("&quot;", "\"")
-                .replace("&amp;", "&");
-
-            lines.push(LyricsLine {
-                text: cleaned_text,
-                timestamp: start_ms,
-                duration: duration_ms,
+        if track.source_name == "youtube" || track.source_name == "ytmusic" {
+            video_id = track.uri.as_deref().or(Some(&track.identifier)).map(|s| {
+                if s.contains("v=") {
+                    s.split("v=").nth(1).and_then(|v| v.split('&').next()).unwrap_or(s).to_string()
+                } else if s.contains("youtu.be/") {
+                    s.split("youtu.be/").nth(1).and_then(|v| v.split('?').next()).unwrap_or(s).to_string()
+                } else {
+                    s.to_string()
+                }
             });
         }
 
-        if lines.is_empty() { return None; }
+        if video_id.is_none() {
+            let title = self.clean(&track.title);
+            let author = self.clean(&track.author);
+            let query = format!("{} {}", title, author);
 
-        let full_text = lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n");
+            if let Some(search_results) = self.send_request("search", json!({
+                "query": query,
+                "params": "EgWKAQIIAWoMEA4QChADEAQQCRAF"
+            }), false).await {
+                
+                if let Some(contents) = search_results.pointer("/contents/sectionListRenderer/contents").and_then(|v| v.as_array()) {
+                    for section in contents {
+                        if let Some(music_shelf) = section.get("musicShelfRenderer") {
+                            if let Some(music_contents) = music_shelf.get("contents").and_then(|v| v.as_array()) {
+                                if !music_contents.is_empty() {
+                                    let first_item = &music_contents[0];
+                                    if let Some(vid) = first_item.pointer("/musicResponsiveListItemRenderer/playlistItemData/videoId").and_then(|v| v.as_str()) {
+                                        video_id = Some(vid.to_string());
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
-        Some(LyricsData {
-            name: caption_track["name"]["simpleText"].as_str().unwrap_or("Captions").to_string(),
-            author: track.author.clone(),
-            provider: "youtube".to_string(),
-            text: full_text,
-            lines: Some(lines),
-        })
+                if video_id.is_none() {
+                    if let Some(vid) = search_results.pointer("/contents/sectionListRenderer/contents/0/musicCardShelfRenderer/onTap/watchEndpoint/videoId").and_then(|v| v.as_str()) {
+                        video_id = Some(vid.to_string());
+                    }
+                }
+                
+                if video_id.is_none() {
+                    let search_str = search_results.to_string();
+                    if let Some(caps) = regex::Regex::new(r#""videoId":"([^"]+)""#).unwrap().captures(&search_str) {
+                        video_id = Some(caps[1].to_string());
+                    }
+                }
+            }
+        }
+
+        let video_id = video_id?;
+        tracing::debug!("YTMusic: Using videoId {}", video_id);
+
+        let next_response = self.send_request("next", json!({ "videoId": video_id }), false).await?;
+        tracing::debug!("YTMusic: next response extracted");
+
+        let tabs = next_response.pointer("/contents/singleColumnMusicWatchNextResultsRenderer/tabbedRenderer/watchNextTabbedResultsRenderer/tabs").and_then(|v| v.as_array())?;
+        tracing::debug!("YTMusic: found {} tabs", tabs.len());
+
+        if tabs.len() < 2 { return None; }
+
+        let browse_id = tabs[1].pointer("/tabRenderer/endpoint/browseEndpoint/browseId").and_then(|v| v.as_str())?;
+        tracing::debug!("YTMusic: Using browseId {}", browse_id);
+
+        // Try extracting timed lyrics
+        if let Some(mobile_response) = self.send_request("browse", json!({ "browseId": browse_id }), true).await {
+            if let Some(lyrics_data) = mobile_response.pointer("/contents/elementRenderer/newElement/type/componentType/model/timedLyricsModel/lyricsData/timedLyricsData").and_then(|v| v.as_array()) {
+                let mut lines = Vec::new();
+
+                for line in lyrics_data {
+                    let text = line["lyricLine"].as_str().unwrap_or("").to_string();
+                    let start_time: u64 = line.pointer("/cueRange/startTimeMilliseconds").and_then(|v| v.as_str()).unwrap_or("0").parse().unwrap_or(0);
+                    let end_time: u64 = line.pointer("/cueRange/endTimeMilliseconds").and_then(|v| v.as_str()).unwrap_or("0").parse().unwrap_or(0);
+
+                    lines.push(LyricsLine {
+                        text,
+                        timestamp: start_time,
+                        duration: end_time.saturating_sub(start_time),
+                    });
+                }
+
+                if !lines.is_empty() {
+                    return Some(LyricsData {
+                        name: track.title.clone(),
+                        author: track.author.clone(),
+                        provider: "ytmusic".to_string(),
+                        text: lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n"),
+                        lines: Some(lines),
+                    });
+                }
+            }
+        }
+
+        // Extract description normal lyrics
+        if let Some(browse_response) = self.send_request("browse", json!({ "browseId": browse_id }), false).await {
+            if let Some(contents) = browse_response.pointer("/contents/sectionListRenderer/contents").and_then(|v| v.as_array()) {
+                if let Some(desc_shelf) = contents.iter().find_map(|c| c.get("musicDescriptionShelfRenderer")) {
+                    if let Some(lyrics_text) = desc_shelf.pointer("/description/runs/0/text").and_then(|v| v.as_str()) {
+                        let mut lines = Vec::new();
+                        for text_line in lyrics_text.split('\n') {
+                            let trimmed = text_line.trim();
+                            if !trimmed.is_empty() {
+                                lines.push(LyricsLine {
+                                    text: trimmed.to_string(),
+                                    timestamp: 0,
+                                    duration: 0,
+                                });
+                            }
+                        }
+
+                        if !lines.is_empty() {
+                            return Some(LyricsData {
+                                name: track.title.clone(),
+                                author: track.author.clone(),
+                                provider: "ytmusic".to_string(),
+                                text: lyrics_text.to_string(),
+                                lines: Some(lines),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        None
     }
 }

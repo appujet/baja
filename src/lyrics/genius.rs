@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use regex::Regex;
 use crate::api::models::{LyricsData, LyricsLine};
@@ -54,7 +53,6 @@ impl LyricsProvider for GeniusProvider {
         &self,
         track: &TrackInfo,
         _language: Option<String>,
-        _source_manager: Option<Arc<crate::sources::SourceManager>>,
     ) -> Option<LyricsData> {
         let title = self.clean(&track.title);
         let author = self.clean(&track.author);

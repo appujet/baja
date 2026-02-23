@@ -53,8 +53,7 @@ async fn main() -> AnyResult<()> {
     };
 
     let source_manager = Arc::new(rustalink::sources::SourceManager::new(&config));
-    let mut lyrics_manager = rustalink::lyrics::LyricsManager::new(&config);
-    lyrics_manager.set_source_manager(source_manager.clone());
+    let lyrics_manager = rustalink::lyrics::LyricsManager::new(&config);
     let lyrics_manager = Arc::new(lyrics_manager);
 
     let shared_state = Arc::new(AppState {

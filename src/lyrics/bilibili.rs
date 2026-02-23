@@ -124,7 +124,6 @@ impl LyricsProvider for BilibiliProvider {
         &self,
         track: &TrackInfo,
         _language: Option<String>,
-        _source_manager: Option<Arc<crate::sources::SourceManager>>,
     ) -> Option<LyricsData> {
         if track.source_name != "bilibili" {
             return None;

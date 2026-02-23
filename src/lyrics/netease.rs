@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use regex::Regex;
-use std::sync::Arc;
 use crate::api::models::{LyricsData, LyricsLine};
 use crate::api::tracks::TrackInfo;
 use super::LyricsProvider;
@@ -119,7 +118,6 @@ impl LyricsProvider for NeteaseProvider {
         &self,
         track: &TrackInfo,
         _language: Option<String>,
-        _source_manager: Option<Arc<crate::sources::SourceManager>>,
     ) -> Option<LyricsData> {
         let title = self.clean(&track.title);
         let artist = self.clean(&track.author);

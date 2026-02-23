@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 use crate::api::models::{LyricsData, LyricsLine};
@@ -53,7 +52,6 @@ impl LyricsProvider for LetrasMusProvider {
         &self,
         track: &TrackInfo,
         language: Option<String>,
-        _source_manager: Option<Arc<crate::sources::SourceManager>>,
     ) -> Option<LyricsData> {
         let title = self.clean(&track.title);
         let author = self.clean(&track.author);
