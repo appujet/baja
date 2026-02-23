@@ -69,7 +69,7 @@ pub enum LavalinkEvent {
     LyricsNotFound {
         guild_id: crate::common::types::GuildId,
     },
-    
+
     #[serde(rename = "LyricsLineEvent")]
     #[serde(rename_all = "camelCase")]
     LyricsLine {

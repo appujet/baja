@@ -1,8 +1,11 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
-use crate::api::models::{LyricsData, LyricsLine};
-use crate::api::tracks::TrackInfo;
+use serde_json::{Value, json};
+
 use super::LyricsProvider;
+use crate::api::{
+    models::{LyricsData, LyricsLine},
+    tracks::TrackInfo,
+};
 
 const YTM_DOMAIN: &str = "https://music.youtube.com";
 const YTM_BASE_API: &str = "https://music.youtube.com/youtubei/v1/";
@@ -23,7 +26,11 @@ impl YoutubeMusicLyricsProvider {
     }
 
     async fn send_request(&self, endpoint: &str, body: Value, is_mobile: bool) -> Option<Value> {
-        let client_name = if is_mobile { "ANDROID_MUSIC" } else { "WEB_REMIX" };
+        let client_name = if is_mobile {
+            "ANDROID_MUSIC"
+        } else {
+            "WEB_REMIX"
+        };
         let client_version = if is_mobile {
             "7.21.50"
         } else {
@@ -47,7 +54,10 @@ impl YoutubeMusicLyricsProvider {
             final_body.insert(k.clone(), v.clone());
         }
 
-        let url = format!("{}{}{}{}", YTM_BASE_API, endpoint, YTM_PARAMS, YTM_PARAMS_KEY);
+        let url = format!(
+            "{}{}{}{}",
+            YTM_BASE_API, endpoint, YTM_PARAMS, YTM_PARAMS_KEY
+        );
         let resp = self.client.post(&url)
             .header("Content-Type", "application/json")
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
@@ -84,20 +94,27 @@ impl YoutubeMusicLyricsProvider {
 
 #[async_trait]
 impl LyricsProvider for YoutubeMusicLyricsProvider {
-    fn name(&self) -> &'static str { "youtubemusic" }
+    fn name(&self) -> &'static str {
+        "youtubemusic"
+    }
 
-    async fn load_lyrics(
-        &self,
-        track: &TrackInfo,
-    ) -> Option<LyricsData> {
+    async fn load_lyrics(&self, track: &TrackInfo) -> Option<LyricsData> {
         let mut video_id = None;
 
         if track.source_name == "youtube" || track.source_name == "youtubemusic" {
             video_id = track.uri.as_deref().or(Some(&track.identifier)).map(|s| {
                 if s.contains("v=") {
-                    s.split("v=").nth(1).and_then(|v| v.split('&').next()).unwrap_or(s).to_string()
+                    s.split("v=")
+                        .nth(1)
+                        .and_then(|v| v.split('&').next())
+                        .unwrap_or(s)
+                        .to_string()
                 } else if s.contains("youtu.be/") {
-                    s.split("youtu.be/").nth(1).and_then(|v| v.split('?').next()).unwrap_or(s).to_string()
+                    s.split("youtu.be/")
+                        .nth(1)
+                        .and_then(|v| v.split('?').next())
+                        .unwrap_or(s)
+                        .to_string()
                 } else {
                     s.to_string()
                 }
@@ -109,15 +126,26 @@ impl LyricsProvider for YoutubeMusicLyricsProvider {
             let author = self.clean(&track.author);
             let query = format!("{} {}", title, author);
 
-            if let Some(search_results) = self.send_request("search", json!({
-                "query": query,
-                "params": "EgWKAQIIAWoMEA4QChADEAQQCRAF"
-            }), false).await {
-                
-                if let Some(contents) = search_results.pointer("/contents/sectionListRenderer/contents").and_then(|v| v.as_array()) {
+            if let Some(search_results) = self
+                .send_request(
+                    "search",
+                    json!({
+                        "query": query,
+                        "params": "EgWKAQIIAWoMEA4QChADEAQQCRAF"
+                    }),
+                    false,
+                )
+                .await
+            {
+                if let Some(contents) = search_results
+                    .pointer("/contents/sectionListRenderer/contents")
+                    .and_then(|v| v.as_array())
+                {
                     for section in contents {
                         if let Some(music_shelf) = section.get("musicShelfRenderer") {
-                            if let Some(music_contents) = music_shelf.get("contents").and_then(|v| v.as_array()) {
+                            if let Some(music_contents) =
+                                music_shelf.get("contents").and_then(|v| v.as_array())
+                            {
                                 if !music_contents.is_empty() {
                                     let first_item = &music_contents[0];
                                     if let Some(vid) = first_item.pointer("/musicResponsiveListItemRenderer/playlistItemData/videoId").and_then(|v| v.as_str()) {
@@ -135,10 +163,13 @@ impl LyricsProvider for YoutubeMusicLyricsProvider {
                         video_id = Some(vid.to_string());
                     }
                 }
-                
+
                 if video_id.is_none() {
                     let search_str = search_results.to_string();
-                    if let Some(caps) = regex::Regex::new(r#""videoId":"([^"]+)""#).unwrap().captures(&search_str) {
+                    if let Some(caps) = regex::Regex::new(r#""videoId":"([^"]+)""#)
+                        .unwrap()
+                        .captures(&search_str)
+                    {
                         video_id = Some(caps[1].to_string());
                     }
                 }
@@ -148,19 +179,28 @@ impl LyricsProvider for YoutubeMusicLyricsProvider {
         let video_id = video_id?;
         tracing::debug!("YTMusic: Using videoId {}", video_id);
 
-        let next_response = self.send_request("next", json!({ "videoId": video_id }), false).await?;
+        let next_response = self
+            .send_request("next", json!({ "videoId": video_id }), false)
+            .await?;
         tracing::debug!("YTMusic: next response extracted");
 
         let tabs = next_response.pointer("/contents/singleColumnMusicWatchNextResultsRenderer/tabbedRenderer/watchNextTabbedResultsRenderer/tabs").and_then(|v| v.as_array())?;
         tracing::debug!("YTMusic: found {} tabs", tabs.len());
 
-        if tabs.len() < 2 { return None; }
+        if tabs.len() < 2 {
+            return None;
+        }
 
-        let browse_id = tabs[1].pointer("/tabRenderer/endpoint/browseEndpoint/browseId").and_then(|v| v.as_str())?;
+        let browse_id = tabs[1]
+            .pointer("/tabRenderer/endpoint/browseEndpoint/browseId")
+            .and_then(|v| v.as_str())?;
         tracing::debug!("YTMusic: Using browseId {}", browse_id);
 
         // Try extracting timed lyrics
-        if let Some(mobile_response) = self.send_request("browse", json!({ "browseId": browse_id }), true).await {
+        if let Some(mobile_response) = self
+            .send_request("browse", json!({ "browseId": browse_id }), true)
+            .await
+        {
             if let Some(lyrics_data) = mobile_response.pointer("/contents/elementRenderer/newElement/type/componentType/model/timedLyricsModel/lyricsData/timedLyricsData").and_then(|v| v.as_array()) {
                 let mut lines = Vec::new();
 
@@ -189,10 +229,22 @@ impl LyricsProvider for YoutubeMusicLyricsProvider {
         }
 
         // Extract description normal lyrics
-        if let Some(browse_response) = self.send_request("browse", json!({ "browseId": browse_id }), false).await {
-            if let Some(contents) = browse_response.pointer("/contents/sectionListRenderer/contents").and_then(|v| v.as_array()) {
-                if let Some(desc_shelf) = contents.iter().find_map(|c| c.get("musicDescriptionShelfRenderer")) {
-                    if let Some(lyrics_text) = desc_shelf.pointer("/description/runs/0/text").and_then(|v| v.as_str()) {
+        if let Some(browse_response) = self
+            .send_request("browse", json!({ "browseId": browse_id }), false)
+            .await
+        {
+            if let Some(contents) = browse_response
+                .pointer("/contents/sectionListRenderer/contents")
+                .and_then(|v| v.as_array())
+            {
+                if let Some(desc_shelf) = contents
+                    .iter()
+                    .find_map(|c| c.get("musicDescriptionShelfRenderer"))
+                {
+                    if let Some(lyrics_text) = desc_shelf
+                        .pointer("/description/runs/0/text")
+                        .and_then(|v| v.as_str())
+                    {
                         let mut lines = Vec::new();
                         for text_line in lyrics_text.split('\n') {
                             let trimmed = text_line.trim();

@@ -1,7 +1,10 @@
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, AtomicU64, Ordering},
+};
+
 use super::TransitionEffect;
 use crate::audio::playback::handle::PlaybackState;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
 pub struct TapeEffect {
     pub state: TapeState,

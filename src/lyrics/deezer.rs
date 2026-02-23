@@ -1,11 +1,17 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
-use std::sync::Arc;
-use crate::api::models::{LyricsData, LyricsLine};
-use crate::api::tracks::TrackInfo;
-use crate::configs::HttpProxyConfig;
+
 use super::LyricsProvider;
+use crate::{
+    api::{
+        models::{LyricsData, LyricsLine},
+        tracks::TrackInfo,
+    },
+    configs::HttpProxyConfig,
+};
 
 pub struct DeezerProvider {
     client: reqwest::Client,
@@ -33,7 +39,9 @@ impl DeezerProvider {
         }
 
         Self {
-            client: client_builder.build().unwrap_or_else(|_| reqwest::Client::new()),
+            client: client_builder
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
             jwt: Arc::new(RwLock::new(None)),
         }
     }
@@ -61,13 +69,16 @@ impl DeezerProvider {
             }
         }
 
-        let resp = self.client.get("https://auth.deezer.com/login/anonymous?jo=p&rto=c")
+        let resp = self
+            .client
+            .get("https://auth.deezer.com/login/anonymous?jo=p&rto=c")
             .send()
-            .await.ok()?;
-        
+            .await
+            .ok()?;
+
         let data: Value = resp.json().await.ok()?;
         let token = data.get("jwt").and_then(|t| t.as_str())?.to_string();
-        
+
         *lock = Some((token.clone(), now + 300_000));
         Some(token)
     }
@@ -93,11 +104,14 @@ impl DeezerProvider {
 
     async fn search_track(&self, title: &str, author: &str) -> Option<String> {
         let query = format!("{} {}", title, author);
-        let resp = self.client.get("https://api.deezer.com/2.0/search")
+        let resp = self
+            .client
+            .get("https://api.deezer.com/2.0/search")
             .query(&[("q", query.as_str()), ("limit", "1")])
             .send()
-            .await.ok()?;
-        
+            .await
+            .ok()?;
+
         let data: Value = resp.json().await.ok()?;
         data.get("data")
             .and_then(|d| d.as_array())
@@ -109,12 +123,11 @@ impl DeezerProvider {
 
 #[async_trait]
 impl LyricsProvider for DeezerProvider {
-    fn name(&self) -> &'static str { "deezer" }
+    fn name(&self) -> &'static str {
+        "deezer"
+    }
 
-    async fn load_lyrics(
-        &self,
-        track: &TrackInfo,
-    ) -> Option<LyricsData> {
+    async fn load_lyrics(&self, track: &TrackInfo) -> Option<LyricsData> {
         let jwt = self.get_jwt().await?;
 
         let title = self.clean(&track.title);
@@ -180,31 +193,43 @@ impl LyricsProvider for DeezerProvider {
             "query": query
         });
 
-        let resp = self.client.post("https://pipe.deezer.com/api")
+        let resp = self
+            .client
+            .post("https://pipe.deezer.com/api")
             .header("Authorization", format!("Bearer {}", jwt))
             .json(&body)
             .send()
-            .await.ok()?;
-        
+            .await
+            .ok()?;
+
         let data: Value = resp.json().await.ok()?;
-        let lyrics = data.get("data")
+        let lyrics = data
+            .get("data")
             .and_then(|d| d.get("track"))
             .and_then(|t| t.get("lyrics"))?;
 
         let mut lines = Vec::new();
         let mut synced = false;
 
-        if let Some(swb) = lyrics.get("synchronizedWordByWordLines").and_then(|l| l.as_array()) {
+        if let Some(swb) = lyrics
+            .get("synchronizedWordByWordLines")
+            .and_then(|l| l.as_array())
+        {
             if !swb.is_empty() {
                 synced = true;
                 for line in swb {
                     let start = line.get("start").and_then(|v| v.as_u64()).unwrap_or(0);
                     let end = line.get("end").and_then(|v| v.as_u64()).unwrap_or(0);
                     let words = line.get("words").and_then(|v| v.as_array());
-                    
-                    let text = words.map(|w| {
-                        w.iter().map(|s| s.get("word").and_then(|v| v.as_str()).unwrap_or("")).collect::<Vec<_>>().join(" ")
-                    }).unwrap_or_default();
+
+                    let text = words
+                        .map(|w| {
+                            w.iter()
+                                .map(|s| s.get("word").and_then(|v| v.as_str()).unwrap_or(""))
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        })
+                        .unwrap_or_default();
 
                     lines.push(LyricsLine {
                         text,
@@ -220,10 +245,17 @@ impl LyricsProvider for DeezerProvider {
                 if !sl.is_empty() {
                     synced = true;
                     for line in sl {
-                        let text = line.get("line").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let timestamp = line.get("milliseconds").and_then(|v| v.as_u64()).unwrap_or(0);
+                        let text = line
+                            .get("line")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let timestamp = line
+                            .get("milliseconds")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0);
                         let duration = line.get("duration").and_then(|v| v.as_u64()).unwrap_or(0);
-                        
+
                         lines.push(LyricsLine {
                             text,
                             timestamp,
@@ -237,7 +269,11 @@ impl LyricsProvider for DeezerProvider {
         let full_text = if let Some(text) = lyrics.get("text").and_then(|v| v.as_str()) {
             text.to_string()
         } else if !lines.is_empty() {
-            lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n")
+            lines
+                .iter()
+                .map(|l| l.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
         } else {
             return None;
         };

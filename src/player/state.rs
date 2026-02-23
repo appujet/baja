@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::api::tracks::Track;
-use crate::configs::player::PlayerConfig;
+use crate::{api::tracks::Track, configs::player::PlayerConfig};
 
 /// Full player state as returned by REST endpoints.
 pub fn deserialize_track_encoded<'de, D>(deserializer: D) -> Result<Option<TrackEncoded>, D::Error>
@@ -26,7 +25,6 @@ pub struct Player {
     pub state: PlayerState,
     pub voice: VoiceState,
     pub filters: Filters,
-
 }
 
 #[derive(Debug, Serialize)]

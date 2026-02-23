@@ -1,13 +1,17 @@
 use async_trait::async_trait;
-use serde_json::Value;
-use crate::api::models::{LyricsData, LyricsLine};
-use crate::api::tracks::TrackInfo;
-use crate::configs::lyrics::YandexLyricsConfig;
-use crate::configs::HttpProxyConfig;
-use super::LyricsProvider;
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use base64::{Engine as _, engine::general_purpose};
+use hmac::{Hmac, Mac};
+use serde_json::Value;
+use sha2::Sha256;
+
+use super::LyricsProvider;
+use crate::{
+    api::{
+        models::{LyricsData, LyricsLine},
+        tracks::TrackInfo,
+    },
+    configs::{HttpProxyConfig, lyrics::YandexLyricsConfig},
+};
 
 pub struct YandexProvider {
     client: reqwest::Client,
@@ -35,15 +39,21 @@ impl YandexProvider {
         }
 
         Self {
-            client: client_builder.build().unwrap_or_else(|_| reqwest::Client::new()),
+            client: client_builder
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new()),
             access_token: config.access_token.clone(),
         }
     }
 
     fn create_sign(&self, track_id: &str) -> (String, u64) {
-        let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let message = format!("{}{}", track_id, ts);
-        let mut mac = Hmac::<Sha256>::new_from_slice(b"p93jhgh689SBReK6ghtw62").expect("HMAC can take key of any size");
+        let mut mac = Hmac::<Sha256>::new_from_slice(b"p93jhgh689SBReK6ghtw62")
+            .expect("HMAC can take key of any size");
         mac.update(message.as_bytes());
         let result = mac.finalize();
         let sign = general_purpose::STANDARD.encode(result.into_bytes());
@@ -53,14 +63,16 @@ impl YandexProvider {
     fn parse_lrc(&self, lrc: &str) -> Vec<LyricsLine> {
         let mut lines = Vec::new();
         let re = regex::Regex::new(r#"\[(\d{2}):(\d{2})\.(\d{2})\]\s*(.*?)(?=\n|\[|$)"#).unwrap();
-        
+
         for cap in re.captures_iter(lrc) {
             let mins: u64 = cap[1].parse().unwrap_or(0);
             let secs: u64 = cap[2].parse().unwrap_or(0);
             let cs: u64 = cap[3].parse().unwrap_or(0);
             let time = (mins * 60 + secs) * 1000 + cs * 10;
             let text = cap[4].trim().to_string();
-            if text.is_empty() { continue; }
+            if text.is_empty() {
+                continue;
+            }
             lines.push(LyricsLine {
                 text,
                 timestamp: time,
@@ -92,12 +104,11 @@ impl YandexProvider {
 
 #[async_trait]
 impl LyricsProvider for YandexProvider {
-    fn name(&self) -> &'static str { "yandex" }
+    fn name(&self) -> &'static str {
+        "yandex"
+    }
 
-    async fn load_lyrics(
-        &self,
-        track: &TrackInfo,
-    ) -> Option<LyricsData> {
+    async fn load_lyrics(&self, track: &TrackInfo) -> Option<LyricsData> {
         let token = self.access_token.as_ref()?;
         let title = self.clean(&track.title);
         let author = self.clean(&track.author);
@@ -107,13 +118,19 @@ impl LyricsProvider for YandexProvider {
         } else {
             // Search logic if not directly from yandex
             let query = format!("{} {}", title, author);
-            let search_url = format!("https://api.music.yandex.net/search?text={}&type=track&page=0", urlencoding::encode(&query));
-            let search_resp = self.client.get(search_url)
+            let search_url = format!(
+                "https://api.music.yandex.net/search?text={}&type=track&page=0",
+                urlencoding::encode(&query)
+            );
+            let search_resp = self
+                .client
+                .get(search_url)
                 .header("Authorization", format!("OAuth {}", token))
                 .header("X-Yandex-Music-Client", "YandexMusicAndroid/24023621")
                 .send()
-                .await.ok()?;
-            
+                .await
+                .ok()?;
+
             let search_body: Value = search_resp.json().await.ok()?;
             search_body["result"]["tracks"]["results"]
                 .as_array()?
@@ -124,32 +141,47 @@ impl LyricsProvider for YandexProvider {
         };
 
         let (sign, ts) = self.create_sign(&track_id);
-        let url = format!("https://api.music.yandex.net/tracks/{}/lyrics?format=LRC&timeStamp={}&sign={}", track_id, ts, sign);
+        let url = format!(
+            "https://api.music.yandex.net/tracks/{}/lyrics?format=LRC&timeStamp={}&sign={}",
+            track_id, ts, sign
+        );
 
-        let resp = self.client.get(url)
+        let resp = self
+            .client
+            .get(url)
             .header("Authorization", format!("OAuth {}", token))
             .header("X-Yandex-Music-Client", "YandexMusicAndroid/24023621")
             .send()
-            .await.ok()?;
+            .await
+            .ok()?;
 
         let body: Value = resp.json().await.ok()?;
         let download_url = body["result"]["downloadUrl"].as_str()?;
 
-        let lrc_resp = self.client.get(download_url)
+        let lrc_resp = self
+            .client
+            .get(download_url)
             .header("Authorization", format!("OAuth {}", token))
             .send()
-            .await.ok()?;
-        
+            .await
+            .ok()?;
+
         let lrc_text = lrc_resp.text().await.ok()?;
         let lines = self.parse_lrc(&lrc_text);
 
-        if lines.is_empty() { return None; }
+        if lines.is_empty() {
+            return None;
+        }
 
         Some(LyricsData {
             name: track.title.clone(),
             author: track.author.clone(),
             provider: "yandex".to_string(),
-            text: lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n"),
+            text: lines
+                .iter()
+                .map(|l| l.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n"),
             lines: Some(lines),
         })
     }

@@ -1,35 +1,37 @@
-use async_trait::async_trait;
 use std::sync::Arc;
+
+use async_trait::async_trait;
 use futures::stream::{FuturesUnordered, StreamExt};
-use crate::{api::models::LyricsData, api::tracks::TrackInfo, configs::Config};
 
-pub mod lrclib;
-pub mod genius;
-pub mod youtubemusic;
-pub mod deezer;
+use crate::{
+    api::{models::LyricsData, tracks::TrackInfo},
+    configs::Config,
+};
+
 pub mod bilibili;
-pub mod musixmatch;
+pub mod deezer;
+pub mod genius;
 pub mod letrasmus;
-pub mod yandex;
+pub mod lrclib;
+pub mod musixmatch;
 pub mod netease;
+pub mod yandex;
+pub mod youtubemusic;
 
-use self::genius::GeniusProvider;
-use self::lrclib::LrcLibProvider;
-use self::youtubemusic::YoutubeMusicLyricsProvider;
-use self::deezer::DeezerProvider;
-use self::bilibili::BilibiliProvider;
-use self::musixmatch::MusixmatchProvider;
 use letrasmus::LetrasMusProvider;
-use yandex::YandexProvider;
 use netease::NeteaseProvider;
+use yandex::YandexProvider;
+
+use self::{
+    bilibili::BilibiliProvider, deezer::DeezerProvider, genius::GeniusProvider,
+    lrclib::LrcLibProvider, musixmatch::MusixmatchProvider,
+    youtubemusic::YoutubeMusicLyricsProvider,
+};
 
 #[async_trait]
 pub trait LyricsProvider: Send + Sync {
     fn name(&self) -> &'static str;
-    async fn load_lyrics(
-        &self,
-        track: &TrackInfo,
-    ) -> Option<LyricsData>;
+    async fn load_lyrics(&self, track: &TrackInfo) -> Option<LyricsData>;
 }
 
 pub struct LyricsManager {
@@ -49,16 +51,32 @@ impl LyricsManager {
             };
         }
 
-        register_provider!(config.lyrics.youtubemusic, "YoutubeMusic", YoutubeMusicLyricsProvider::new());
+        register_provider!(
+            config.lyrics.youtubemusic,
+            "YoutubeMusic",
+            YoutubeMusicLyricsProvider::new()
+        );
         register_provider!(config.lyrics.lrclib, "LRCLib", LrcLibProvider::new());
         register_provider!(config.lyrics.genius, "Genius", GeniusProvider::new());
-        
+
         let deezer_proxy = config.deezer.as_ref().and_then(|d| d.proxy.as_ref());
-        register_provider!(config.lyrics.deezer, "Deezer", DeezerProvider::new(deezer_proxy));
-        
+        register_provider!(
+            config.lyrics.deezer,
+            "Deezer",
+            DeezerProvider::new(deezer_proxy)
+        );
+
         register_provider!(config.lyrics.bilibili, "Bilibili", BilibiliProvider::new());
-        register_provider!(config.lyrics.musixmatch, "Musixmatch", MusixmatchProvider::new());
-        register_provider!(config.lyrics.letrasmus, "Letras.mus", LetrasMusProvider::new());
+        register_provider!(
+            config.lyrics.musixmatch,
+            "Musixmatch",
+            MusixmatchProvider::new()
+        );
+        register_provider!(
+            config.lyrics.letrasmus,
+            "Letras.mus",
+            LetrasMusProvider::new()
+        );
         register_provider!(config.lyrics.netease, "NetEase", NeteaseProvider::new());
         let yandex_token_provided = config
             .yandex
@@ -69,7 +87,9 @@ impl LyricsManager {
             .unwrap_or(false);
 
         if config.lyrics.yandex && !yandex_token_provided {
-            tracing::warn!("Yandex lyrics enabled but access_token is missing; it will be disabled.");
+            tracing::warn!(
+                "Yandex lyrics enabled but access_token is missing; it will be disabled."
+            );
         }
 
         if let Some(yandex_lyrics_cfg) = config.yandex.as_ref().and_then(|y| y.lyrics.as_ref()) {
@@ -81,9 +101,7 @@ impl LyricsManager {
             );
         }
 
-        Self {
-            providers,
-        }
+        Self { providers }
     }
 
     pub async fn load_lyrics(&self, track: &TrackInfo) -> Option<LyricsData> {
@@ -103,9 +121,7 @@ impl LyricsManager {
             }
             let provider = provider.clone();
             let track = track.clone();
-            futures.push(async move {
-                provider.load_lyrics(&track).await
-            });
+            futures.push(async move { provider.load_lyrics(&track).await });
         }
 
         let mut fallback_text: Option<LyricsData> = None;

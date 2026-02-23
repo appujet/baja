@@ -1,9 +1,12 @@
 use async_trait::async_trait;
-use serde_json::Value;
 use regex::Regex;
-use crate::api::models::{LyricsData, LyricsLine};
-use crate::api::tracks::TrackInfo;
+use serde_json::Value;
+
 use super::LyricsProvider;
+use crate::api::{
+    models::{LyricsData, LyricsLine},
+    tracks::TrackInfo,
+};
 
 pub struct NeteaseProvider {
     client: reqwest::Client,
@@ -48,7 +51,7 @@ impl NeteaseProvider {
                 let seconds: u64 = cap[2].parse().unwrap_or(0);
                 let ms_str = cap.get(3).map(|m| m.as_str()).unwrap_or("0");
                 let mut ms = ms_str.parse::<u64>().unwrap_or(0);
-                
+
                 // Pad or truncate ms to 3 digits
                 if ms_str.len() == 2 {
                     ms *= 10;
@@ -103,7 +106,7 @@ impl NeteaseProvider {
 
         let body: Value = resp.json().await.ok()?;
         let songs = body["result"]["songs"].as_array()?;
-        
+
         songs.get(0).cloned()
     }
 }
@@ -114,10 +117,7 @@ impl LyricsProvider for NeteaseProvider {
         "netease"
     }
 
-    async fn load_lyrics(
-        &self,
-        track: &TrackInfo,
-    ) -> Option<LyricsData> {
+    async fn load_lyrics(&self, track: &TrackInfo) -> Option<LyricsData> {
         let title = self.clean(&track.title);
         let artist = self.clean(&track.author);
         let query = format!("{} {}", title, artist);
@@ -148,7 +148,11 @@ impl LyricsProvider for NeteaseProvider {
             });
         }
 
-        let full_text = lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n");
+        let full_text = lines
+            .iter()
+            .map(|l| l.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
 
         Some(LyricsData {
             name: song_name,

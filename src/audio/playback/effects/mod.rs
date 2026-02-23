@@ -1,5 +1,7 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, AtomicU64};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, AtomicU64},
+};
 
 pub mod tape;
 

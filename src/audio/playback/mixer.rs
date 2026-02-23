@@ -3,14 +3,16 @@ use std::sync::{
     atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering},
 };
 
-use crate::audio::playback::{
-    effects::{
-        TransitionEffect,
-        tape::{TapeEffect, TapeState},
+use crate::{
+    audio::playback::{
+        effects::{
+            TransitionEffect,
+            tape::{TapeEffect, TapeState},
+        },
+        handle::PlaybackState,
     },
-    handle::PlaybackState,
+    configs::player::PlayerConfig,
 };
-use crate::configs::player::PlayerConfig;
 
 pub struct Mixer {
     tracks: Vec<MixerTrack>,

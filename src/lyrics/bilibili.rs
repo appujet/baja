@@ -1,18 +1,21 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
+use md5::{Digest, Md5};
+use regex::Regex;
 use serde_json::Value;
 use tokio::sync::RwLock;
-use std::sync::Arc;
-use md5::{Md5, Digest};
-use crate::api::models::{LyricsData, LyricsLine};
-use crate::api::tracks::TrackInfo;
+
 use super::LyricsProvider;
-use regex::Regex;
+use crate::api::{
+    models::{LyricsData, LyricsLine},
+    tracks::TrackInfo,
+};
 
 const MIXIN_KEY_ENC_TAB: [usize; 64] = [
-    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
-    33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61,
-    26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36,
-    20, 34, 44, 52
+    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29,
+    28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25,
+    54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
 ];
 
 pub struct BilibiliProvider {
@@ -48,16 +51,28 @@ impl BilibiliProvider {
             .header("Referer", "https://www.bilibili.com/")
             .send()
             .await.ok()?;
-        
+
         let body: Value = resp.json().await.ok()?;
         let wbi_img = body.get("data")?.get("wbi_img")?;
-        
+
         let img_url = wbi_img.get("img_url")?.as_str()?;
         let sub_url = wbi_img.get("sub_url")?.as_str()?;
-        
-        let img_key = img_url.rsplit('/').next().unwrap_or("").split('.').next().unwrap_or("");
-        let sub_key = sub_url.rsplit('/').next().unwrap_or("").split('.').next().unwrap_or("");
-        
+
+        let img_key = img_url
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .split('.')
+            .next()
+            .unwrap_or("");
+        let sub_key = sub_url
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .split('.')
+            .next()
+            .unwrap_or("");
+
         let raw_key = format!("{}{}", img_key, sub_key);
         let mut mixin_key = String::new();
         for &index in &MIXIN_KEY_ENC_TAB {
@@ -65,7 +80,7 @@ impl BilibiliProvider {
                 mixin_key.push(c);
             }
         }
-        
+
         let final_key = mixin_key[..32].to_string();
         let mut lock = self.wbi_keys.write().await;
         *lock = Some((final_key.clone(), now + 3600 * 1000));
@@ -77,22 +92,27 @@ impl BilibiliProvider {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         params.push(("wts".to_string(), now.to_string()));
         params.sort_by(|a, b| a.0.cmp(&b.0));
-        
-        let query = params.iter()
+
+        let query = params
+            .iter()
             .map(|(k, v)| {
                 let v_clean = v.replace(|c: char| "!*()'".contains(c), "");
-                format!("{}={}", urlencoding::encode(k), urlencoding::encode(&v_clean))
+                format!(
+                    "{}={}",
+                    urlencoding::encode(k),
+                    urlencoding::encode(&v_clean)
+                )
             })
             .collect::<Vec<_>>()
             .join("&");
-        
+
         let mut hasher = Md5::new();
         hasher.update(format!("{}{}", query, mixin_key).as_bytes());
         let w_rid = format!("{:x}", hasher.finalize());
-        
+
         format!("{}&w_rid={}", query, w_rid)
     }
 
@@ -118,12 +138,11 @@ impl BilibiliProvider {
 
 #[async_trait]
 impl LyricsProvider for BilibiliProvider {
-    fn name(&self) -> &'static str { "bilibili" }
+    fn name(&self) -> &'static str {
+        "bilibili"
+    }
 
-    async fn load_lyrics(
-        &self,
-        track: &TrackInfo,
-    ) -> Option<LyricsData> {
+    async fn load_lyrics(&self, track: &TrackInfo) -> Option<LyricsData> {
         if track.source_name != "bilibili" {
             return None;
         }
@@ -134,24 +153,26 @@ impl LyricsProvider for BilibiliProvider {
         }
 
         let cid = {
-            let url = format!("https://api.bilibili.com/x/web-interface/view?bvid={}", bvid);
+            let url = format!(
+                "https://api.bilibili.com/x/web-interface/view?bvid={}",
+                bvid
+            );
             let resp = self.client.get(&url)
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
                 .header("Referer", "https://www.bilibili.com/")
                 .send()
                 .await.ok()?;
             let body: Value = resp.json().await.ok()?;
-            if body.get("code")?.as_i64() != Some(0) { return None; }
+            if body.get("code")?.as_i64() != Some(0) {
+                return None;
+            }
             let data = body.get("data")?;
             data.get("cid")?.as_u64()?.to_string()
         };
 
         let mixin_key = self.get_wbi_keys().await?;
 
-        let mut params = vec![
-            ("bvid".to_string(), bvid),
-            ("cid".to_string(), cid),
-        ];
+        let mut params = vec![("bvid".to_string(), bvid), ("cid".to_string(), cid)];
         let signed_query = self.sign_wbi(&mut params, &mixin_key);
 
         let url = format!("https://api.bilibili.com/x/player/wbi/v2?{}", signed_query);
@@ -160,13 +181,21 @@ impl LyricsProvider for BilibiliProvider {
             .header("Referer", "https://www.bilibili.com/")
             .send()
             .await.ok()?;
-        
+
         let body: Value = resp.json().await.ok()?;
-        if body.get("code")?.as_i64() != Some(0) { return None; }
-        
-        let subtitles = body.get("data")?.get("subtitle")?.get("subtitles")?.as_array()?;
-        if subtitles.is_empty() { return None; }
-        
+        if body.get("code")?.as_i64() != Some(0) {
+            return None;
+        }
+
+        let subtitles = body
+            .get("data")?
+            .get("subtitle")?
+            .get("subtitles")?
+            .as_array()?;
+        if subtitles.is_empty() {
+            return None;
+        }
+
         let sub_url = subtitles[0].get("subtitle_url")?.as_str()?;
         let full_url = if sub_url.starts_with("//") {
             format!("https:{}", sub_url)
@@ -191,9 +220,15 @@ impl LyricsProvider for BilibiliProvider {
             });
         }
 
-        if lines.is_empty() { return None; }
+        if lines.is_empty() {
+            return None;
+        }
 
-        let full_text = lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n");
+        let full_text = lines
+            .iter()
+            .map(|l| l.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
 
         Some(LyricsData {
             name: self.clean(&track.title),
