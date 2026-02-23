@@ -201,7 +201,7 @@ pub async fn start_playback(
     let last_lyric_index = player.last_lyric_index.clone();
 
     let track_task = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
         let mut last_update = std::time::Instant::now();
         let update_duration = std::time::Duration::from_secs(update_interval_secs);
 
