@@ -165,11 +165,11 @@ impl Mixer {
                             self.mix_buf[i + j] += (sample * vol_fixed) >> 16;
                         }
                     }
-                    
+
                     track.pending_pos += to_copy;
                     i += to_copy;
                     track_contributed = true;
-                    
+
                     if track.pending_pos >= pending_len {
                         track.pending.clear();
                         track.pending_pos = 0;

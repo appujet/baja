@@ -762,7 +762,7 @@ impl VoiceGateway {
                     } else if is_reidentify_close(code) {
                         break SessionOutcome::Identify;
                     } else if is_fatal_close(code) {
-                        tracing::error!("Voice gateway closed fatally with code {}", code);
+                        tracing::warn!("Voice gateway closed fatally with code {}", code);
                         break SessionOutcome::Shutdown;
                     } else {
                         // Default to reconnect for safety on unknown codes
