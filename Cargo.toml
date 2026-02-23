@@ -21,7 +21,6 @@ rand = "^0.8"
 toml = "1.0.2"
 davey = "0.1.1"
 audiopus = { version = "0.3.0-rc.0" }
-rubato = "0.16.1"
 xsalsa20poly1305 = "0.9.1"
 aes = "0.8"
 des = "0.8.1"
@@ -35,7 +34,6 @@ urlencoding = "2.1.3"
 hmac = "0.12"
 sha1 = "0.10"
 sha2 = "0.10"
-tracing-appender = "0.2"
 parking_lot = "0.12.5"
 
 tracing-subscriber = { version = "^0.3.20", features = ["env-filter", "registry", "time", "local-time"] }
@@ -44,9 +42,8 @@ time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
 symphonia = { version = "0.5.5", features = ["aac", "mp3", "ogg", "flac", "wav", "isomp4", "mkv", "alac"] }
 tokio-tungstenite = { version = "0.26.2", features = ["rustls-tls-native-roots"] }
 tokio-util = { version = "0.7.13", features = ["codec"] }
-rustypipe = { version = "0.11.4", features = ["rustls-tls-native-roots"] }
 uuid = { version = "1.21.0", features = ["v4", "serde"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "cookies"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "cookies", "gzip"] }
 tokio = { version = "1.49.0", features = ["tracing", "macros", "signal", "rt-multi-thread"] }
 axum = { version = "0.8.1", features = ["ws"] }
 tower-http = { version = "0.6.2", features = ["trace", "cors"] }
