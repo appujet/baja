@@ -36,6 +36,19 @@ bandcamp = true
 audius = true
 yandexmusic = true
 
+[lyrics]
+youtube = true
+lrclib = true
+genius = true
+deezer = true
+bilibili = true
+musixmatch = true
+letrasmus = true
+yandex = false
+
+[yandex.lyrics]
+# access_token = "your access token"
+
 [mirrors]
 providers = [
   #"ytsearch:\"%ISRC%\"",
@@ -223,4 +236,3 @@ filters = "rustalink=debug"
 [logging.file]
 path = "logs/rustalink.log"
 max_lines = 10000
-

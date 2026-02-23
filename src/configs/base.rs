@@ -7,6 +7,8 @@ pub struct Config {
     pub server: ServerConfig,
     pub route_planner: RoutePlannerConfig,
     pub sources: SourcesConfig,
+    #[serde(default)]
+    pub lyrics: LyricsConfig,
     pub logging: Option<LoggingConfig>,
     #[serde(default)]
     pub filters: FiltersConfig,
@@ -48,6 +50,8 @@ pub struct Config {
     pub audius: Option<AudiusConfig>,
     #[serde(default)]
     pub yandexmusic: Option<YandexMusicConfig>,
+    #[serde(default)]
+    pub yandex: Option<YandexConfig>,
 }
 
 impl Default for Config {
@@ -56,6 +60,7 @@ impl Default for Config {
             server: ServerConfig::default(),
             route_planner: RoutePlannerConfig::default(),
             sources: SourcesConfig::default(),
+            lyrics: LyricsConfig::default(),
             logging: None,
             filters: FiltersConfig::default(),
             player: PlayerConfig::default(),
@@ -77,6 +82,7 @@ impl Default for Config {
             bandcamp: None,
             audius: None,
             yandexmusic: None,
+            yandex: None,
         }
     }
 }

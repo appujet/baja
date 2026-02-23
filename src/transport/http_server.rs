@@ -12,7 +12,7 @@ use tracing::warn;
 
 use crate::{
     server::AppState,
-    transport::routes::{player, stats},
+    transport::routes::{lyrics, player, stats},
 };
 
 async fn check_auth(
@@ -43,7 +43,7 @@ async fn add_response_headers(req: Request, next: Next) -> Response {
     let mut response = next.run(req).await;
     response
         .headers_mut()
-        .insert("Lavalink-Api-Version", HeaderValue::from_static("4"));
+        .insert("Rustalink-Api-Version", HeaderValue::from_static("4"));
     response
 }
 
@@ -65,6 +65,16 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(player::get_player)
                 .patch(player::update_player)
                 .delete(player::destroy_player),
+        )
+        .route("/v4/loadlyrics", get(lyrics::load_lyrics))
+        .route("/v4/lyrics", get(lyrics::get_lyrics))
+        .route(
+            "/v4/sessions/{session_id}/players/{guild_id}/lyrics/subscribe",
+            post(lyrics::subscribe_lyrics).delete(lyrics::unsubscribe_lyrics),
+        )
+        .route(
+            "/v4/sessions/{session_id}/players/{guild_id}/track/lyrics",
+            get(lyrics::get_player_lyrics),
         )
         .route("/v4/sessions/{session_id}", patch(player::update_session))
         .route("/v4/routeplanner/status", get(stats::routeplanner_status))

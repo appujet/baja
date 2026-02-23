@@ -147,6 +147,7 @@ pub async fn handle_op(
                 track,
                 session.clone(),
                 state.source_manager.clone(),
+                state.lyrics_manager.clone(),
                 state.routeplanner.clone(),
                 state.config.server.player_update_interval,
                 None,

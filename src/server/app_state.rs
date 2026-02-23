@@ -17,6 +17,7 @@ pub struct AppState {
     pub resumable_sessions: SessionMap,
     pub routeplanner: Option<Arc<dyn RoutePlanner>>,
     pub source_manager: Arc<SourceManager>,
+    pub lyrics_manager: Arc<crate::lyrics::LyricsManager>,
     pub config: crate::configs::Config,
 }
 

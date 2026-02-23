@@ -57,6 +57,7 @@ async fn main() -> AnyResult<()> {
         resumable_sessions: DashMap::new(),
         routeplanner,
         source_manager: Arc::new(rustalink::sources::SourceManager::new(&config)),
+        lyrics_manager: Arc::new(rustalink::lyrics::LyricsManager::new(&config)),
         config: config.clone(),
     });
 

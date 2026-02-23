@@ -3,6 +3,7 @@ pub mod audio;
 pub mod common;
 pub mod configs;
 pub mod gateway;
+pub mod lyrics;
 pub mod monitoring;
 pub mod player;
 pub mod routeplanner;
