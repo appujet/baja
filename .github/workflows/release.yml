@@ -46,7 +46,12 @@ jobs:
             bin: rustalink
             name: rustalink-macos-arm64
           - os: windows-latest
-            os_name: Windows
+            os_name: Windows ARM64
+            target: aarch64-pc-windows-msvc
+            bin: rustalink.exe
+            name: rustalink-windows-arm64.exe
+          - os: windows-latest
+            os_name: Windows x64
             target: x86_64-pc-windows-msvc
             bin: rustalink.exe
             name: rustalink-windows-amd64.exe
@@ -131,6 +136,19 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: bin
+
+      - name: Organize binaries
+        run: |
+          mkdir -p bin/linux/amd64 bin/linux/arm64
+          mv bin/rustalink-linux-amd64/rustalink-linux-amd64 bin/linux/amd64/rustalink
+          mv bin/rustalink-linux-arm64/rustalink-linux-arm64 bin/linux/arm64/rustalink
+          chmod +x bin/linux/amd64/rustalink bin/linux/arm64/rustalink
+          ls -R bin
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
