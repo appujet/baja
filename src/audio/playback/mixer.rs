@@ -30,6 +30,7 @@ pub struct Mixer {
 struct PassthroughTrack {
     rx: flume::Receiver<std::sync::Arc<Vec<u8>>>,
     position: Arc<AtomicU64>,
+    state: Arc<AtomicU8>,
 }
 
 struct MixerTrack {
@@ -83,10 +84,12 @@ impl Mixer {
         &mut self,
         opus_rx: flume::Receiver<std::sync::Arc<Vec<u8>>>,
         position: Arc<AtomicU64>,
+        state: Arc<AtomicU8>,
     ) {
         self.opus_passthrough = Some(PassthroughTrack {
             rx: opus_rx,
             position,
+            state,
         });
     }
 
@@ -95,6 +98,17 @@ impl Mixer {
     /// Returns `Some(frame)` if a frame is ready, `None` if not (use PCM path).
     pub fn take_opus_frame(&mut self) -> Option<std::sync::Arc<Vec<u8>>> {
         if let Some(ref pt) = self.opus_passthrough {
+            let state_raw = pt.state.load(Ordering::Acquire);
+            let state = PlaybackState::from_u8(state_raw);
+
+            if state == PlaybackState::Paused
+                || state == PlaybackState::Stopped
+                || state == PlaybackState::Stopping
+                || state == PlaybackState::Starting
+            {
+                return None;
+            }
+
             match pt.rx.try_recv() {
                 Ok(frame) => {
                     // Update position. Every Opus frame is 20ms (960 samples @ 48kHz).

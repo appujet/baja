@@ -176,9 +176,15 @@ pub async fn start_playback(
     {
         let engine = player.engine.lock().await;
         let mut mixer = engine.mixer.lock().await;
-        mixer.add_track(rx, audio_state, vol, pos.clone(), player.config.clone());
+        mixer.add_track(
+            rx,
+            audio_state.clone(),
+            vol,
+            pos.clone(),
+            player.config.clone(),
+        );
         if let Some(opus) = opus_rx {
-            mixer.add_passthrough_track(opus, pos);
+            mixer.add_passthrough_track(opus, pos, audio_state.clone());
         }
     }
 
