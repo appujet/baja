@@ -1,4 +1,4 @@
-use super::{delay_line::DelayLine, lfo::Lfo, AudioFilter};
+use super::{AudioFilter, delay_line::DelayLine, lfo::Lfo};
 
 const MAX_DELAY_MS: f32 = 10.0;
 const BUFFER_SIZE: usize = ((48000.0 * MAX_DELAY_MS) / 1000.0) as usize;
@@ -51,7 +51,8 @@ impl AudioFilter for FlangerFilter {
 
             let delayed = self.delay_line.read(delay.into());
             let input = (*sample as f32) + delayed * self.feedback;
-            self.delay_line.write(input.clamp(i16::MIN as f32, i16::MAX as f32));
+            self.delay_line
+                .write(input.clamp(i16::MIN as f32, i16::MAX as f32));
 
             let output = (*sample as f32) + delayed;
             *sample = output.clamp(i16::MIN as f32, i16::MAX as f32) as i16;

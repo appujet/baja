@@ -1,14 +1,14 @@
-use futures::StreamExt;
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 use base64::{
-    Engine as _, engine::general_purpose::STANDARD as B64,
-    engine::general_purpose::URL_SAFE as B64URL,
+    Engine as _,
+    engine::general_purpose::{STANDARD as B64, URL_SAFE as B64URL},
 };
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio::time::sleep;
+use futures::StreamExt;
+use tokio::{sync::mpsc, task::JoinHandle, time::sleep};
 use tokio_util::bytes::Bytes;
 
 use crate::common::types::AnyResult;
@@ -22,12 +22,14 @@ pub(crate) fn decode_po_token(s: &str) -> Option<Vec<u8>> {
     B64.decode(&s).ok()
 }
 
-use super::config::{SabrConfig, SabrFormat};
-use super::proto::{
-    self, EncodedBufferedRange, MediaHeaderMsg, UMP_FORMAT_INITIALIZATION_METADATA, UMP_MEDIA,
-    UMP_MEDIA_END, UMP_MEDIA_HEADER, UMP_NEXT_REQUEST_POLICY, UMP_RELOAD_PLAYER_RESPONSE,
-    UMP_SABR_CONTEXT_SENDING_POLICY, UMP_SABR_CONTEXT_UPDATE, UMP_SABR_ERROR, UMP_SABR_REDIRECT,
-    UMP_STREAM_PROTECTION_STATUS,
+use super::{
+    config::{SabrConfig, SabrFormat},
+    proto::{
+        self, EncodedBufferedRange, MediaHeaderMsg, UMP_FORMAT_INITIALIZATION_METADATA, UMP_MEDIA,
+        UMP_MEDIA_END, UMP_MEDIA_HEADER, UMP_NEXT_REQUEST_POLICY, UMP_RELOAD_PLAYER_RESPONSE,
+        UMP_SABR_CONTEXT_SENDING_POLICY, UMP_SABR_CONTEXT_UPDATE, UMP_SABR_ERROR,
+        UMP_SABR_REDIRECT, UMP_STREAM_PROTECTION_STATUS,
+    },
 };
 
 #[derive(Debug, Clone)]

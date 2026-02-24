@@ -1,10 +1,10 @@
-use parking_lot::{Condvar, Mutex};
 use std::{
     io::{Read, Seek, SeekFrom},
     sync::Arc,
     thread,
 };
 
+use parking_lot::{Condvar, Mutex};
 use symphonia::core::io::MediaSource;
 use tracing::debug;
 

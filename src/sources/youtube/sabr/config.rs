@@ -65,13 +65,12 @@ impl SabrFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FormatInfo {
-    Webm = 0, 
+    Webm = 0,
     Mp4 = 1,
     Unknown = 2,
 }
 
 impl SabrConfig {
-
     pub fn from_player_response(
         response: &Value,
         visitor_data: Option<String>,
@@ -130,7 +129,6 @@ impl SabrConfig {
             }
         };
 
-
         let adaptive_formats = streaming_data
             .get("adaptiveFormats")
             .and_then(|v| v.as_array());
@@ -171,10 +169,7 @@ impl SabrConfig {
                     .and_then(|v| v.as_str())
                     .map(str::to_string);
 
-                let bitrate = fmt
-                    .get("bitrate")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
+                let bitrate = fmt.get("bitrate").and_then(|v| v.as_u64()).unwrap_or(0);
 
                 let average_bitrate = fmt
                     .get("averageBitrate")
@@ -192,10 +187,7 @@ impl SabrConfig {
                     .map(|q| q == "AUDIO_QUALITY_MEDIUM" || q == "AUDIO_QUALITY_HIGH")
                     .unwrap_or(false);
 
-                let is_drc = fmt
-                    .get("isDrc")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let is_drc = fmt.get("isDrc").and_then(|v| v.as_bool()).unwrap_or(false);
 
                 formats.push(SabrFormat {
                     itag,
@@ -213,9 +205,7 @@ impl SabrConfig {
         }
 
         if formats.is_empty() {
-            tracing::warn!(
-                "SABR config: no audio formats found in adaptiveFormats"
-            );
+            tracing::warn!("SABR config: no audio formats found in adaptiveFormats");
         } else {
             tracing::debug!(
                 "SABR config: {} audio formats parsed (best itag={})",
@@ -240,7 +230,6 @@ impl SabrConfig {
             start_time_ms: 0,
         })
     }
-
 
     /// Select the best audio format for SABR streaming.
     /// Prefers `audio/webm` (opus) first, then `audio/mp4` (AAC).

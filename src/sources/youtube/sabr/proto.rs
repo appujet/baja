@@ -29,21 +29,27 @@ impl ProtoWriter {
 
     /// Field type 0 (varint), skip if value == 0
     pub fn write_i32(&mut self, field: u32, value: i32) {
-        if value == 0 { return; }
+        if value == 0 {
+            return;
+        }
         self.write_tag(field, 0);
         self.write_varint(value as u64);
     }
 
     /// Field type 0 (varint), skip if value == 0
     pub fn write_i64(&mut self, field: u32, value: i64) {
-        if value == 0 { return; }
+        if value == 0 {
+            return;
+        }
         self.write_tag(field, 0);
         self.write_varint(value as u64);
     }
 
     /// Field type 0 (varint), skip if value == 0
     pub fn write_u64(&mut self, field: u32, value: u64) {
-        if value == 0 { return; }
+        if value == 0 {
+            return;
+        }
         self.write_tag(field, 0);
         self.write_varint(value);
     }
@@ -56,21 +62,27 @@ impl ProtoWriter {
 
     /// Field type 0, write bool if true
     pub fn write_bool(&mut self, field: u32, value: bool) {
-        if !value { return; }
+        if !value {
+            return;
+        }
         self.write_tag(field, 0);
         self.buf.push(1);
     }
 
     /// Field type 5 (32-bit LE float)
     pub fn write_float(&mut self, field: u32, value: f32) {
-        if value == 0.0 { return; }
+        if value == 0.0 {
+            return;
+        }
         self.write_tag(field, 5);
         self.buf.extend_from_slice(&value.to_le_bytes());
     }
 
     /// Field type 2 (length-delimited string)
     pub fn write_string(&mut self, field: u32, value: &str) {
-        if value.is_empty() { return; }
+        if value.is_empty() {
+            return;
+        }
         self.write_tag(field, 2);
         self.write_varint(value.len() as u64);
         self.buf.extend_from_slice(value.as_bytes());
@@ -78,7 +90,9 @@ impl ProtoWriter {
 
     /// Field type 2 (length-delimited bytes)
     pub fn write_bytes(&mut self, field: u32, value: &[u8]) {
-        if value.is_empty() { return; }
+        if value.is_empty() {
+            return;
+        }
         self.write_tag(field, 2);
         self.write_varint(value.len() as u64);
         self.buf.extend_from_slice(value);
@@ -87,7 +101,9 @@ impl ProtoWriter {
     /// Embed a nested message (field type 2)
     pub fn write_message(&mut self, field: u32, nested: ProtoWriter) {
         let bytes = nested.finish();
-        if bytes.is_empty() { return; }
+        if bytes.is_empty() {
+            return;
+        }
         self.write_tag(field, 2);
         self.write_varint(bytes.len() as u64);
         self.buf.extend_from_slice(&bytes);
@@ -126,7 +142,9 @@ impl<'a> ProtoReader<'a> {
             self.pos += 1;
             result |= (b & 0x7F) << shift;
             shift += 7;
-            if b & 0x80 == 0 { break; }
+            if b & 0x80 == 0 {
+                break;
+            }
         }
         result
     }
@@ -163,11 +181,22 @@ impl<'a> ProtoReader<'a> {
 
     pub fn skip_field(&mut self, wire_type: u32) {
         match wire_type {
-            0 => { self.read_varint(); }
-            1 => { self.pos = (self.pos + 8).min(self.data.len()); }
-            2 => { let len = self.read_varint() as usize; self.pos = (self.pos + len).min(self.data.len()); }
-            5 => { self.pos = (self.pos + 4).min(self.data.len()); }
-            _ => { self.pos = self.data.len(); } // Unknown — consume all
+            0 => {
+                self.read_varint();
+            }
+            1 => {
+                self.pos = (self.pos + 8).min(self.data.len());
+            }
+            2 => {
+                let len = self.read_varint() as usize;
+                self.pos = (self.pos + len).min(self.data.len());
+            }
+            5 => {
+                self.pos = (self.pos + 4).min(self.data.len());
+            }
+            _ => {
+                self.pos = self.data.len();
+            } // Unknown — consume all
         }
     }
 }
@@ -193,25 +222,33 @@ pub fn read_ump_varint(data: &[u8], offset: usize) -> Option<(u64, usize)> {
         return Some((first, 1));
     }
     if first < 0xC0 {
-        if offset + 2 > data.len() { return None; }
+        if offset + 2 > data.len() {
+            return None;
+        }
         let b2 = data[offset + 1] as u64;
         return Some(((first & 0x3F) + 64 * b2, 2));
     }
     if first < 0xE0 {
-        if offset + 3 > data.len() { return None; }
+        if offset + 3 > data.len() {
+            return None;
+        }
         let b2 = data[offset + 1] as u64;
         let b3 = data[offset + 2] as u64;
         return Some(((first & 0x1F) + 32 * (b2 + 256 * b3), 3));
     }
     if first < 0xF0 {
-        if offset + 4 > data.len() { return None; }
+        if offset + 4 > data.len() {
+            return None;
+        }
         let b2 = data[offset + 1] as u64;
         let b3 = data[offset + 2] as u64;
         let b4 = data[offset + 3] as u64;
         return Some(((first & 0x0F) + 16 * (b2 + 256 * (b3 + 256 * b4)), 4));
     }
     // 5-byte form
-    if offset + 5 > data.len() { return None; }
+    if offset + 5 > data.len() {
+        return None;
+    }
     let value = u32::from_le_bytes([
         data[offset + 1],
         data[offset + 2],
@@ -251,8 +288,8 @@ pub fn encode_streamer_context(
     client_version: &str,
     po_token: Option<&[u8]>,
     playback_cookie: Option<&[u8]>,
-    sabr_contexts: &[(i32, Vec<u8>)],       // (type, value) pairs to send
-    unsent_context_types: &[i32],            // types to report as unsent
+    sabr_contexts: &[(i32, Vec<u8>)], // (type, value) pairs to send
+    unsent_context_types: &[i32],     // types to report as unsent
 ) -> ProtoWriter {
     let mut w = ProtoWriter::new();
     w.write_message(1, encode_client_info(client_name_id, client_version));
@@ -280,10 +317,10 @@ pub fn encode_video_playback_abr_request(
     // ClientAbrState fields
     bandwidth_estimate: u64,
     player_time_ms: u64,
-    enabled_track_types_bitfield: i32,   // 1 = audio only
+    enabled_track_types_bitfield: i32, // 1 = audio only
     audio_track_id: &str,
     // Format IDs
-    selected_format_ids: &[(i32, &str, Option<&str>)],  // (itag, lastMod, xtags)
+    selected_format_ids: &[(i32, &str, Option<&str>)], // (itag, lastMod, xtags)
     buffered_ranges: &[EncodedBufferedRange],
     preferred_audio_format_ids: &[(i32, &str, Option<&str>)],
     // Core config
@@ -302,18 +339,18 @@ pub fn encode_video_playback_abr_request(
     // Field 1: ClientAbrState
     {
         let mut s = ProtoWriter::new();
-        s.write_i32(16, 1080);                               // lastManualSelectedResolution
-        s.write_i32(21, 1080);                               // stickyResolution
-        s.write_bool(22, false);                             // clientViewportIsFlexible
-        s.write_u64(23, bandwidth_estimate.max(500_000));    // bandwidthEstimate
-        s.write_u64(28, player_time_ms);                     // playerTimeMs
-        s.write_i32(34, 1);                                  // visibility
-        s.write_float(35, 1.0);                              // playbackRate
-        s.write_i64(39, 0);                                  // timeSinceLastActionMs
-        s.write_i32(40, enabled_track_types_bitfield);       // enabledTrackTypesBitfield
-        s.write_u64(44, player_state);                       // playerState
-        s.write_bool(46, false);                             // drcEnabled
-        s.write_string(69, audio_track_id);                  // audioTrackId
+        s.write_i32(16, 1080); // lastManualSelectedResolution
+        s.write_i32(21, 1080); // stickyResolution
+        s.write_bool(22, false); // clientViewportIsFlexible
+        s.write_u64(23, bandwidth_estimate.max(500_000)); // bandwidthEstimate
+        s.write_u64(28, player_time_ms); // playerTimeMs
+        s.write_i32(34, 1); // visibility
+        s.write_float(35, 1.0); // playbackRate
+        s.write_i64(39, 0); // timeSinceLastActionMs
+        s.write_i32(40, enabled_track_types_bitfield); // enabledTrackTypesBitfield
+        s.write_u64(44, player_state); // playerState
+        s.write_bool(46, false); // drcEnabled
+        s.write_string(69, audio_track_id); // audioTrackId
         root.write_message(1, s);
     }
 
@@ -376,10 +413,10 @@ impl EncodedBufferedRange {
             1,
             encode_format_id(self.itag, &self.last_modified, self.xtags.as_deref()),
         );
-        w.write_u64(2, self.start_time_ms);           // startTimeMs
-        w.write_u64(3, self.duration_ms);             // durationMs
+        w.write_u64(2, self.start_time_ms); // startTimeMs
+        w.write_u64(3, self.duration_ms); // durationMs
         w.write_i32(4, self.start_segment_index as i32); // startSegmentIndex
-        w.write_i32(5, self.end_segment_index as i32);   // endSegmentIndex
+        w.write_i32(5, self.end_segment_index as i32); // endSegmentIndex
         // field 6: TimeRange
         if self.timescale > 0 {
             let mut tr = ProtoWriter::new();
@@ -444,12 +481,12 @@ pub fn decode_media_header(data: &[u8]) -> Option<MediaHeaderMsg> {
         let field = tag >> 3;
         let wire = tag & 7;
         match field {
-            1 if wire == 0  => h.header_id = r.read_varint() as u8,
-            3 if wire == 0  => h.itag = r.read_varint() as i32,
-            4 if wire == 0  => h.last_modified = r.read_varint().to_string(),
-            5 if wire == 2  => h.xtags = Some(r.read_string()),
-            8 if wire == 0  => h.is_init_seg = r.read_varint() != 0,
-            9 if wire == 0  => h.sequence_number = r.read_varint() as u32,
+            1 if wire == 0 => h.header_id = r.read_varint() as u8,
+            3 if wire == 0 => h.itag = r.read_varint() as i32,
+            4 if wire == 0 => h.last_modified = r.read_varint().to_string(),
+            5 if wire == 2 => h.xtags = Some(r.read_string()),
+            8 if wire == 0 => h.is_init_seg = r.read_varint() != 0,
+            9 if wire == 0 => h.sequence_number = r.read_varint() as u32,
             11 if wire == 0 => h.start_ms = r.read_varint(),
             12 if wire == 0 => h.duration_ms = r.read_varint(),
             13 if wire == 2 => {
@@ -572,7 +609,10 @@ pub struct SabrErrorMsg {
 
 pub fn decode_sabr_error(data: &[u8]) -> SabrErrorMsg {
     let mut r = ProtoReader::new(data);
-    let mut m = SabrErrorMsg { error_type: String::new(), code: 0 };
+    let mut m = SabrErrorMsg {
+        error_type: String::new(),
+        code: 0,
+    };
     while r.has_remaining() {
         let tag = r.read_tag();
         match tag >> 3 {
@@ -605,7 +645,11 @@ pub struct SabrContextUpdateMsg {
 
 pub fn decode_sabr_context_update(data: &[u8]) -> Option<SabrContextUpdateMsg> {
     let mut r = ProtoReader::new(data);
-    let mut m = SabrContextUpdateMsg { context_type: -1, value: Vec::new(), send_by_default: false };
+    let mut m = SabrContextUpdateMsg {
+        context_type: -1,
+        value: Vec::new(),
+        send_by_default: false,
+    };
 
     while r.has_remaining() {
         let tag = r.read_tag();
@@ -619,7 +663,11 @@ pub fn decode_sabr_context_update(data: &[u8]) -> Option<SabrContextUpdateMsg> {
         }
     }
 
-    if m.context_type < 0 || m.value.is_empty() { None } else { Some(m) }
+    if m.context_type < 0 || m.value.is_empty() {
+        None
+    } else {
+        Some(m)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -678,10 +726,14 @@ pub fn parse_ump_parts(data: &[u8]) -> Vec<(u64, &[u8])> {
     let mut offset = 0;
 
     while offset < data.len() {
-        let Some((part_type, n1)) = read_ump_varint(data, offset) else { break };
+        let Some((part_type, n1)) = read_ump_varint(data, offset) else {
+            break;
+        };
         offset += n1;
 
-        let Some((part_size, n2)) = read_ump_varint(data, offset) else { break };
+        let Some((part_size, n2)) = read_ump_varint(data, offset) else {
+            break;
+        };
         offset += n2;
 
         let size = part_size as usize;
@@ -701,9 +753,7 @@ pub struct UmpStreamParser {
 
 impl UmpStreamParser {
     pub fn new() -> Self {
-        Self {
-            buffer: Vec::new(),
-        }
+        Self { buffer: Vec::new() }
     }
 
     /// Push a new byte chunk and return all complete UMP parts.

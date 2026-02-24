@@ -10,7 +10,9 @@ use super::{
 use crate::{
     api::tracks::{Track, TrackInfo},
     common::types::AnyResult,
-    sources::youtube::{cipher::YouTubeCipherManager, oauth::YouTubeOAuth},
+    sources::youtube::{
+        cipher::YouTubeCipherManager, clients::common::ClientConfig, oauth::YouTubeOAuth,
+    },
 };
 
 const CLIENT_NAME: &str = "ANDROID_MUSIC";
@@ -35,31 +37,19 @@ impl MusicAndroidClient {
         Self { http }
     }
 
-    fn build_context(&self, visitor_data: Option<&str>) -> Value {
-        let mut client = json!({
-            "clientName": CLIENT_NAME,
-            "clientVersion": CLIENT_VERSION,
-            "userAgent": USER_AGENT,
-            "deviceMake": "Google",
-            "deviceModel": "Pixel 6",
-            "osName": "Android",
-            "osVersion": "14",
-            "androidSdkVersion": "30",
-            "hl": "en",
-            "gl": "US"
-        });
-
-        if let Some(vd) = visitor_data {
-            if let Some(obj) = client.as_object_mut() {
-                obj.insert("visitorData".to_string(), vd.into());
-            }
+    fn config(&self) -> ClientConfig<'_> {
+        ClientConfig {
+            client_name: CLIENT_NAME,
+            client_version: CLIENT_VERSION,
+            client_id: "67",
+            user_agent: USER_AGENT,
+            device_make: Some("Google"),
+            device_model: Some("Pixel 6"),
+            os_name: Some("Android"),
+            os_version: Some("14"),
+            android_sdk_version: Some("30"),
+            ..Default::default()
         }
-
-        json!({
-            "client": client,
-            "user": { "lockedSafetyMode": false },
-            "request": { "useSsl": true }
-        })
     }
 
     async fn player_request(
@@ -71,10 +61,8 @@ impl MusicAndroidClient {
     ) -> AnyResult<Value> {
         crate::sources::youtube::clients::common::make_player_request(
             &self.http,
+            &self.config(),
             video_id,
-            self.build_context(visitor_data),
-            "67", // ANDROID_MUSIC client_id = 67
-            CLIENT_VERSION,
             None,
             visitor_data,
             signature_timestamp,
@@ -115,7 +103,7 @@ impl YouTubeClient for MusicAndroidClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let body = json!({
-            "context": self.build_context(None),
+            "context": self.config().build_context(None),
             "query": query,
             "params": "EgWKAQIIAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D"
         });
@@ -477,7 +465,7 @@ impl YouTubeClient for MusicAndroidClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let body = json!({
-            "context": self.build_context(visitor_data),
+            "context": self.config().build_context(visitor_data),
             "playlistId": playlist_id,
             "enablePersistentPlaylistPanel": true,
             "isAudioOnly": true

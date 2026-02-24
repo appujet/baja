@@ -12,6 +12,7 @@ use crate::{
     common::types::AnyResult,
     sources::youtube::{
         cipher::YouTubeCipherManager,
+        clients::common::ClientConfig,
         extractor::{extract_from_player, extract_track},
         oauth::YouTubeOAuth,
     },
@@ -37,32 +38,19 @@ impl IosClient {
         Self { http }
     }
 
-    /// Build the InnerTube context block mirroring the IOS getClient().
-    fn build_context(&self, visitor_data: Option<&str>) -> Value {
-        let mut client = json!({
-            "clientName": CLIENT_NAME,
-            "clientVersion": CLIENT_VERSION,
-            "userAgent": USER_AGENT,
-            "deviceMake": "Apple",
-            "deviceModel": "iPhone16,2",
-            "osName": "iPhone",
-            "osVersion": "18.2.22C152",
-            "hl": "en",
-            "gl": "US",
-            "utcOffsetMinutes": 0
-        });
-
-        if let Some(vd) = visitor_data {
-            if let Some(obj) = client.as_object_mut() {
-                obj.insert("visitorData".to_string(), vd.into());
-            }
+    fn config(&self) -> ClientConfig<'_> {
+        ClientConfig {
+            client_name: CLIENT_NAME,
+            client_version: CLIENT_VERSION,
+            client_id: "5",
+            user_agent: USER_AGENT,
+            device_make: Some("Apple"),
+            device_model: Some("iPhone16,2"),
+            os_name: Some("iPhone"),
+            os_version: Some("18.2.22C152"),
+            utc_offset_minutes: Some(0),
+            ..Default::default()
         }
-
-        json!({
-            "client": client,
-            "user": { "lockedSafetyMode": false },
-            "request": { "useSsl": true }
-        })
     }
 
     async fn player_request(
@@ -74,10 +62,8 @@ impl IosClient {
     ) -> AnyResult<Value> {
         crate::sources::youtube::clients::common::make_player_request(
             &self.http,
+            &self.config(),
             video_id,
-            self.build_context(visitor_data),
-            "5", // CLIENT_ID for IOS
-            CLIENT_VERSION,
             None,
             visitor_data,
             signature_timestamp,
@@ -119,7 +105,7 @@ impl YouTubeClient for IosClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let body = json!({
-            "context": self.build_context(visitor_data),
+            "context": self.config().build_context(visitor_data),
             "query": query,
             "params": "EgIQAQ%3D%3D"
         });

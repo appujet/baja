@@ -27,8 +27,9 @@ pub mod track;
 use cipher::YouTubeCipherManager;
 use clients::{
     YouTubeClient, android::AndroidClient, android_vr::AndroidVrClient, ios::IosClient,
-    music_android::MusicAndroidClient, tv::TvClient, tv_cast::TvCastClient, web::WebClient,
-    web_embedded::WebEmbeddedClient, web_remix::WebRemixClient,
+    music_android::MusicAndroidClient, tv::TvClient, tv_cast::TvCastClient,
+    tv_embedded::TvEmbeddedClient, web::WebClient, web_embedded::WebEmbeddedClient,
+    web_parent_tools::WebParentToolsClient, web_remix::WebRemixClient,
 };
 use oauth::YouTubeOAuth;
 
@@ -108,11 +109,17 @@ impl YouTubeSource {
                 "IOS" => Some(Arc::new(IosClient::new())),
                 "TV" | "TVHTML5" | "TVHTML5_SIMPLY" => Some(Arc::new(TvClient::new())),
                 "TV_CAST" | "TVHTML5_CAST" => Some(Arc::new(TvCastClient::new())),
+                "TV_EMBEDDED" | "TVHTML5_SIMPLY_EMBEDDED_PLAYER" => {
+                    Some(Arc::new(TvEmbeddedClient::new()))
+                }
                 "MUSIC" | "MUSIC_ANDROID" | "ANDROID_MUSIC" => {
                     Some(Arc::new(MusicAndroidClient::new()))
                 }
                 "ANDROID_VR" | "ANDROIDVR" => Some(Arc::new(AndroidVrClient::new())),
                 "WEB_EMBEDDED" | "WEBEMBEDDED" => Some(Arc::new(WebEmbeddedClient::new())),
+                "WEB_PARENT_TOOLS" | "WEBPARENTTOOLS" => {
+                    Some(Arc::new(WebParentToolsClient::new()))
+                }
                 _ => {
                     tracing::warn!("Unknown YouTube client: {}", name);
                     None

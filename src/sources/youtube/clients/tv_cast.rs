@@ -12,6 +12,7 @@ use crate::{
     common::types::AnyResult,
     sources::youtube::{
         cipher::YouTubeCipherManager,
+        clients::common::ClientConfig,
         extractor::{extract_from_next, extract_from_player, extract_track},
         oauth::YouTubeOAuth,
     },
@@ -36,26 +37,14 @@ impl TvCastClient {
         Self { http }
     }
 
-    fn build_context(&self, visitor_data: Option<&str>) -> Value {
-        let mut client = json!({
-            "clientName": CLIENT_NAME_OVERRIDE,
-            "clientVersion": CLIENT_VERSION,
-            "userAgent": USER_AGENT,
-            "hl": "en",
-            "gl": "US"
-        });
-
-        if let Some(vd) = visitor_data {
-            if let Some(obj) = client.as_object_mut() {
-                obj.insert("visitorData".to_string(), vd.into());
-            }
+    fn config(&self) -> ClientConfig<'_> {
+        ClientConfig {
+            client_name: CLIENT_NAME_OVERRIDE,
+            client_version: CLIENT_VERSION,
+            client_id: "7",
+            user_agent: USER_AGENT,
+            ..Default::default()
         }
-
-        json!({
-            "client": client,
-            "user": { "lockedSafetyMode": false },
-            "request": { "useSsl": true }
-        })
     }
 
     async fn player_request(
@@ -66,14 +55,12 @@ impl TvCastClient {
     ) -> AnyResult<Value> {
         crate::sources::youtube::clients::common::make_player_request(
             &self.http,
+            &self.config(),
             video_id,
-            self.build_context(visitor_data),
-            "7", // TV client_id is typically 7 or "1".
-            CLIENT_VERSION,
             None,
             visitor_data,
             signature_timestamp,
-            None, // No OAuth
+            None,
             None,
             None,
             None,
@@ -89,13 +76,11 @@ impl TvCastClient {
     ) -> AnyResult<Value> {
         make_next_request(
             &self.http,
+            &self.config(),
             video_id,
             playlist_id,
-            self.build_context(visitor_data),
-            "7",
-            CLIENT_VERSION,
             visitor_data,
-            None, // No OAuth
+            None,
         )
         .await
     }
@@ -129,7 +114,7 @@ impl YouTubeClient for TvCastClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let body = json!({
-            "context": self.build_context(visitor_data),
+            "context": self.config().build_context(visitor_data),
             "query": query
         });
 

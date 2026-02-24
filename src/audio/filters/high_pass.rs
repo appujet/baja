@@ -1,9 +1,12 @@
-use super::{biquad::{BiquadCoeffs, BiquadState}, AudioFilter};
+use super::{
+    AudioFilter,
+    biquad::{BiquadCoeffs, BiquadState},
+};
 
 pub struct HighPassFilter {
     cutoff_frequency: i32,
     boost_factor: f32,
-    
+
     left_state: BiquadState,
     right_state: BiquadState,
     coeffs: Option<BiquadCoeffs>,
@@ -30,7 +33,7 @@ impl HighPassFilter {
         let fs = 48000.0;
         let fc = self.cutoff_frequency as f64;
         let q = 0.7071067811865475; // 1 / sqrt(2)
-        
+
         // standard biquad highpass
         let w0 = 2.0 * std::f64::consts::PI * (fc / fs);
         let cos_w0 = w0.cos();
@@ -73,8 +76,10 @@ impl AudioFilter for HighPassFilter {
             let left_in = chunk[0] as f32;
             let right_in = chunk[1] as f32;
 
-            let left_out = self.left_state.process(left_in as f64, coeffs) as f32 * boost_factor_f32;
-            let right_out = self.right_state.process(right_in as f64, coeffs) as f32 * boost_factor_f32;
+            let left_out =
+                self.left_state.process(left_in as f64, coeffs) as f32 * boost_factor_f32;
+            let right_out =
+                self.right_state.process(right_in as f64, coeffs) as f32 * boost_factor_f32;
 
             chunk[0] = left_out.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
             chunk[1] = right_out.clamp(i16::MIN as f32, i16::MAX as f32) as i16;

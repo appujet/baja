@@ -1,4 +1,4 @@
-use super::{lfo::Lfo, AudioFilter};
+use super::{AudioFilter, lfo::Lfo};
 
 const MAX_STAGES: usize = 12;
 
@@ -85,7 +85,15 @@ impl PhaserFilter {
             last_right_feedback: 0.0,
         };
 
-        filter.update(stages, rate, depth, feedback, mix, min_frequency, max_frequency);
+        filter.update(
+            stages,
+            rate,
+            depth,
+            feedback,
+            mix,
+            min_frequency,
+            max_frequency,
+        );
         filter
     }
 

@@ -53,11 +53,7 @@ pub async fn fetch_po_token(
         .ok()?;
 
     if !res.status().is_success() {
-        tracing::warn!(
-            "SABR PoToken: {} returned HTTP {}",
-            url,
-            res.status()
-        );
+        tracing::warn!("SABR PoToken: {} returned HTTP {}", url, res.status());
         return None;
     }
 

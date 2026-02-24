@@ -152,7 +152,6 @@ impl SpotifyParser {
             }
         }
 
-
         // Fallback
         track
             .get("artist")

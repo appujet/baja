@@ -407,10 +407,7 @@ impl FilterChain {
 
         // Spatial
         if let Some(ref s) = config.spatial {
-            let f = spatial::SpatialFilter::new(
-                s.rate.unwrap_or(0.0),
-                s.depth.unwrap_or(0.0),
-            );
+            let f = spatial::SpatialFilter::new(s.rate.unwrap_or(0.0), s.depth.unwrap_or(0.0));
             if f.is_enabled() {
                 filters.push(ConcreteFilter::Spatial(f));
             }

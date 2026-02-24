@@ -85,14 +85,14 @@ pub async fn update_player(
         }
     }
 
-    // Apply position (seek) — also send playerUpdate 
+    // Apply position (seek) — also send playerUpdate
     if let Some(pos) = body.position {
         player.position = pos;
         if player.track.is_some() {
             if let Some(handle) = &player.track_handle {
                 handle.seek(pos);
             }
-            // Send playerUpdate immediately after seek 
+            // Send playerUpdate immediately after seek
             let seek_update = api::OutgoingMessage::PlayerUpdate {
                 guild_id: guild_id.clone(),
                 state: crate::player::PlayerState {
@@ -289,21 +289,21 @@ pub async fn update_player(
 
                     if !no_replace || !is_playing {
                         crate::player::start_playback(
-                        &mut player,
-                        track_data,
-                        session.clone(),
-                        state.source_manager.clone(),
-                        state.lyrics_manager.clone(),
-                        state.routeplanner.clone(),
-                        state.config.server.player_update_interval,
-                        track_update.user_data.clone(),
-                        end_time_val,
-                    )
-                    .await;
+                            &mut player,
+                            track_data,
+                            session.clone(),
+                            state.source_manager.clone(),
+                            state.lyrics_manager.clone(),
+                            state.routeplanner.clone(),
+                            state.config.server.player_update_interval,
+                            track_update.user_data.clone(),
+                            end_time_val,
+                        )
+                        .await;
+                    }
                 }
             }
-        }
-    } else if let Some(identifier) = track_update.identifier {
+        } else if let Some(identifier) = track_update.identifier {
             let is_playing = if let Some(handle) = &player.track_handle {
                 handle.get_state() == crate::audio::playback::handle::PlaybackState::Playing
             } else {

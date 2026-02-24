@@ -1,10 +1,11 @@
-use std::collections::VecDeque;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::{
+    collections::VecDeque,
+    io::{self, Read, Seek, SeekFrom},
+};
 
-use tokio_util::bytes::Bytes;
 use symphonia::core::io::MediaSource;
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
+use tokio::{sync::mpsc, task::JoinHandle};
+use tokio_util::bytes::Bytes;
 
 /// Bridges SABR's async `mpsc::Receiver<Bytes>` into Symphonia's sync `Read + Seek`.
 ///

@@ -1,13 +1,8 @@
-use audiopus::{
-    Channels, MutSignals, SampleRate,
-    coder::Decoder as OpusDecoder,
-    packet::Packet,
-};
+use audiopus::{Channels, MutSignals, SampleRate, coder::Decoder as OpusDecoder, packet::Packet};
 use symphonia::core::{
     audio::{AsAudioBufferRef, AudioBuffer, AudioBufferRef, Layout, Signal, SignalSpec},
     codecs::{
-        CODEC_TYPE_OPUS, CodecDescriptor, CodecParameters, Decoder,
-        DecoderOptions, FinalizeResult,
+        CODEC_TYPE_OPUS, CodecDescriptor, CodecParameters, Decoder, DecoderOptions, FinalizeResult,
     },
     errors::{Error, Result},
     formats::Packet as SymphPacket,
@@ -37,35 +32,46 @@ impl Decoder for OpusCodecDecoder {
         }
 
         let sample_rate = params.sample_rate.unwrap_or(48000);
-        let channels = params
-            .channels
-            .map(|c| c.count())
-            .unwrap_or(2)
-            .clamp(1, 2);
+        let channels = params.channels.map(|c| c.count()).unwrap_or(2).clamp(1, 2);
 
-        let opus_channels = if channels == 1 { Channels::Mono } else { Channels::Stereo };
+        let opus_channels = if channels == 1 {
+            Channels::Mono
+        } else {
+            Channels::Stereo
+        };
 
         let opus_rate = match sample_rate {
-            8000  => SampleRate::Hz8000,
+            8000 => SampleRate::Hz8000,
             12000 => SampleRate::Hz12000,
             16000 => SampleRate::Hz16000,
             24000 => SampleRate::Hz24000,
-            _     => SampleRate::Hz48000,
+            _ => SampleRate::Hz48000,
         };
 
-        let decoder = OpusDecoder::new(opus_rate, opus_channels)
-            .map_err(|e| Error::IoError(std::io::Error::new(
+        let decoder = OpusDecoder::new(opus_rate, opus_channels).map_err(|e| {
+            Error::IoError(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 e.to_string(),
-            )))?;
+            ))
+        })?;
 
-        let layout = if channels == 1 { Layout::Mono } else { Layout::Stereo };
+        let layout = if channels == 1 {
+            Layout::Mono
+        } else {
+            Layout::Stereo
+        };
         let spec = SignalSpec::new_with_layout(sample_rate, layout);
         let buf = AudioBuffer::<i16>::new(MAX_FRAME_SIZE as Duration, spec);
         // Pre-allocate scratch buffer once; all zeroes is a safe initial state.
         let pcm = vec![0i16; MAX_FRAME_SIZE * channels];
 
-        Ok(Self { params: params.clone(), channels, decoder, buf, pcm })
+        Ok(Self {
+            params: params.clone(),
+            channels,
+            decoder,
+            buf,
+            pcm,
+        })
     }
 
     fn supported_codecs() -> &'static [CodecDescriptor] {
@@ -73,14 +79,16 @@ impl Decoder for OpusCodecDecoder {
             codec: CODEC_TYPE_OPUS,
             short_name: "opus",
             long_name: "Opus (via audiopus)",
-            inst_func: |params, opts| {
-                Ok(Box::new(OpusCodecDecoder::try_new(params, opts)?))
-            },
+            inst_func: |params, opts| Ok(Box::new(OpusCodecDecoder::try_new(params, opts)?)),
         }]
     }
 
     fn reset(&mut self) {
-        let channels = if self.channels == 1 { Channels::Mono } else { Channels::Stereo };
+        let channels = if self.channels == 1 {
+            Channels::Mono
+        } else {
+            Channels::Stereo
+        };
         if let Ok(dec) = OpusDecoder::new(SampleRate::Hz48000, channels) {
             self.decoder = dec;
         }
@@ -97,12 +105,18 @@ impl Decoder for OpusCodecDecoder {
             .decode(
                 Packet::try_from(packet.data.as_ref()).ok(),
                 MutSignals::try_from(self.pcm.as_mut_slice()).map_err(|e| {
-                    Error::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                    Error::IoError(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e.to_string(),
+                    ))
                 })?,
                 false,
             )
             .map_err(|e| {
-                Error::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+                Error::IoError(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))
             })?;
 
         // Deinterleave into symphonia's planar AudioBuffer.

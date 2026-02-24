@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use serde_json::json;
+use tokio::time::timeout;
 
 use crate::{
     api::tracks::{PlaylistData, PlaylistInfo, SearchResult, Track},
@@ -9,8 +10,6 @@ use crate::{
         token::SpotifyTokenTracker,
     },
 };
-use std::time::Duration;
-use tokio::time::timeout;
 
 pub struct SpotifySearch;
 
@@ -23,7 +22,15 @@ impl SpotifySearch {
         search_limit: usize,
         isrc_binary_regex: &Arc<regex::Regex>,
     ) -> Option<SearchResult> {
-        Self::search_full(client, token_tracker, query, types, search_limit, isrc_binary_regex).await
+        Self::search_full(
+            client,
+            token_tracker,
+            query,
+            types,
+            search_limit,
+            isrc_binary_regex,
+        )
+        .await
     }
 
     pub async fn search_full(
@@ -53,7 +60,8 @@ impl SpotifySearch {
             variables,
             hash,
         )
-        .await {
+        .await
+        {
             Some(d) => d,
             None => {
                 return None;
@@ -218,8 +226,8 @@ impl SpotifySearch {
         // Parse Playlists
         if all_types || types.contains(&"playlist".to_string()) {
             let playlist_paths = [
-              "/data/searchV2/playlistsV2/items",
-              "/data/searchV2/playlists/items",
+                "/data/searchV2/playlistsV2/items",
+                "/data/searchV2/playlists/items",
             ];
 
             for path in playlist_paths {
@@ -247,7 +255,7 @@ impl SpotifySearch {
                                 .pointer("/images/items/0/sources/0/url")
                                 .or_else(|| playlist_data.pointer("/coverArt/sources/0/url"))
                                 .and_then(|v| v.as_str());
-                            
+
                             let author = playlist_data
                                 .pointer("/ownerV2/data/name")
                                 .or_else(|| playlist_data.pointer("/ownerV2/name"))

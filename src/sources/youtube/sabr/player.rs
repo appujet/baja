@@ -6,8 +6,7 @@
 
 use serde_json::{Value, json};
 
-use super::config::SabrConfig;
-use super::pot_client;
+use super::{config::SabrConfig, pot_client};
 
 const INNERTUBE_API: &str = "https://youtubei.googleapis.com";
 
@@ -38,17 +37,33 @@ pub async fn fetch_sabr_config(
         }
         None => {
             if let Some(cipher_url) = yt_cipher_url {
-                tracing::debug!("SABR player[{}]: fetching PoToken from {}", video_id, cipher_url);
+                tracing::debug!(
+                    "SABR player[{}]: fetching PoToken from {}",
+                    video_id,
+                    cipher_url
+                );
                 // For SABR streaming, the content binding must be the video_id
-                let pot_resp = pot_client::fetch_po_token(http, cipher_url, visitor_data, Some(video_id), api_token).await;
+                let pot_resp = pot_client::fetch_po_token(
+                    http,
+                    cipher_url,
+                    visitor_data,
+                    Some(video_id),
+                    api_token,
+                )
+                .await;
                 match pot_resp {
                     Some(ref r) => {
-                        let pt = r.video_id_token.clone().unwrap_or_else(|| r.visitor_data_token.clone());
+                        let pt = r
+                            .video_id_token
+                            .clone()
+                            .unwrap_or_else(|| r.visitor_data_token.clone());
                         tracing::debug!(
                             "SABR player[{}]: got PoToken (len={}) visitorData={}",
-                            video_id, pt.len(), r.visitor_data.len()
+                            video_id,
+                            pt.len(),
+                            r.visitor_data.len()
                         );
-                        // Use PoToken's visitorData 
+                        // Use PoToken's visitorData
                         let vd = if r.visitor_data.is_empty() {
                             visitor_data.map(str::to_string)
                         } else {
@@ -65,7 +80,10 @@ pub async fn fetch_sabr_config(
                     }
                 }
             } else {
-                tracing::debug!("SABR player[{}]: no yt_cipher_url configured — no PoToken", video_id);
+                tracing::debug!(
+                    "SABR player[{}]: no yt_cipher_url configured — no PoToken",
+                    video_id
+                );
                 (None, visitor_data.map(str::to_string))
             }
         }
@@ -81,7 +99,7 @@ pub async fn fetch_sabr_config(
         "gl": "US"
     });
 
-    // Insert visitorData into context.client 
+    // Insert visitorData into context.client
     if let Some(vd) = &effective_visitor_data {
         if let Some(obj) = client_obj.as_object_mut() {
             obj.insert("visitorData".to_string(), vd.clone().into());
@@ -124,7 +142,11 @@ pub async fn fetch_sabr_config(
     let url = format!("{}/youtubei/v1/player?prettyPrint=false", INNERTUBE_API);
     tracing::debug!(
         "SABR player[{}]: POST {} (sts={:?} hasPoToken={} hasVisitorData={})",
-        video_id, url, signature_timestamp, po_token.is_some(), effective_visitor_data.is_some()
+        video_id,
+        url,
+        signature_timestamp,
+        po_token.is_some(),
+        effective_visitor_data.is_some()
     );
 
     // headers (Web.js lines 294-300):
@@ -135,13 +157,15 @@ pub async fn fetch_sabr_config(
         .header("X-YouTube-Client-Name", client_name_id.to_string())
         .header("X-YouTube-Client-Version", client_version)
         .header("Origin", "https://www.youtube.com")
-        .header("Referer", format!("https://www.youtube.com/watch?v={}", video_id));
+        .header(
+            "Referer",
+            format!("https://www.youtube.com/watch?v={}", video_id),
+        );
 
     // X-Goog-Visitor-Id: always send if we have visitorData (always does)
     if let Some(vd) = &effective_visitor_data {
         req = req.header("X-Goog-Visitor-Id", vd.as_str());
     }
-
 
     let res = match req.json(&body).send().await {
         Ok(r) => r,
@@ -152,13 +176,19 @@ pub async fn fetch_sabr_config(
     };
 
     let status = res.status();
-    tracing::debug!("SABR player[{}]: Innertube response HTTP {}", video_id, status);
+    tracing::debug!(
+        "SABR player[{}]: Innertube response HTTP {}",
+        video_id,
+        status
+    );
 
     if !status.is_success() {
         let text = res.text().await.unwrap_or_default();
         tracing::warn!(
             "SABR player[{}]: HTTP {} from Innertube: {}",
-            video_id, status, &text[..text.len().min(200)]
+            video_id,
+            status,
+            &text[..text.len().min(200)]
         );
         return None;
     }
@@ -166,7 +196,11 @@ pub async fn fetch_sabr_config(
     let response: Value = match res.json().await {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!("SABR player[{}]: failed to parse Innertube JSON: {}", video_id, e);
+            tracing::warn!(
+                "SABR player[{}]: failed to parse Innertube JSON: {}",
+                video_id,
+                e
+            );
             return None;
         }
     };
@@ -177,7 +211,11 @@ pub async fn fetch_sabr_config(
         .and_then(|s| s.as_str())
         .unwrap_or("UNKNOWN");
 
-    tracing::debug!("SABR player[{}]: playabilityStatus={}", video_id, playability);
+    tracing::debug!(
+        "SABR player[{}]: playabilityStatus={}",
+        video_id,
+        playability
+    );
 
     if playability != "OK" {
         let reason = response
@@ -187,7 +225,9 @@ pub async fn fetch_sabr_config(
             .unwrap_or("(no reason)");
         tracing::debug!(
             "SABR player[{}]: not playable (status={} reason={})",
-            video_id, playability, reason
+            video_id,
+            playability,
+            reason
         );
         return None;
     }

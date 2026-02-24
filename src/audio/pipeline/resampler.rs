@@ -52,7 +52,7 @@ impl Resampler {
     }
 
     /// Reset resampler state in-place after a seek.
-   
+
     pub fn reset(&mut self) {
         self.index = 0.0;
         self.last_samples.fill(0);

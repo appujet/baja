@@ -9,7 +9,7 @@ use crate::{
     common::types::AnyResult,
     sources::youtube::{
         cipher::YouTubeCipherManager,
-        clients::common::{extract_thumbnail, is_duration, parse_duration},
+        clients::common::{ClientConfig, extract_thumbnail, is_duration, parse_duration},
         oauth::YouTubeOAuth,
     },
 };
@@ -36,26 +36,14 @@ impl WebRemixClient {
         Self { http }
     }
 
-    fn build_context(&self, visitor_data: Option<&str>) -> Value {
-        let mut client = json!({
-            "clientName": CLIENT_NAME,
-            "clientVersion": CLIENT_VERSION,
-            "userAgent": USER_AGENT,
-            "hl": "en",
-            "gl": "US"
-        });
-
-        if let Some(vd) = visitor_data {
-            if let Some(obj) = client.as_object_mut() {
-                obj.insert("visitorData".to_string(), vd.into());
-            }
+    fn config(&self) -> ClientConfig<'_> {
+        ClientConfig {
+            client_name: CLIENT_NAME,
+            client_version: CLIENT_VERSION,
+            client_id: "26",
+            user_agent: USER_AGENT,
+            ..Default::default()
         }
-
-        json!({
-            "client": client,
-            "user": { "lockedSafetyMode": false },
-            "request": { "useSsl": true }
-        })
     }
 
     async fn player_request(
@@ -67,10 +55,8 @@ impl WebRemixClient {
     ) -> AnyResult<Value> {
         crate::sources::youtube::clients::common::make_player_request(
             &self.http,
+            &self.config(),
             video_id,
-            self.build_context(visitor_data),
-            "26", // WEB_REMIX client_id = 26
-            CLIENT_VERSION,
             None,
             visitor_data,
             signature_timestamp,
@@ -111,7 +97,7 @@ impl YouTubeClient for WebRemixClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let body = json!({
-            "context": self.build_context(visitor_data),
+            "context": self.config().build_context(visitor_data),
             "query": query,
             "params": "EgWKAQIIAWoQEAMQBBAFEBAQCRAKEBUQEQ%3D%3D"
         });
@@ -372,7 +358,7 @@ impl YouTubeClient for WebRemixClient {
 
         // Resolve a playlist/album via 'next' endpoint (common for YT Music)
         let body = json!({
-            "context": self.build_context(visitor_data),
+            "context": self.config().build_context(visitor_data),
             "playlistId": playlist_id,
             "isAudioOnly": true
         });

@@ -1,4 +1,4 @@
-use super::{delay_line::DelayLine, lfo::Lfo, AudioFilter};
+use super::{AudioFilter, delay_line::DelayLine, lfo::Lfo};
 
 const MAX_DELAY_MS: f32 = 30.0;
 const BUFFER_SIZE: usize = ((48000.0 * MAX_DELAY_MS) / 1000.0) as usize;
@@ -55,8 +55,11 @@ impl AudioFilter for SpatialFilter {
             let delayed_left = self.left_delay.read(delay_time_l.into());
             let delayed_right = self.right_delay.read(delay_time_r.into());
 
-            self.left_delay.write((left_in + delayed_left * feedback).clamp(i16::MIN as f32, i16::MAX as f32));
-            self.right_delay.write((right_in + delayed_right * feedback).clamp(i16::MIN as f32, i16::MAX as f32));
+            self.left_delay
+                .write((left_in + delayed_left * feedback).clamp(i16::MIN as f32, i16::MAX as f32));
+            self.right_delay.write(
+                (right_in + delayed_right * feedback).clamp(i16::MIN as f32, i16::MAX as f32),
+            );
 
             let new_left = left_in * dry + delayed_right * wet;
             let new_right = right_in * dry + delayed_left * wet;
