@@ -107,9 +107,9 @@ impl YouTubeSource {
                 }
                 "ANDROID" => Some(Arc::new(AndroidClient::new())),
                 "IOS" => Some(Arc::new(IosClient::new())),
-                "TV" | "TVHTML5" | "TVHTML5_SIMPLY" => Some(Arc::new(TvClient::new())),
+                "TV" | "TVHTML5" => Some(Arc::new(TvClient::new())),
                 "TV_CAST" | "TVHTML5_CAST" => Some(Arc::new(TvCastClient::new())),
-                "TV_EMBEDDED" | "TVHTML5_SIMPLY_EMBEDDED_PLAYER" => {
+                "TVHTML5_SIMPLY" | "TVHTML5_SIMPLY_EMBEDDED_PLAYER" | "TV_EMBEDDED" => {
                     Some(Arc::new(TvEmbeddedClient::new()))
                 }
                 "MUSIC" | "MUSIC_ANDROID" | "ANDROID_MUSIC" => {
