@@ -15,8 +15,8 @@ env:
   AUDIOPUS_STATIC: "1"
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
 
-# Build Linux Binaries
 jobs:
+  # Build Linux Binaries
   build-linux:
     name: 🐧 Build Linux (${{ matrix.arch }})
     runs-on: ubuntu-22.04
@@ -65,7 +65,6 @@ jobs:
             build-essential \
             perl
 
-          # Install ARM64 cross compiler for ring
           if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
             echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
@@ -74,14 +73,19 @@ jobs:
       - name: 🏗 Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
+      - name: 📦 Rename binary
+        run: |
+          mv target/${{ matrix.target }}/release/rustalink \
+             target/${{ matrix.target }}/release/rustalink-linux-${{ matrix.arch }}
+
       - name: 📤 Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: rustalink-linux-${{ matrix.arch }}
-          path: target/${{ matrix.target }}/release/rustalink
+          path: target/${{ matrix.target }}/release/rustalink-linux-${{ matrix.arch }}
 
 
-# Build macOS + Windows
+  # Build macOS + Windows
   build-other:
     name: 💻 Build ${{ matrix.os_name }}
     runs-on: ${{ matrix.os }}
@@ -162,7 +166,7 @@ jobs:
           path: target/${{ matrix.target }}/release/${{ matrix.output }}
 
 
-# Build & Push Multi-Arch Docker Image
+  # Build & Push Multi-Arch Docker Image
   docker:
     name: 🐳 Build & Push Docker Image
     needs: build-linux
@@ -181,8 +185,8 @@ jobs:
       - name: 📂 Organize binaries
         run: |
           mkdir -p bin/linux/amd64 bin/linux/arm64
-          mv bin/rustalink-linux-amd64/rustalink bin/linux/amd64/rustalink
-          mv bin/rustalink-linux-arm64/rustalink bin/linux/arm64/rustalink
+          mv bin/rustalink-linux-amd64/rustalink-linux-amd64 bin/linux/amd64/rustalink
+          mv bin/rustalink-linux-arm64/rustalink-linux-arm64 bin/linux/arm64/rustalink
           chmod +x bin/linux/amd64/rustalink bin/linux/arm64/rustalink
 
       - name: 🔧 Setup Docker Buildx
@@ -218,7 +222,7 @@ jobs:
           cache-to: type=gha,mode=max
 
 
-# Publish GitHub Release Assets
+  # Publish GitHub Release Assets
   publish:
     name: 📦 Publish Release Assets
     needs: [build-linux, build-other]
