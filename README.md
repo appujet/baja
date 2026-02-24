@@ -1,4 +1,8 @@
-# Rustalink 🦈
+<p align="center">
+  <img src="assets/rastalink.png" alt="Rustalink Logo" width="250" height="250">
+</p>
+
+# Rustalink
 
 **Rustalink** is a high-performance, v4-compatible Lavalink server implementation written in **Rust**. Built for efficiency and low latency, it provides a robust alternative for Discord bot audio providers.
 
