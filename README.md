@@ -6,27 +6,17 @@
 
 A high-performance Discord audio sending server written in Rust.
 
-## 🚀 Status
+### Key Features
 
-### Core Infrastructure
-| Feature | Status | Description |
-| :--- | :---: | :--- |
-| **v4 REST API** | ✅ | Full compatibility with v4 endpoints |
-| **WebSockets** | ✅ | Dispatching and real-time stats |
-| **Sessions** | ✅ | Discovery, cleanup, and resumption |
-| **Discord Gateway**| ✅ | Voice state & server update handling |
-| **Discord UDP** | ✅ | Direct audio transmission |
-| **Discord DAVE** | ✅ | E2EE Support |
+#### 📼 Tape Stop
+Adds a gradual slowdown/speed-up effect when pausing and resuming playback.
 
-### Audio Engine
-| Feature | Status | Description |
-| :--- | :---: | :--- |
-| **Symphonia** | ✅ | Fast audio decoding |
-| **PCM Resampling**| ✅ | 48kHz high-quality resampling |
-| **Mixing** | ✅ | Multi-track mixing support |
-| **Opus Encoding** | ✅ | Low-latency encoding |
-| **Filters** | ✅ | EQ, Karaoke, Timescale, etc. |
-| **Seeking** | ✅ | Seeking within tracks |
+```toml
+# Adds a gradual slowdown/speed-up effect (tape stop) when pausing and resuming.
+tape_stop = true
+# Duration of the slowdown/speed-up transition in milliseconds.
+tape_stop_duration_ms = 600
+```
 
 ---
 
