@@ -60,6 +60,24 @@ Rustalink supports direct playback and **Mirroring**. Mirroring allows playback 
 > [!NOTE]
 > **Hybrid** sources support direct playback if credentials/tokens are provided or if a direct playback URL is received. Otherwise, they fall back to mirroring.
 
+### YouTube Playback Clients
+
+To optimize playback and bypass restrictions, Rustalink supports switching between multiple YouTube client implementations. You can configure these in `config.toml`.
+
+| Client Alias  | Search | Resolve | Playback |
+| :--- | :--- | :---: | :---: |
+| `WEB` | ✅ | ✅ | ✅ |
+| `MWEB` / `REMIX` | ✅ | ✅ | ✅ |
+| `ANDROID` | ✅ | ✅ | ✅ |
+| `IOS` | ✅ | ✅ | ✅ |
+| `TV` / `TVHTML5` | ✅ | ✅ | ✅ |
+| `TV_CAST` | ✅ | ✅ | ✅ |
+| `TV_EMBEDDED` | ✅ | ✅ | ✅ |
+| `MUSIC_ANDROID` | ✅ | ✅ | ✅ |
+| `ANDROID_VR` | ✅ | ❌ | ✅ |
+| `WEB_EMBEDDED` | ✅ | ❌ | ✅ |
+| `WEB_PARENT_TOOLS` | ✅ | ✅ | ❌ |
+
 ---
 
 ## 🛠️ Installation
