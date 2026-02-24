@@ -394,7 +394,7 @@ impl YouTubeClient for MusicAndroidClient {
                             length: length_ms,
                             is_stream: false,
                             uri: Some(format!("https://music.youtube.com/watch?v={}", id)),
-                            source_name: "ytmusic".to_string(),
+                            source_name: "youtube".to_string(),
                             isrc: None,
                             artwork_url,
                             position: 0,
