@@ -272,7 +272,7 @@ impl VoiceGateway {
         let dave = Arc::new(Mutex::new(DaveHandler::new(self.user_id, self.channel_id)));
         let tx_hb = tx.clone();
         let mut heartbeat_handle = None;
-        let last_heartbeat = Arc::new(Mutex::new(None::<tokio::time::Instant>));
+        let last_heartbeat = Arc::new(std::sync::atomic::AtomicU64::new(0));
 
         let outcome = loop {
             let msg = match read.next().await {
@@ -357,10 +357,13 @@ impl VoiceGateway {
                                         .as_millis()
                                         as u64;
 
-                                    {
-                                        let mut lb = last_hb_inner.lock().await;
-                                        *lb = Some(tokio::time::Instant::now());
-                                    }
+                                    let now_ms = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_millis()
+                                        as u64;
+
+                                    last_hb_inner.store(now_ms, Ordering::Relaxed);
 
                                     let hb = VoiceGatewayMessage {
                                         op: 3,
@@ -508,10 +511,15 @@ impl VoiceGateway {
                             }
                         }
                         6 => {
-                            // Heartbeat ACK — measure ping
-                            let mut hb_lock = last_heartbeat.lock().await;
-                            if let Some(sent) = hb_lock.take() {
-                                let latency = sent.elapsed().as_millis() as i64;
+                            // Heartbeat ACK — measure ping using AtomicU64 timestamp
+                            let sent_ms = last_heartbeat.load(Ordering::Relaxed);
+                            if sent_ms > 0 {
+                                let now_ms = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_millis()
+                                    as u64;
+                                let latency = now_ms.saturating_sub(sent_ms) as i64;
                                 self.ping.store(latency, Ordering::Relaxed);
                                 tracing::trace!("Voice heartbeat ACK. Ping: {}ms", latency);
                             }
@@ -858,8 +866,29 @@ async fn speak_loop(
             }
             _ = interval.tick() => {
                 let has_audio;
+                // ── Opus passthrough: YouTube WebM/Opus → raw bytes → Discord ─────
+                // If the mixer has a raw Opus frame ready, send it directly without
+                // spending time on encode. This is the zero-transcode hot path.
                 {
                     let mut mixer_lock = mixer.lock().await;
+                    if let Some(opus_frame) = mixer_lock.take_opus_frame() {
+                        drop(mixer_lock);
+                        silence_frames = 0;
+                        frames_sent.fetch_add(1, Ordering::Relaxed);
+                        let encrypted = {
+                            let mut dave_lock = dave.lock().await;
+                            dave_lock.encrypt_opus(&opus_frame)
+                        };
+                        match encrypted {
+                            Ok(packet) => {
+                                if let Err(e) = udp.send_opus_packet(&packet).await {
+                                    tracing::warn!("Failed to send passthrough UDP packet: {}", e);
+                                }
+                            }
+                            Err(e) => tracing::error!("DAVE passthrough encryption failed: {}", e),
+                        }
+                        continue;
+                    }
                     has_audio = mixer_lock.mix(&mut pcm_buf);
                 }
 

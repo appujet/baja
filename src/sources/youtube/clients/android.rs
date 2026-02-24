@@ -12,6 +12,7 @@ use crate::{
     common::types::AnyResult,
     sources::youtube::{
         cipher::YouTubeCipherManager,
+        clients::common::ClientConfig,
         extractor::{extract_from_player, extract_track},
         oauth::YouTubeOAuth,
     },
@@ -37,32 +38,19 @@ impl AndroidClient {
         Self { http }
     }
 
-    /// Build the InnerTube context for Android.
-    fn build_context(&self, visitor_data: Option<&str>) -> Value {
-        let mut client = json!({
-            "clientName": CLIENT_NAME,
-            "clientVersion": CLIENT_VERSION,
-            "userAgent": USER_AGENT,
-            "deviceMake": "Google",
-            "deviceModel": "Pixel 6",
-            "osName": "Android",
-            "osVersion": "14",
-            "androidSdkVersion": "34",
-            "hl": "en",
-            "gl": "US"
-        });
-
-        if let Some(vd) = visitor_data {
-            if let Some(obj) = client.as_object_mut() {
-                obj.insert("visitorData".to_string(), vd.into());
-            }
+    fn config(&self) -> ClientConfig<'_> {
+        ClientConfig {
+            client_name: CLIENT_NAME,
+            client_version: CLIENT_VERSION,
+            client_id: CLIENT_ID,
+            user_agent: USER_AGENT,
+            device_make: Some("Google"),
+            device_model: Some("Pixel 6"),
+            os_name: Some("Android"),
+            os_version: Some("14"),
+            android_sdk_version: Some("34"),
+            ..Default::default()
         }
-
-        json!({
-            "client": client,
-            "user": { "lockedSafetyMode": false },
-            "request": { "useSsl": true }
-        })
     }
 
     async fn player_request(
@@ -74,10 +62,8 @@ impl AndroidClient {
     ) -> AnyResult<Value> {
         crate::sources::youtube::clients::common::make_player_request(
             &self.http,
+            &self.config(),
             video_id,
-            self.build_context(visitor_data),
-            CLIENT_ID,
-            CLIENT_VERSION,
             None,
             visitor_data,
             signature_timestamp,
@@ -118,7 +104,7 @@ impl YouTubeClient for AndroidClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let body = json!({
-            "context": self.build_context(visitor_data),
+            "context": self.config().build_context(visitor_data),
             "query": query,
             "params": "EgIQAQ%3D%3D"
         });
@@ -232,7 +218,7 @@ impl YouTubeClient for AndroidClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let body = json!({
-            "context": self.build_context(visitor_data),
+            "context": self.config().build_context(visitor_data),
             "playlistId": playlist_id,
             "contentCheckOk": true,
             "racyCheckOk": true

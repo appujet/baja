@@ -3,7 +3,7 @@ use super::AudioFilter;
 pub struct NormalizationFilter {
     max_amplitude: f32,
     adaptive: bool,
-    
+
     // For adaptive mode, envelope tracker
     envelope: f32,
     attack_coef: f32,
@@ -13,13 +13,13 @@ pub struct NormalizationFilter {
 impl NormalizationFilter {
     pub fn new(max_amplitude: f32, adaptive: bool) -> Self {
         let max_amplitude = max_amplitude.max(0.01);
-        
+
         // standard attack/release for a limiter
         // typically attack is very fast, release is slower
         let attack_ms = 1.0;
         let release_ms = 100.0;
         let fs = 48000.0;
-        
+
         let attack_coef = (-1.0 / ((attack_ms / 1000.0) * fs) as f32).exp();
         let release_coef = (-1.0 / ((release_ms / 1000.0) * fs) as f32).exp();
 
@@ -64,7 +64,7 @@ impl AudioFilter for NormalizationFilter {
 
                 // Protect against div-by-zero
                 let envelope_safe = self.envelope.max(0.001);
-                
+
                 // If the signal peak exceeds our target max_amplitude, reduce gain
                 let gain = if envelope_safe > self.max_amplitude {
                     self.max_amplitude / envelope_safe
@@ -72,8 +72,10 @@ impl AudioFilter for NormalizationFilter {
                     1.0
                 };
 
-                chunk[0] = (left_in * gain * 32768.0).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
-                chunk[1] = (right_in * gain * 32768.0).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+                chunk[0] =
+                    (left_in * gain * 32768.0).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+                chunk[1] =
+                    (right_in * gain * 32768.0).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
             }
         }
     }

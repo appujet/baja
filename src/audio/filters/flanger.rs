@@ -1,4 +1,4 @@
-use super::{delay_line::DelayLine, lfo::Lfo, AudioFilter};
+use super::{AudioFilter, delay_line::DelayLine, lfo::Lfo};
 
 const MAX_DELAY_MS: f32 = 10.0;
 const BUFFER_SIZE: usize = ((48000.0 * MAX_DELAY_MS) / 1000.0) as usize;
@@ -44,14 +44,15 @@ impl AudioFilter for FlangerFilter {
         let max_delay_width = self.depth * (fs * 0.005);
         let center_delay = max_delay_width;
 
-        // Note: NodeLink processes mono chunk equivalents (i+=2), but works on both channels equally
+        // Note:  processes mono chunk equivalents (i+=2), but works on both channels equally
         for sample in samples.iter_mut() {
             let lfo_value = self.lfo.get_value() as f32;
             let delay = center_delay + lfo_value * max_delay_width;
 
             let delayed = self.delay_line.read(delay.into());
             let input = (*sample as f32) + delayed * self.feedback;
-            self.delay_line.write(input.clamp(i16::MIN as f32, i16::MAX as f32));
+            self.delay_line
+                .write(input.clamp(i16::MIN as f32, i16::MAX as f32));
 
             let output = (*sample as f32) + delayed;
             *sample = output.clamp(i16::MIN as f32, i16::MAX as f32) as i16;

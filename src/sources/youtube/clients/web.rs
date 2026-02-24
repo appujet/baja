@@ -12,8 +12,10 @@ use crate::{
     common::types::AnyResult,
     sources::youtube::{
         cipher::YouTubeCipherManager,
+        clients::common::ClientConfig,
         extractor::{extract_from_player, extract_track, find_section_list},
         oauth::YouTubeOAuth,
+        sabr::{SabrConfig, fetch_sabr_config},
     },
 };
 
@@ -25,6 +27,10 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
 
 pub struct WebClient {
     http: reqwest::Client,
+    /// Optional URL of the yt-cipher service for SABR PoToken fetching.
+    pub yt_cipher_url: Option<String>,
+    /// Optional API token for the yt-cipher service (matches its API_TOKEN env var).
+    pub yt_cipher_token: Option<String>,
 }
 
 impl WebClient {
@@ -35,29 +41,30 @@ impl WebClient {
             .build()
             .expect("Failed to build Web HTTP client");
 
-        Self { http }
+        Self {
+            http,
+            yt_cipher_url: None,
+            yt_cipher_token: None,
+        }
     }
 
-    fn build_context(&self, visitor_data: Option<&str>) -> Value {
-        let mut client = json!({
-            "clientName": CLIENT_NAME,
-            "clientVersion": CLIENT_VERSION,
-            "userAgent": USER_AGENT,
-            "platform": "DESKTOP",
-            "hl": "en",
-            "gl": "US"
-        });
+    /// Configure the yt-cipher service URL and optional API token.
+    pub fn with_cipher_url(yt_cipher_url: Option<String>, yt_cipher_token: Option<String>) -> Self {
+        let mut client = Self::new();
+        client.yt_cipher_url = yt_cipher_url;
+        client.yt_cipher_token = yt_cipher_token;
+        client
+    }
 
-        if let Some(vd) = visitor_data {
-            if let Some(obj) = client.as_object_mut() {
-                obj.insert("visitorData".to_string(), vd.into());
-            }
+    fn config(&self) -> ClientConfig<'_> {
+        ClientConfig {
+            client_name: CLIENT_NAME,
+            client_version: CLIENT_VERSION,
+            client_id: CLIENT_ID,
+            user_agent: USER_AGENT,
+            platform: Some("DESKTOP"),
+            ..Default::default()
         }
-
-        json!({
-            "client": client,
-            "user": { "lockedSafetyMode": false }
-        })
     }
 
     async fn player_request(
@@ -70,10 +77,8 @@ impl WebClient {
     ) -> AnyResult<Value> {
         crate::sources::youtube::clients::common::make_player_request(
             &self.http,
+            &self.config(),
             video_id,
-            self.build_context(visitor_data),
-            CLIENT_ID,
-            CLIENT_VERSION,
             None,
             visitor_data,
             signature_timestamp,
@@ -83,6 +88,58 @@ impl WebClient {
             po_token,
         )
         .await
+    }
+
+    // Fetch a `SabrConfig` for the given video from the player API.
+    // Returns `None` if the player response has no SABR URL (e.g. restricted video).
+    pub async fn get_sabr_config(
+        &self,
+        video_id: &str,
+        visitor_data: Option<&str>,
+        signature_timestamp: Option<u32>,
+        cipher: &YouTubeCipherManager,
+        start_time_ms: u64,
+    ) -> Option<SabrConfig> {
+        let mut cfg = fetch_sabr_config(
+            &self.http,
+            video_id,
+            visitor_data,
+            None, // po_token — fetched from yt-cipher if url is set
+            signature_timestamp,
+            CLIENT_ID.parse().unwrap_or(1),
+            CLIENT_NAME,
+            CLIENT_VERSION,
+            USER_AGENT,
+            self.yt_cipher_url.as_deref(),
+            self.yt_cipher_token.as_deref(),
+        )
+        .await?;
+
+        // : resolve the n-param on serverAbrStreamingUrl via cipher service
+        // (Web.js lines 312-328: cipherManager.resolveUrl(serverAbrUrl, ...))
+        match cipher
+            .resolve_url(&cfg.server_abr_url, "", None, None)
+            .await
+        {
+            Ok(resolved) => {
+                tracing::debug!(
+                    "SABR player[{}]: resolved serverAbrStreamingUrl n-param",
+                    video_id
+                );
+                cfg.server_abr_url = resolved;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "SABR player[{}]: failed to resolve n-param on SABR URL: {} — using raw URL",
+                    video_id,
+                    e
+                );
+                // Continue with unresolved URL (will 403 if n-param encrypted)
+            }
+        }
+
+        cfg.start_time_ms = start_time_ms;
+        Some(cfg)
     }
 }
 
@@ -114,7 +171,7 @@ impl YouTubeClient for WebClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let body = json!({
-            "context": self.build_context(visitor_data),
+            "context": self.config().build_context(visitor_data),
             "query": query,
             "params": "EgIQAQ%3D%3D"
         });
@@ -200,7 +257,7 @@ impl YouTubeClient for WebClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let body = json!({
-            "context": self.build_context(visitor_data),
+            "context": self.config().build_context(visitor_data),
             "playlistId": playlist_id,
             "contentCheckOk": true,
             "racyCheckOk": true
@@ -346,5 +403,23 @@ impl YouTubeClient for WebClient {
             track_id
         );
         Ok(None)
+    }
+
+    async fn get_sabr_config(
+        &self,
+        track_id: &str,
+        visitor_data: Option<&str>,
+        signature_timestamp: Option<u32>,
+        cipher_manager: std::sync::Arc<YouTubeCipherManager>,
+        start_time_ms: u64,
+    ) -> Option<crate::sources::youtube::sabr::SabrConfig> {
+        self.get_sabr_config(
+            track_id,
+            visitor_data,
+            signature_timestamp,
+            &cipher_manager,
+            start_time_ms,
+        )
+        .await
     }
 }

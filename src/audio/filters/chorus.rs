@@ -1,4 +1,4 @@
-use super::{delay_line::DelayLine, lfo::Lfo, AudioFilter};
+use super::{AudioFilter, delay_line::DelayLine, lfo::Lfo};
 
 const MAX_DELAY_MS: f32 = 50.0;
 const BUFFER_SIZE: usize = ((48000.0 * MAX_DELAY_MS) / 1000.0) as usize;
@@ -22,12 +22,7 @@ impl ChorusFilter {
             delay: 25.0,
             mix: 0.5,
             feedback: 0.0,
-            lfos: [
-                Lfo::new(),
-                Lfo::new(),
-                Lfo::new(),
-                Lfo::new(),
-            ],
+            lfos: [Lfo::new(), Lfo::new(), Lfo::new(), Lfo::new()],
             delays: [
                 DelayLine::new(BUFFER_SIZE),
                 DelayLine::new(BUFFER_SIZE),
@@ -96,10 +91,18 @@ impl AudioFilter for ChorusFilter {
             let final_left = left_in * (1.0 - self.mix) + wet_left * self.mix;
             let final_right = right_in * (1.0 - self.mix) + wet_right * self.mix;
 
-            self.delays[0].write((left_in + delayed1_l * self.feedback).clamp(i16::MIN as f32, i16::MAX as f32));
-            self.delays[1].write((right_in + delayed1_r * self.feedback).clamp(i16::MIN as f32, i16::MAX as f32));
-            self.delays[2].write((left_in + delayed2_l * self.feedback).clamp(i16::MIN as f32, i16::MAX as f32));
-            self.delays[3].write((right_in + delayed2_r * self.feedback).clamp(i16::MIN as f32, i16::MAX as f32));
+            self.delays[0].write(
+                (left_in + delayed1_l * self.feedback).clamp(i16::MIN as f32, i16::MAX as f32),
+            );
+            self.delays[1].write(
+                (right_in + delayed1_r * self.feedback).clamp(i16::MIN as f32, i16::MAX as f32),
+            );
+            self.delays[2].write(
+                (left_in + delayed2_l * self.feedback).clamp(i16::MIN as f32, i16::MAX as f32),
+            );
+            self.delays[3].write(
+                (right_in + delayed2_r * self.feedback).clamp(i16::MIN as f32, i16::MAX as f32),
+            );
 
             chunk[0] = final_left.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
             chunk[1] = final_right.clamp(i16::MIN as f32, i16::MAX as f32) as i16;

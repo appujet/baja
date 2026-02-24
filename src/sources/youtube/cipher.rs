@@ -78,7 +78,7 @@ impl YouTubeCipherManager {
             }
         };
 
-        // Apply locale replacement like NodeLink does
+        // Apply locale replacement like  does
         let locale_re = regex::Regex::new(r"/([a-z]{2}_[A-Z]{2})/")?;
         script_url = locale_re.replace(&script_url, "/en_US/").to_string();
 

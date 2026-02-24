@@ -6,7 +6,6 @@ pub mod ts_demux;
 pub mod types;
 pub mod utils;
 
-use parking_lot::{Condvar, Mutex};
 use std::{
     io::{self, Read, Seek, SeekFrom},
     sync::{
@@ -15,6 +14,7 @@ use std::{
     },
 };
 
+use parking_lot::{Condvar, Mutex};
 use symphonia::core::io::MediaSource;
 
 use self::{

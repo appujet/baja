@@ -90,7 +90,7 @@ impl LyricsProvider for GeniusProvider {
         let caps = re.captures(&song_page)?;
         let lyrics_data_raw = caps.get(1)?.as_str();
 
-        // Unescape any backslash-escaped character, matching NodeLink's replace(/\\(.)/g, '$1')
+        // Unescape any backslash-escaped character, matching the replace(/\\(.)/g, '$1')
         let escape_re = Regex::new(r#"\\(.)"#).unwrap();
         let lyrics_data_unescaped = escape_re.replace_all(lyrics_data_raw, "$1");
 

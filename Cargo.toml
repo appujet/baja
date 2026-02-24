@@ -55,16 +55,19 @@ tikv-jemallocator = "0.6.0"
 
 
 [profile.dev]
-opt-level = 1        # avoid 0-opt pain in debug builds
-incremental = true
+opt-level = 1
 debug = true
+incremental = true
+overflow-checks = false
+lto = false
+codegen-units = 256
 
 [profile.dev.package."*"]
 opt-level = 3        # fully optimize all dependencies in dev mode
 
 [profile.release]
-lto = "thin"
-codegen-units = 16
+lto = "fat"
+codegen-units = 1
 panic = "abort"
 opt-level = 3
 strip = true

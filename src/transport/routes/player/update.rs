@@ -85,14 +85,14 @@ pub async fn update_player(
         }
     }
 
-    // Apply position (seek) — also send playerUpdate 
+    // Apply position (seek) — also send playerUpdate
     if let Some(pos) = body.position {
         player.position = pos;
         if player.track.is_some() {
             if let Some(handle) = &player.track_handle {
                 handle.seek(pos);
             }
-            // Send playerUpdate immediately after seek 
+            // Send playerUpdate immediately after seek
             let seek_update = api::OutgoingMessage::PlayerUpdate {
                 guild_id: guild_id.clone(),
                 state: crate::player::PlayerState {

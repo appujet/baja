@@ -23,6 +23,7 @@ impl PlayableTrack for BandcampTrack {
         Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         Receiver<String>,
+        Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
         let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
@@ -51,7 +52,8 @@ impl PlayableTrack for BandcampTrack {
                             local_addr,
                             proxy: None,
                         };
-                        let (inner_rx, inner_cmd_tx, inner_err_rx) = http_track.start_decoding();
+                        let (inner_rx, inner_cmd_tx, inner_err_rx, _inner_opus_rx) =
+                            http_track.start_decoding();
 
                         // Proxy commands
                         let inner_cmd_tx_clone = inner_cmd_tx.clone();
@@ -86,7 +88,7 @@ impl PlayableTrack for BandcampTrack {
             });
         });
 
-        (rx, cmd_tx, err_rx)
+        (rx, cmd_tx, err_rx, None)
     }
 }
 

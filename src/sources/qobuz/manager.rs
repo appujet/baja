@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use reqwest::Url;
 use serde_json::{Value, json};
 use tracing::{debug, error};
 
@@ -85,7 +84,7 @@ impl QobuzSource {
             .await
             .ok_or_else(|| "Failed to get Qobuz tokens".to_string())?;
 
-        let mut url = Url::parse(&(API_URL.to_string() + path))?;
+        let mut url = reqwest::Url::parse(&(API_URL.to_string() + path))?;
         {
             let mut query = url.query_pairs_mut();
             for (k, v) in params {

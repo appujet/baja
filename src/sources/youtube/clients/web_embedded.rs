@@ -11,7 +11,8 @@ use crate::{
     api::tracks::Track,
     common::types::AnyResult,
     sources::youtube::{
-        cipher::YouTubeCipherManager, extractor::extract_track, oauth::YouTubeOAuth,
+        cipher::YouTubeCipherManager, clients::common::ClientConfig, extractor::extract_track,
+        oauth::YouTubeOAuth,
     },
 };
 
@@ -36,27 +37,16 @@ impl WebEmbeddedClient {
         Self { http }
     }
 
-    fn build_context(&self, visitor_data: Option<&str>) -> Value {
-        let mut client = json!({
-            "clientName": CLIENT_NAME,
-            "clientVersion": CLIENT_VERSION,
-            "userAgent": USER_AGENT,
-            "platform": "DESKTOP",
-            "hl": "en",
-            "gl": "US"
-        });
-
-        if let Some(vd) = visitor_data {
-            if let Some(obj) = client.as_object_mut() {
-                obj.insert("visitorData".to_string(), vd.into());
-            }
+    fn config(&self) -> ClientConfig<'_> {
+        ClientConfig {
+            client_name: CLIENT_NAME,
+            client_version: CLIENT_VERSION,
+            client_id: CLIENT_ID,
+            user_agent: USER_AGENT,
+            platform: Some("DESKTOP"),
+            third_party_embed_url: Some("https://www.youtube.com"),
+            ..Default::default()
         }
-
-        json!({
-            "client": client,
-            "user": { "lockedSafetyMode": false },
-            "thirdParty": { "embedUrl": "https://www.youtube.com" }
-        })
     }
 
     async fn player_request(
@@ -68,10 +58,8 @@ impl WebEmbeddedClient {
     ) -> AnyResult<Value> {
         crate::sources::youtube::clients::common::make_player_request(
             &self.http,
+            &self.config(),
             video_id,
-            self.build_context(visitor_data),
-            CLIENT_ID,
-            CLIENT_VERSION,
             None,
             visitor_data,
             signature_timestamp,
@@ -112,7 +100,7 @@ impl YouTubeClient for WebEmbeddedClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let body = json!({
-            "context": self.build_context(visitor_data),
+            "context": self.config().build_context(visitor_data),
             "query": query,
             "params": "EgIQAQ%3D%3D"
         });

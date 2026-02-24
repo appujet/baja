@@ -1,4 +1,3 @@
-use parking_lot::{Condvar, Mutex};
 use std::{
     collections::HashMap,
     io::{Read, Seek, SeekFrom},
@@ -6,6 +5,7 @@ use std::{
     thread,
 };
 
+use parking_lot::{Condvar, Mutex};
 use symphonia::core::io::MediaSource;
 use tracing::{debug, trace, warn};
 

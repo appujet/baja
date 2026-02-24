@@ -4,7 +4,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use reqwest::Url;
 use serde_json::{Value, json};
 
 use crate::{
@@ -64,7 +63,7 @@ impl AnghamiSource {
     }
 
     async fn api_request(&self, params: Vec<(&str, &str)>) -> Option<Value> {
-        let mut url = Url::parse(BASE_URL).ok()?;
+        let mut url = reqwest::Url::parse(BASE_URL).ok()?;
         {
             let mut q = url.query_pairs_mut();
             for (k, v) in &params {

@@ -1,4 +1,9 @@
-use super::{biquad::{BiquadCoeffs, BiquadState}, delay_line::DelayLine, lfo::Lfo, AudioFilter};
+use super::{
+    AudioFilter,
+    biquad::{BiquadCoeffs, BiquadState},
+    delay_line::DelayLine,
+    lfo::Lfo,
+};
 
 const MAX_DELAY_MS: f32 = 60.0;
 const BUFFER_SIZE: usize = ((48000.0 * MAX_DELAY_MS) / 1000.0) as usize;
@@ -257,7 +262,7 @@ impl AudioFilter for PhonographFilter {
         for chunk in samples.chunks_exact_mut(2) {
             let left_sample = chunk[0] as f32;
             let right_sample = chunk[1] as f32;
-            
+
             // Phonograph natively converts stereo to mono initially
             let mut x = ((left_sample + right_sample) * 0.5) / 32768.0;
 
@@ -266,8 +271,12 @@ impl AudioFilter for PhonographFilter {
             let wow = self.wow_lfo.get_value() as f32;
             let flt = self.flutter_lfo.get_value() as f32;
             let mut dly = center + wow * wow_max + flt * flutter_max + self.drift;
-            if dly < 1.0 { dly = 1.0; }
-            if dly > BUFFER_SIZE as f32 - 2.0 { dly = BUFFER_SIZE as f32 - 2.0; }
+            if dly < 1.0 {
+                dly = 1.0;
+            }
+            if dly > BUFFER_SIZE as f32 - 2.0 {
+                dly = BUFFER_SIZE as f32 - 2.0;
+            }
 
             self.delay.write(x);
             x = self.delay.read(dly);
@@ -289,7 +298,7 @@ impl AudioFilter for PhonographFilter {
                 n = self.hiss_hp_state.process(n as f64, &self.hiss_hp_coeffs) as f32;
                 n = self.hiss_lp_state.process(n as f64, &self.hiss_lp_coeffs) as f32;
                 x += n * hiss_gain;
-                
+
                 if self.rng.next_01() < tick_rate {
                     self.tick_env = 1.0;
                     self.tick_amp = self.rng.next_11() * (0.45 + self.crackle);
@@ -335,7 +344,11 @@ impl AudioFilter for PhonographFilter {
     }
 
     fn is_enabled(&self) -> bool {
-        self.depth > 0.0 || self.crackle > 0.0 || self.flutter > 0.0 || self.room > 0.0 || self.drive > 0.0
+        self.depth > 0.0
+            || self.crackle > 0.0
+            || self.flutter > 0.0
+            || self.room > 0.0
+            || self.drive > 0.0
     }
 
     fn reset(&mut self) {
@@ -346,7 +359,7 @@ impl AudioFilter for PhonographFilter {
         self.wow_lfo.reset();
         self.flutter_lfo.reset();
         self.drift = 0.0;
-        
+
         self.hp1_state.reset();
         self.hp2_state.reset();
         self.lp1_state.reset();
@@ -355,7 +368,7 @@ impl AudioFilter for PhonographFilter {
         self.peak2_state.reset();
         self.hiss_hp_state.reset();
         self.hiss_lp_state.reset();
-        
+
         self.tick_env = 0.0;
         self.tick_amp = 0.0;
         self.scratch_env = 0.0;

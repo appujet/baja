@@ -1,4 +1,4 @@
-use super::{delay_line::DelayLine, AudioFilter};
+use super::{AudioFilter, delay_line::DelayLine};
 
 const COMB_DELAYS: [usize; 8] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
 const ALLPASS_DELAYS: [usize; 4] = [556, 441, 341, 225];
@@ -40,9 +40,10 @@ impl CombFilter {
     fn process(&mut self, input: f32) -> f32 {
         let output = self.buffer.read(0.0);
         self.filter_store = output * self.damp2 + self.filter_store * self.damp1;
-        
+
         let write_val = input + self.filter_store * self.feedback;
-        self.buffer.write(write_val.clamp(i16::MIN as f32, i16::MAX as f32));
+        self.buffer
+            .write(write_val.clamp(i16::MIN as f32, i16::MAX as f32));
         output
     }
 
@@ -72,10 +73,22 @@ impl ReverbFilter {
     pub fn new(mix: f32, room_size: f32, damping: f32, width: f32) -> Self {
         let fs = 48000.0;
 
-        let comb_l = COMB_DELAYS.iter().map(|&d| CombFilter::new((d as f64 * fs / 44100.0) as usize)).collect();
-        let comb_r = COMB_DELAYS.iter().map(|&d| CombFilter::new(((d + STEREO_SPREAD) as f64 * fs / 44100.0) as usize)).collect();
-        let allpass_l = ALLPASS_DELAYS.iter().map(|&d| DelayLine::new((d as f64 * fs / 44100.0) as usize)).collect();
-        let allpass_r = ALLPASS_DELAYS.iter().map(|&d| DelayLine::new(((d + STEREO_SPREAD) as f64 * fs / 44100.0) as usize)).collect();
+        let comb_l = COMB_DELAYS
+            .iter()
+            .map(|&d| CombFilter::new((d as f64 * fs / 44100.0) as usize))
+            .collect();
+        let comb_r = COMB_DELAYS
+            .iter()
+            .map(|&d| CombFilter::new(((d + STEREO_SPREAD) as f64 * fs / 44100.0) as usize))
+            .collect();
+        let allpass_l = ALLPASS_DELAYS
+            .iter()
+            .map(|&d| DelayLine::new((d as f64 * fs / 44100.0) as usize))
+            .collect();
+        let allpass_r = ALLPASS_DELAYS
+            .iter()
+            .map(|&d| DelayLine::new(((d + STEREO_SPREAD) as f64 * fs / 44100.0) as usize))
+            .collect();
 
         let mut filter = Self {
             comb_l,
@@ -120,13 +133,18 @@ impl ReverbFilter {
         }
     }
 
-    fn process_allpass(input: f32, delay_line: &mut DelayLine, state_y1: &mut f32, coeff: f32) -> f32 {
+    fn process_allpass(
+        input: f32,
+        delay_line: &mut DelayLine,
+        state_y1: &mut f32,
+        coeff: f32,
+    ) -> f32 {
         let delayed = delay_line.read(0.0);
         let output = -input + delayed + coeff * (input - *state_y1);
-        
+
         delay_line.write(input.clamp(i16::MIN as f32, i16::MAX as f32));
         *state_y1 = output;
-        
+
         output
     }
 }
@@ -151,8 +169,18 @@ impl AudioFilter for ReverbFilter {
             }
 
             for j in 0..self.allpass_l.len() {
-                left_out = Self::process_allpass(left_out, &mut self.allpass_l[j], &mut self.allpass_state_l[j], self.allpass_coeff);
-                right_out = Self::process_allpass(right_out, &mut self.allpass_r[j], &mut self.allpass_state_r[j], self.allpass_coeff);
+                left_out = Self::process_allpass(
+                    left_out,
+                    &mut self.allpass_l[j],
+                    &mut self.allpass_state_l[j],
+                    self.allpass_coeff,
+                );
+                right_out = Self::process_allpass(
+                    right_out,
+                    &mut self.allpass_r[j],
+                    &mut self.allpass_state_r[j],
+                    self.allpass_coeff,
+                );
             }
 
             let wet1 = self.wet * (self.width * 0.5 + 0.5);
@@ -171,11 +199,23 @@ impl AudioFilter for ReverbFilter {
     }
 
     fn reset(&mut self) {
-        for comb in self.comb_l.iter_mut() { comb.clear(); }
-        for comb in self.comb_r.iter_mut() { comb.clear(); }
-        for pass in self.allpass_l.iter_mut() { pass.clear(); }
-        for pass in self.allpass_r.iter_mut() { pass.clear(); }
-        for state in self.allpass_state_l.iter_mut() { *state = 0.0; }
-        for state in self.allpass_state_r.iter_mut() { *state = 0.0; }
+        for comb in self.comb_l.iter_mut() {
+            comb.clear();
+        }
+        for comb in self.comb_r.iter_mut() {
+            comb.clear();
+        }
+        for pass in self.allpass_l.iter_mut() {
+            pass.clear();
+        }
+        for pass in self.allpass_r.iter_mut() {
+            pass.clear();
+        }
+        for state in self.allpass_state_l.iter_mut() {
+            *state = 0.0;
+        }
+        for state in self.allpass_state_r.iter_mut() {
+            *state = 0.0;
+        }
     }
 }

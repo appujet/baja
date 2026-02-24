@@ -207,7 +207,7 @@ impl TidalSource {
         if let Some(list) = items {
             for item in list {
                 // Playlist items wrap the track in an "item" object, albums don't?
-                // NodeLink says: this._parseTrack(item.item || item)
+                // this._parseTrack(item.item || item)
                 let track_obj = if item.get("item").is_some() {
                     item.get("item").unwrap()
                 } else {

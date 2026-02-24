@@ -19,6 +19,7 @@ pub mod extractor;
 pub mod hls;
 pub mod oauth;
 pub mod reader;
+pub mod sabr;
 pub mod ua;
 
 pub mod track;
@@ -26,8 +27,9 @@ pub mod track;
 use cipher::YouTubeCipherManager;
 use clients::{
     YouTubeClient, android::AndroidClient, android_vr::AndroidVrClient, ios::IosClient,
-    music_android::MusicAndroidClient, tv::TvClient, web::WebClient,
-    web_embedded::WebEmbeddedClient, web_remix::WebRemixClient,
+    music_android::MusicAndroidClient, tv::TvClient, tv_cast::TvCastClient,
+    tv_embedded::TvEmbeddedClient, web::WebClient, web_embedded::WebEmbeddedClient,
+    web_parent_tools::WebParentToolsClient, web_remix::WebRemixClient,
 };
 use oauth::YouTubeOAuth;
 
@@ -92,20 +94,32 @@ impl YouTubeSource {
             }
         });
 
+        let cipher_url = config.cipher.url.clone();
+        let cipher_token = config.cipher.token.clone();
         let create_client = |name: &str| -> Option<Arc<dyn YouTubeClient>> {
             match name.to_uppercase().as_str() {
-                "WEB" => Some(Arc::new(WebClient::new())),
+                "WEB" => Some(Arc::new(WebClient::with_cipher_url(
+                    cipher_url.clone(),
+                    cipher_token.clone(),
+                ))),
                 "MWEB" | "MUSIC_WEB" | "WEB_REMIX" | "REMIX" => {
                     Some(Arc::new(WebRemixClient::new()))
                 }
                 "ANDROID" => Some(Arc::new(AndroidClient::new())),
                 "IOS" => Some(Arc::new(IosClient::new())),
                 "TV" | "TVHTML5" | "TVHTML5_SIMPLY" => Some(Arc::new(TvClient::new())),
+                "TV_CAST" | "TVHTML5_CAST" => Some(Arc::new(TvCastClient::new())),
+                "TV_EMBEDDED" | "TVHTML5_SIMPLY_EMBEDDED_PLAYER" => {
+                    Some(Arc::new(TvEmbeddedClient::new()))
+                }
                 "MUSIC" | "MUSIC_ANDROID" | "ANDROID_MUSIC" => {
                     Some(Arc::new(MusicAndroidClient::new()))
                 }
                 "ANDROID_VR" | "ANDROIDVR" => Some(Arc::new(AndroidVrClient::new())),
                 "WEB_EMBEDDED" | "WEBEMBEDDED" => Some(Arc::new(WebEmbeddedClient::new())),
+                "WEB_PARENT_TOOLS" | "WEBPARENTTOOLS" => {
+                    Some(Arc::new(WebParentToolsClient::new()))
+                }
                 _ => {
                     tracing::warn!("Unknown YouTube client: {}", name);
                     None

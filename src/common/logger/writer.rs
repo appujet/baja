@@ -1,10 +1,11 @@
-use parking_lot::Mutex;
 use std::{
     fs::{File, OpenOptions},
     io::{self, BufRead, BufReader, Write},
     path::Path,
     sync::Arc,
 };
+
+use parking_lot::Mutex;
 
 // Simple ANSI stripper to prevent the log file from being polluted with escape sequences
 pub fn strip_ansi_escapes(s: &str) -> String {

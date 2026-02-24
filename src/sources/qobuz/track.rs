@@ -27,6 +27,7 @@ impl PlayableTrack for QobuzTrack {
         Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
+        Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
         let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
@@ -58,7 +59,8 @@ impl PlayableTrack for QobuzTrack {
                         local_addr: None,
                         proxy: None,
                     };
-                    let (inner_rx, inner_cmd_tx, inner_err_rx) = http_track.start_decoding();
+                    let (inner_rx, inner_cmd_tx, inner_err_rx, _inner_opus_rx) =
+                        http_track.start_decoding();
 
                     // Proxy commands
                     let cmd_tx_clone = inner_cmd_tx.clone();
@@ -87,7 +89,7 @@ impl PlayableTrack for QobuzTrack {
             });
         });
 
-        (rx, cmd_tx, err_rx)
+        (rx, cmd_tx, err_rx, None)
     }
 }
 
