@@ -822,28 +822,19 @@ pub fn start_sabr_stream(
     flume::Sender<SabrCommand>,
     JoinHandle<()>,
 )> {
-    // Pick the best format from the player response.
-    // If adaptiveFormats was empty (common for SABR-only WEB responses),
-    // fall back to itag 251 (opus/webm) — the stream itself will confirm
-    // the real format via MEDIA_HEADER on first response.
-    let selected = config.best_audio_format().cloned().unwrap_or_else(|| {
-        tracing::debug!(
-            "SABR[{}]: no formats in config — using fallback itag 251 (opus/webm)",
-            video_id
-        );
-        SabrFormat {
-            itag: 251,
-            last_modified: "0".to_string(),
-            xtags: None,
-            mime_type: "audio/webm; codecs=\"opus\"".to_string(),
-            audio_track_id: None,
-            bitrate: 128_000,
-            average_bitrate: 0,
-            audio_channels: 2,
-            is_default_audio_track: true,
-            is_drc: false,
+    // Pick the best format (AAC/mp4 preferred over webm/opus).
+    // If no formats are present in the player response, bail out —
+    // we have no opus codec handler so the opus/webm fallback is useless.
+    let selected = match config.best_audio_format().cloned() {
+        Some(fmt) => fmt,
+        None => {
+            tracing::warn!(
+                "SABR[{}]: no audio formats in player response — cannot start stream",
+                video_id
+            );
+            return None;
         }
-    });
+    };
 
     let mime = selected.mime_type.clone();
 
