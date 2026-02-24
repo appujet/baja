@@ -1,117 +1,169 @@
-# rustalink 🦈
+# Rustalink 🦈
 
-**rustalink** is a high-performance, v4-compatible Lavalink server implementation written in **Rust**. Built with efficiency and modern features in mind, it aims to provide a robust alternative for Discord bot audio providers.
+**Rustalink** is a high-performance, v4-compatible Lavalink server implementation written in **Rust**. Built for efficiency and low latency, it provides a robust alternative for Discord bot audio providers.
 
-## 🚀 Progress Tracking
-
-The following table outlines the current implementation status of various features:
+## 🚀 Status
 
 ### Core Infrastructure
 | Feature | Status | Description |
 | :--- | :---: | :--- |
-| **Lavalink v4 REST API** | ✅ | Full compatibility with v4 endpoints |
-| **WebSocket Interface** | ✅ | Event dispatching and real-time stats |
-| **Session Management** | ✅ | Session creation, discovery, and cleanup |
-| **Resumable Sessions** | ✅ | Connection persistence across restarts/disconnects |
-| **Discord Gateway** | ✅ | Robust voice state and server update handling |
-| **Discord UDP** | ✅ | Direct audio data transmission to Discord |
-| **Discord DAVE** | ✅ | Support for E2EE (End-to-End Encryption) |
+| **v4 REST API** | ✅ | Full compatibility with v4 endpoints |
+| **WebSockets** | ✅ | Dispatching and real-time stats |
+| **Sessions** | ✅ | Discovery, cleanup, and resumption |
+| **Discord Gateway**| ✅ | Voice state & server update handling |
+| **Discord UDP** | ✅ | Direct audio transmission |
+| **Discord DAVE** | ✅ | E2EE Support |
 
 ### Audio Engine
 | Feature | Status | Description |
 | :--- | :---: | :--- |
-| **Symphonia Decoding** | ✅ | Hardware-accelerated audio decoding |
-| **PCM Resampling** | ✅ | High-quality resampling to 48kHz |
-| **Audio Mixing** | ✅ | Multi-track mixing support |
-| **Opus Encoding** | ✅ | Low-latency encoding for Discord |
-| **Audio Filters** | ✅ | Implementation of EQ, Karaoke, Timescale, etc. |
-| **Seeking** | ✅ | Support for seeking within tracks |
-
-
-### Audio Sources
-| Source | Status | Description |
-| :--- | :---: | :--- |
-| **HTTP / HTTPS** | ✅ | Direct streaming from web URLs |
-| **Local** | ✅ | Direct streaming from local files |
-| **YouTube** | ✅ | Integration with `TV` and `IOS` client are supported for playback and (`sabr` streaming is under development) |
-| **Spotify** | ✅ | Metadata resolution and full mirror playback support |
-| **JioSaavn** | ✅ | Metadata resolution and full playback support |
-| **Amazon Music** | ❌ | Planned implementation |
-| **Apple Music** | ✅ | Implementation |
-| **Anghami** | ✅ | Metadata resolution with full mirror playback support (Protobuf-encoded response handling) |
-| **Audiomack** | ✅ | Implementation |
-| **Audius** | ✅ | Implementation |
-| **Bandcamp** | ✅ | Implementation |
-| **Bilibili** | ❌ | Planned implementation |
-| **Deezer** | ✅ | Implementation |
-| **Gaana** | ✅ | Implementation |
-| **Kwai** | ❌ | Planned implementation |
-| **Last.fm** | ❌ | Planned implementation |
-| **MixCloud** | ✅ | Implementation |
-| **Pandora** | ✅ | Implementation |
-| **Qobuz** | ✅ | Implementation |
-| **Reddit** | ❌ | Planned implementation |
-| **Shazam** | ✅ | Implementation |
-| **SoundCloud** | ✅ | Integration with progressive and HLS streams |
-| **Tidal** | ✅ | Implementation |
-| **Twitch** | ❌ | Planned implementation |
-| **Vimeo** | ❌ | Planned implementation |
-| **VK Music** | ❌ | Planned implementation |
-| **Yandex Music** | ❌ | Planned implementation |
+| **Symphonia** | ✅ | Fast audio decoding |
+| **PCM Resampling**| ✅ | 48kHz high-quality resampling |
+| **Mixing** | ✅ | Multi-track mixing support |
+| **Opus Encoding** | ✅ | Low-latency encoding |
+| **Filters** | ✅ | EQ, Karaoke, Timescale, etc. |
+| **Seeking** | ✅ | Seeking within tracks |
 
 ---
 
-## 📖 Getting Started
+## Supported Sources
 
-Ready to use **rustalink**? Check out our comprehensive setup guide:
+Rustalink supports direct playback and **Mirroring**. Mirroring allows playback from metadata-only services (like Spotify) by automatically finding the best audio match from your configured mirror providers.
 
-👉 **[Setup & Usage Guide (Docker, Windows, Linux, macOS)](./guide.md)**
+### Source Table
+
+| Source | Type | Search Prefix | Features |
+| :--- | :---: | :--- | :--- |
+| **YouTube** | Direct | `ytsearch:`, `ytmsearch:` | `ytrec:`, Lyrics |
+| **SoundCloud** | Hybrid | `scsearch:` | - |
+| **Spotify** | Mirror | `spsearch:` | `sprec:` |
+| **Apple Music**| Mirror | `amsearch:` | - |
+| **Deezer** | Hybrid | `dzsearch:`, `dzisrc:` | `dzrec:`, Lyrics |
+| **Tidal** | Hybrid | `tdsearch:` | `tdrec:` |
+| **Qobuz** | Hybrid | `qbsearch:`, `qbisrc:` | `qbrec:` |
+| **Bandcamp** | Direct | `bcsearch:` | - |
+| **MixCloud** | Direct | `mcsearch:` | - |
+| **JioSaavn** | Hybrid | `jssearch:` | `jsrec:` |
+| **Gaana** | Hybrid | `gnsearch:` | - |
+| **Yandex Music**| Hybrid | `ymsearch:` | `ymrec:`, Lyrics |
+| **Audiomack** | Hybrid | `amksearch:` | - |
+| **Anghami** | Mirror | `agsearch:` | - |
+| **Shazam** | Mirror | `shsearch:` | - |
+| **Pandora** | Mirror | `pdsearch:` | `pdrec:` |
+| **Audius** | Hybrid | `adsearch:` | - |
+| **HTTP / Local**| Direct | - | - |
+
+> [!NOTE]
+> **Hybrid** sources support direct playback if credentials/tokens are provided or if a direct playback URL is received. Otherwise, they fall back to mirroring.
 
 ---
 
-## 🛠️ Performance
-rustalink is designed to be extremely lightweight, leveraging Rust's zero-cost abstractions and asynchronous runtime (**Tokio**) to handle hundreds of concurrent streams with minimal CPU and memory footprint.
+## 🛠️ Installation
 
-## ⚙️ Requirements
+### Running with Docker (Recommended)
+Docker ensures a consistent environment with all dependencies pre-configured.
+
+#### 1. Pull the latest image
+```bash
+docker pull ghcr.io/bong-project/rustalink:latest
+```
+
+#### 2. Setup configuration
+Create a directory for your configuration and logs:
+```bash
+mkdir rustalink-data
+cp config.default.toml rustalink-data/config.toml
+```
+Edit `rustalink-data/config.toml` to your liking.
+
+#### 3. Run the container
+```bash
+docker run -d \
+  --name rustalink \
+  -p 2333:2333 \
+  -v $(pwd)/rustalink-data/config.toml:/app/config.toml \
+  -v $(pwd)/rustalink-data/logs:/app/logs \
+  --restart unless-stopped \
+  ghcr.io/bong-project/rustalink:latest
+```
+
+#### 4. Docker Compose (Alternative)
+Create a `docker-compose.yml`:
+```yaml
+services:
+  rustalink:
+    image: ghcr.io/bong-project/rustalink:latest
+    ports:
+      - "2333:2333"
+    volumes:
+      - ./config.toml:/app/config.toml
+      - ./logs:/app/logs
+    restart: unless-stopped
+```
+Run with: `docker compose up -d`
+
+---
+
+### Running Native
+Download the appropriate binary for your system from the [Releases](https://github.com/bong-project/rustalink/releases) page or build from source.
+
+#### 🪟 Windows
+1. Download `rustalink-x86_64-pc-windows-msvc.exe`.
+2. Install the [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+3. Place `config.toml` next to the `.exe`.
+4. Run via Command Prompt or PowerShell: `.\rustalink.exe`
+
+#### 🏔️ Linux (Arch / Ubuntu)
+1. Download `rustalink-x86_64-unknown-linux-musl`.
+2. Install build dependencies if needed:
+   - **Arch**: `sudo pacman -S cmake gcc pkg-config`
+   - **Ubuntu**: `sudo apt install cmake build-essential pkg-config`
+3. Make executable: `chmod +x rustalink-x86_64-unknown-linux-musl`
+4. Run: `./rustalink-x86_64-unknown-linux-musl`
+
+#### 🍎 macOS
+1. Download the correct binary (Intel/M1/M2/M3).
+2. Remove quarantine if blocked: `xattr -d com.apple.quarantine rustalink-*-apple-darwin`
+3. Make executable and run: `chmod +x rustalink-*-apple-darwin && ./rustalink-*-apple-darwin`
+
+---
+
+## ⚙️ Configuration
+
+Rustalink uses a `config.toml` file for its settings.
+- **Port**: Default is `2333`.
+- **Password**: Default is `youshallnotpass`.
+- **Sources**: Enable or disable providers (YouTube, Spotify, etc.) in the `[sources]` section.
+- **Logging**: Configure verbosity in the `[logging]` section.
+- **Mirroring**: Configure mirror priority and concurrent fetching.
+
+---
+
+## 🛠️ Building from Source
 
 ### 🛠️ Build Requirements
-If you are building from source, you need the following installed on your system:
+- **Rust**: Latest stable.
+- **C-Toolchain**: `gcc`, `g++`, `make`, `cmake`, `pkg-config`.
+- **Clang/LLVM**: Required for `bindgen`.
 
-- **Rust**: Latest stable version (Edition 2024).
-- **C/C++ Toolchain**: `gcc`, `g++`, `make`.
-- **CMake**: Required for building bundled C dependencies (`opus`).
-- **CMake**: Used for building some C/C++ dependencies (like Opus).
-- **Clang/LLVM**: Required for `bindgen` (e.g., `libclang-dev`).
-- **Pkg-config**: To locate system libraries.
+#### Install Commands:
+- **Ubuntu/Debian**: `sudo apt install cmake pkg-config libclang-dev clang gcc g++ make perl`
+- **Arch Linux**: `sudo pacman -S cmake pkgconf clang gcc make perl`
 
-#### Platform Specific Install Commands:
-- **Ubuntu/Debian**:
-  ```bash
-  sudo apt-get update
-  sudo apt-get install -y cmake pkg-config libclang-dev clang gcc g++ make perl
-  ```
-- **Arch Linux**:
-  ```bash
-  sudo pacman -S cmake pkgconf clang gcc make perl
-  ```
-- **macOS**:
-  ```bash
-  brew install cmake pkg-config
-  ```
-- **Windows**:
-  - [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with C++ workload.
-  - [LLVM/Clang](https://releases.llvm.org/download.html) (add to PATH).
-
-### 🏃 Runtime Requirements
-- **Docker** (Optional, recommended): For running the pre-built multi-arch image.
-- **OpenSSL**: Ensure system certificates are up to date (usually present by default).
-- **Visual C++ Redistributable**: (Windows only) Required for native binaries.
-
-
-
-
-## Format Code
-
+### Commands
 ```bash
+# Clone the repository
+git clone https://github.com/bong-project/rustalink.git
+cd rustalink
+
+# Build the project
+cargo build --release
+
+# Format code (optional)
 rustup run nightly cargo fmt
 ```
+
+---
+
+## 📝 License
+Distributed under the Apache-2.0 License. See `LICENSE` for more information.
