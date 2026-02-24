@@ -233,6 +233,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: rustalink-*
 
       - name: 🚀 Attach binaries to GitHub Release
         uses: softprops/action-gh-release@v2
