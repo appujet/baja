@@ -1,7 +1,7 @@
 use flume::{Receiver, Sender};
 use symphonia::core::{
     audio::SampleBuffer,
-    codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions},
+    codecs::{CODEC_TYPE_NULL, CODEC_TYPE_OPUS, Decoder, DecoderOptions},
     errors::Error,
     formats::{FormatOptions, FormatReader},
     io::{MediaSource, MediaSourceStream},
@@ -80,8 +80,18 @@ impl AudioProcessor {
             })?;
 
         let track_id = track.id;
-        let decoder = symphonia::default::get_codecs()
-            .make(&track.codec_params, &DecoderOptions::default())?;
+        let decoder: Box<dyn Decoder> = if track.codec_params.codec == CODEC_TYPE_OPUS {
+            // symphonia has no built-in opus codec — use our audiopus-backed decoder.
+            Box::new(
+                crate::audio::codecs::opus::OpusCodecDecoder::try_new(
+                    &track.codec_params,
+                    &DecoderOptions::default(),
+                )?,
+            )
+        } else {
+            symphonia::default::get_codecs()
+                .make(&track.codec_params, &DecoderOptions::default())?
+        };
 
         let source_rate = track.codec_params.sample_rate.unwrap_or(48000);
         let target_rate = 48000;

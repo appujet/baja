@@ -65,8 +65,8 @@ impl SabrFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FormatInfo {
-    Mp4 = 0,
-    Webm = 1,
+    Webm = 0, // opus/webm preferred for SABR
+    Mp4 = 1,
     Unknown = 2,
 }
 
@@ -218,8 +218,7 @@ impl SabrConfig {
 
         if formats.is_empty() {
             tracing::warn!(
-                "SABR config: no audio formats found in adaptiveFormats — \
-                 SABR will start but format will be inferred from MEDIA_HEADER"
+                "SABR config: no audio formats found in adaptiveFormats"
             );
         } else {
             tracing::debug!(
@@ -248,12 +247,12 @@ impl SabrConfig {
 
 
     /// Select the best audio format for SABR streaming.
-    /// Prefers AAC/mp4, then opus/webm, higher bitrate wins within same format type.
-    /// Also prefers non-DRC and default audio tracks.
+    /// Prefers `audio/webm` (opus) first, then `audio/mp4` (AAC).
+    /// Higher bitrate wins within the same format type; prefers non-DRC and default audio tracks.
     pub fn best_audio_format(&self) -> Option<&SabrFormat> {
         let mut best: Option<&SabrFormat> = None;
 
-        // First pass: default audio track
+        // First pass: default audio track only
         for fmt in &self.formats {
             if !fmt.is_audio() || !fmt.is_default_audio_track {
                 continue;

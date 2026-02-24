@@ -1,3 +1,4 @@
+pub mod codecs;
 pub mod filters;
 pub mod pipeline;
 pub mod playback;
