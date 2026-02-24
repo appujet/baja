@@ -719,7 +719,7 @@ impl SabrInner {
             self.recovery_pending = true;
             let _ = self.event_tx.send(SabrEvent::Stall);
         } else if status == 1 {
-            tracing::warn!(
+            tracing::debug!(
                 "SABR[{}]: Stream Protection Status: 1 (Enabled)",
                 self.video_id
             );
