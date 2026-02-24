@@ -28,6 +28,7 @@ impl PlayableTrack for JioSaavnTrack {
         Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
+        Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
         let mut playback_url = self
             .decrypt_url(&self.encrypted_url)
@@ -74,7 +75,7 @@ impl PlayableTrack for JioSaavnTrack {
             }
         });
 
-        (rx, cmd_tx, err_rx)
+        (rx, cmd_tx, err_rx, None)
     }
 }
 

@@ -64,6 +64,7 @@ pub trait YouTubeClient: Send + Sync {
         _visitor_data: Option<&str>,
         _signature_timestamp: Option<u32>,
         _cipher_manager: Arc<YouTubeCipherManager>,
+        _start_time_ms: u64,
     ) -> Option<SabrConfig> {
         None
     }

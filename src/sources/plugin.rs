@@ -5,11 +5,14 @@ use flume::{Receiver, Sender};
 
 use crate::audio::{buffer::PooledBuffer, processor::DecoderCommand};
 
-/// A track that can start its own decoding and return PCM samples.
-/// Returns `(pcm_rx, cmd_tx, error_rx)` where:
-/// - `pcm_rx`   — batched i16 PCM sample frames from the decoder
+/// A track that can start its own decoding and return audio frames.
+///
+/// Returns `(pcm_rx, cmd_tx, error_rx, opus_rx)` where:
+/// - `pcm_rx`   — batched i16 PCM sample frames (transcode path)
 /// - `cmd_tx`   — send seek/stop commands to the decoder
 /// - `error_rx` — receives a single `String` if a fatal decode/IO error occurs
+/// - `opus_rx`  — `Some` when the stream is already Opus (YouTube WebM passthrough);
+///               raw Opus frames that bypass the PCM mix and encode entirely
 pub trait PlayableTrack: Send + Sync {
     fn start_decoding(
         &self,
@@ -17,6 +20,7 @@ pub trait PlayableTrack: Send + Sync {
         Receiver<PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
+        Option<Receiver<Arc<Vec<u8>>>>,
     );
 }
 

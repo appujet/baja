@@ -129,7 +129,7 @@ pub async fn start_playback(
         if !lyrics_subscribed_on_start.load(Ordering::Relaxed) {
             return;
         }
-        
+
         if let Some(lyrics) = lyrics_manager_clone.load_lyrics(&track_info_clone).await {
             {
                 let mut lock = lyrics_data_arc.lock().await;
@@ -170,13 +170,16 @@ pub async fn start_playback(
         identifier, track_info.source_name
     );
 
-    let (rx, cmd_tx, error_rx) = playable_track.start_decoding();
+    let (rx, cmd_tx, error_rx, opus_rx) = playable_track.start_decoding();
     let (handle, audio_state, vol, pos) = TrackHandle::new(cmd_tx, player.tape_stop.clone());
 
     {
         let engine = player.engine.lock().await;
         let mut mixer = engine.mixer.lock().await;
-        mixer.add_track(rx, audio_state, vol, pos, player.config.clone());
+        mixer.add_track(rx, audio_state, vol, pos.clone(), player.config.clone());
+        if let Some(opus) = opus_rx {
+            mixer.add_passthrough_track(opus, pos);
+        }
     }
 
     player.track_handle = Some(handle.clone());
@@ -210,7 +213,7 @@ pub async fn start_playback(
 
     let track_task = tokio::spawn(async move {
         let mut state_interval = tokio::time::interval(std::time::Duration::from_millis(500));
-    
+
         let update_every_n: u64 = (update_interval_secs * 2).max(1);
         let mut tick_count: u64 = 0;
 

@@ -26,6 +26,7 @@ impl PlayableTrack for DeezerTrack {
         Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
+        Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
         let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
@@ -209,6 +210,6 @@ impl PlayableTrack for DeezerTrack {
             }
         });
 
-        (rx, cmd_tx, err_rx)
+        (rx, cmd_tx, err_rx, None)
     }
 }

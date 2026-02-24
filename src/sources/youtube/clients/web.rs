@@ -40,7 +40,11 @@ impl WebClient {
             .build()
             .expect("Failed to build Web HTTP client");
 
-        Self { http, yt_cipher_url: None, yt_cipher_token: None }
+        Self {
+            http,
+            yt_cipher_url: None,
+            yt_cipher_token: None,
+        }
     }
 
     /// Configure the yt-cipher service URL and optional API token.
@@ -106,6 +110,7 @@ impl WebClient {
         visitor_data: Option<&str>,
         signature_timestamp: Option<u32>,
         cipher: &YouTubeCipherManager,
+        start_time_ms: u64,
     ) -> Option<SabrConfig> {
         let mut cfg = fetch_sabr_config(
             &self.http,
@@ -124,7 +129,10 @@ impl WebClient {
 
         // : resolve the n-param on serverAbrStreamingUrl via cipher service
         // (Web.js lines 312-328: cipherManager.resolveUrl(serverAbrUrl, ...))
-        match cipher.resolve_url(&cfg.server_abr_url, "", None, None).await {
+        match cipher
+            .resolve_url(&cfg.server_abr_url, "", None, None)
+            .await
+        {
             Ok(resolved) => {
                 tracing::debug!(
                     "SABR player[{}]: resolved serverAbrStreamingUrl n-param",
@@ -135,16 +143,17 @@ impl WebClient {
             Err(e) => {
                 tracing::warn!(
                     "SABR player[{}]: failed to resolve n-param on SABR URL: {} — using raw URL",
-                    video_id, e
+                    video_id,
+                    e
                 );
                 // Continue with unresolved URL (will 403 if n-param encrypted)
             }
         }
 
+        cfg.start_time_ms = start_time_ms;
         Some(cfg)
     }
 }
-
 
 #[async_trait]
 impl YouTubeClient for WebClient {
@@ -414,7 +423,15 @@ impl YouTubeClient for WebClient {
         visitor_data: Option<&str>,
         signature_timestamp: Option<u32>,
         cipher_manager: std::sync::Arc<YouTubeCipherManager>,
+        start_time_ms: u64,
     ) -> Option<crate::sources::youtube::sabr::SabrConfig> {
-        self.get_sabr_config(track_id, visitor_data, signature_timestamp, &cipher_manager).await
+        self.get_sabr_config(
+            track_id,
+            visitor_data,
+            signature_timestamp,
+            &cipher_manager,
+            start_time_ms,
+        )
+        .await
     }
 }

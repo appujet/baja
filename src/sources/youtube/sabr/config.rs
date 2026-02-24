@@ -65,17 +65,13 @@ impl SabrFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FormatInfo {
-    Webm = 0, // opus/webm preferred for SABR
+    Webm = 0, 
     Mp4 = 1,
     Unknown = 2,
 }
 
 impl SabrConfig {
-    /// Parse a player response JSON and extract a `SabrConfig`.
-    /// Returns `None` only if the response is missing critical SABR fields
-    /// (`streamingData`, `serverAbrStreamingUrl`, or `videoPlaybackUstreamerConfig`).
-    /// An empty format list is allowed — the SABR stream will pick up format info
-    /// from the MEDIA_HEADER UMP part on first response.
+
     pub fn from_player_response(
         response: &Value,
         visitor_data: Option<String>,

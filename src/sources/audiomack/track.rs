@@ -20,6 +20,7 @@ impl PlayableTrack for AudiomackTrack {
         Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
+        Option<flume::Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
         let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
@@ -39,7 +40,8 @@ impl PlayableTrack for AudiomackTrack {
                         local_addr,
                         proxy: None,
                     };
-                    let (inner_rx, inner_cmd_tx, inner_err_rx) = http_track.start_decoding();
+                    let (inner_rx, inner_cmd_tx, inner_err_rx, _inner_opus_rx) =
+                        http_track.start_decoding();
 
                     // Proxy commands
                     let cmd_tx_clone: Sender<DecoderCommand> = inner_cmd_tx.clone();
@@ -66,7 +68,7 @@ impl PlayableTrack for AudiomackTrack {
             });
         });
 
-        (rx, cmd_tx, err_rx)
+        (rx, cmd_tx, err_rx, None)
     }
 }
 

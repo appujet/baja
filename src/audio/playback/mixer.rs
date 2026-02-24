@@ -22,6 +22,14 @@ const MIXER_CHANNELS: u64 = 2;
 pub struct Mixer {
     tracks: Vec<MixerTrack>,
     mix_buf: Vec<i32>,
+    /// Passthrough channel: raw Opus frames that bypass the PCM mix entirely.
+    /// Only set for YouTube WebM/Opus tracks when no filters are active.
+    opus_passthrough: Option<PassthroughTrack>,
+}
+
+struct PassthroughTrack {
+    rx: flume::Receiver<std::sync::Arc<Vec<u8>>>,
+    position: Arc<AtomicU64>,
 }
 
 struct MixerTrack {
@@ -42,6 +50,7 @@ impl Mixer {
         Self {
             tracks: Vec::new(),
             mix_buf: Vec::with_capacity(1920),
+            opus_passthrough: None,
         }
     }
 
@@ -63,6 +72,43 @@ impl Mixer {
             config,
             effect: None,
         });
+    }
+
+    /// Register a raw-Opus passthrough receiver.
+    ///
+    /// When set, `take_opus_frame()` polls this receiver before the PCM mix
+    /// path.  The speak_loop sends the returned frame directly to Discord
+    /// without encoding.
+    pub fn add_passthrough_track(
+        &mut self,
+        opus_rx: flume::Receiver<std::sync::Arc<Vec<u8>>>,
+        position: Arc<AtomicU64>,
+    ) {
+        self.opus_passthrough = Some(PassthroughTrack {
+            rx: opus_rx,
+            position,
+        });
+    }
+
+    /// Try to receive one raw Opus frame from the passthrough receiver.
+    ///
+    /// Returns `Some(frame)` if a frame is ready, `None` if not (use PCM path).
+    pub fn take_opus_frame(&mut self) -> Option<std::sync::Arc<Vec<u8>>> {
+        if let Some(ref pt) = self.opus_passthrough {
+            match pt.rx.try_recv() {
+                Ok(frame) => {
+                    // Update position. Every Opus frame is 20ms (960 samples @ 48kHz).
+                    pt.position.fetch_add(960, Ordering::Relaxed);
+                    return Some(frame);
+                }
+                Err(flume::TryRecvError::Disconnected) => {
+                    // Processor finished — clear passthrough slot.
+                    self.opus_passthrough = None;
+                }
+                Err(flume::TryRecvError::Empty) => {}
+            }
+        }
+        None
     }
 
     pub fn stop_all(&mut self) {

@@ -1,15 +1,15 @@
-use std::collections::{HashMap, HashSet};
 use futures::StreamExt;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-
 use base64::{
-    engine::general_purpose::STANDARD as B64, engine::general_purpose::URL_SAFE as B64URL, Engine as _,
+    Engine as _, engine::general_purpose::STANDARD as B64,
+    engine::general_purpose::URL_SAFE as B64URL,
 };
-use tokio_util::bytes::Bytes;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
+use tokio_util::bytes::Bytes;
 
 use crate::common::types::AnyResult;
 
@@ -24,10 +24,10 @@ pub(crate) fn decode_po_token(s: &str) -> Option<Vec<u8>> {
 
 use super::config::{SabrConfig, SabrFormat};
 use super::proto::{
-    self, EncodedBufferedRange, MediaHeaderMsg,
-    UMP_FORMAT_INITIALIZATION_METADATA, UMP_MEDIA, UMP_MEDIA_END, UMP_MEDIA_HEADER,
-    UMP_NEXT_REQUEST_POLICY, UMP_RELOAD_PLAYER_RESPONSE, UMP_SABR_CONTEXT_SENDING_POLICY,
-    UMP_SABR_CONTEXT_UPDATE, UMP_SABR_ERROR, UMP_SABR_REDIRECT, UMP_STREAM_PROTECTION_STATUS,
+    self, EncodedBufferedRange, MediaHeaderMsg, UMP_FORMAT_INITIALIZATION_METADATA, UMP_MEDIA,
+    UMP_MEDIA_END, UMP_MEDIA_HEADER, UMP_NEXT_REQUEST_POLICY, UMP_RELOAD_PLAYER_RESPONSE,
+    UMP_SABR_CONTEXT_SENDING_POLICY, UMP_SABR_CONTEXT_UPDATE, UMP_SABR_ERROR, UMP_SABR_REDIRECT,
+    UMP_STREAM_PROTECTION_STATUS,
 };
 
 #[derive(Debug, Clone)]
@@ -47,8 +47,6 @@ pub enum SabrCommand {
     },
     Seek(u64),
 }
-
-
 
 const MIN_REQUEST_INTERVAL_MS: u64 = 500;
 const MAX_NO_MEDIA_STREAK: u32 = 12;
@@ -78,7 +76,7 @@ struct PendingSegment {
     format_key: String,
     sequence_number: u32,
     media_header: MediaHeaderMsg,
- }
+}
 
 /// SABR context blob received from the server
 #[derive(Clone)]
@@ -118,7 +116,7 @@ struct SabrInner {
     partial_segments: HashMap<u8, PendingSegment>,
     // formatKey -> vec of segment metas seen so far (for bufferedRanges)
     completed_segments: HashMap<String, Vec<SegmentMeta>>,
-    // sequence counters for each itag 
+    // sequence counters for each itag
     format_sequence_counters: HashMap<i32, u32>,
     // SABR contexts
     sabr_contexts: HashMap<i32, SabrContext>,
@@ -129,6 +127,7 @@ struct SabrInner {
     cached_ranges: Vec<proto::EncodedBufferedRange>,
     stream_finished: bool,
     recovery_pending: bool,
+    start_offset_ms: u64,
     session_start_time: Option<std::time::Instant>,
 
     tx: mpsc::Sender<Bytes>,
@@ -203,6 +202,7 @@ impl SabrInner {
             cached_ranges: Vec::new(),
             recovery_pending: false,
             stream_finished: false,
+            start_offset_ms: config.start_time_ms,
             session_start_time: None,
             tx,
             event_tx,
@@ -211,14 +211,12 @@ impl SabrInner {
     }
 
     fn virtual_player_time_ms(&mut self) -> u64 {
-        if self.total_downloaded_ms == 0 {
-            return 0;
-        }
+        let base = self.start_offset_ms;
         match self.session_start_time {
-            Some(start) => start.elapsed().as_millis() as u64,
+            Some(start) => base + start.elapsed().as_millis() as u64,
             None => {
                 self.session_start_time = Some(std::time::Instant::now());
-                0
+                base
             }
         }
     }
@@ -232,10 +230,13 @@ impl SabrInner {
                     po_token,
                     playback_cookie,
                 } => {
-                    tracing::info!("SABR[{}]: session updated via recovery", self.video_id);
+                    tracing::trace!("SABR[{}]: session updated via recovery", self.video_id);
                     self.server_abr_url = server_abr_url;
 
-                    if let Ok(config) = B64.decode(&ustreamer_config).or_else(|_| B64URL.decode(&ustreamer_config)) {
+                    if let Ok(config) = B64
+                        .decode(&ustreamer_config)
+                        .or_else(|_| B64URL.decode(&ustreamer_config))
+                    {
                         self.ustreamer_config = config;
                     }
 
@@ -250,22 +251,21 @@ impl SabrInner {
                         self.playback_cookie = None;
                     }
 
-                    // Preserve SABR contexts across session resets.  does NOT clear them.
-                    // Sending old contexts on a new URL can be risky, but clearing them
-                    // often breaks session continuity. We'll follow  here.
-
-                    // Clear pending buffered ranges )
                     self.completed_segments.clear();
                     self.cached_ranges.clear();
 
                     self.request_number = 0;
                     self.no_media_streak = 0;
                     self.recovery_pending = false;
-                    tracing::debug!("SABR[{}]: recovery complete, contexts cleared, rn reset to 0", self.video_id);
+                    tracing::debug!(
+                        "SABR[{}]: recovery complete, contexts cleared, rn reset to 0",
+                        self.video_id
+                    );
                 }
                 SabrCommand::Seek(ms) => {
-                    tracing::info!("SABR[{}]: fast seek to {}ms", self.video_id, ms);
+                    tracing::trace!("SABR[{}]: fast seek to {}ms", self.video_id, ms);
                     self.total_downloaded_ms = ms;
+                    self.start_offset_ms = ms;
                     self.session_start_time = None;
                     self.request_number = 0;
                     self.next_backoff_ms = 0;
@@ -276,14 +276,16 @@ impl SabrInner {
                     self.completed_segments.clear();
                     self.cached_ranges.clear();
                     self.initialized_formats.clear();
-                    // Do NOT clear contexts, playback cookies, or close the socket loop!
                 }
             }
         }
     }
 
     fn format_key(&self) -> String {
-        format_key(self.selected_format.itag, self.selected_format.xtags.as_deref())
+        format_key(
+            self.selected_format.itag,
+            self.selected_format.xtags.as_deref(),
+        )
     }
 
     fn is_initialized(&self) -> bool {
@@ -307,7 +309,8 @@ impl SabrInner {
 
         // : only rebuild cachedBufferedRanges when new segments are available.
         // Otherwise, return the cached value.
-        let has_new_segs = self.completed_segments
+        let has_new_segs = self
+            .completed_segments
             .get(&key)
             .map(|s| !s.is_empty())
             .unwrap_or(false);
@@ -320,9 +323,16 @@ impl SabrInner {
         let duration_ms: u64 = segs.iter().map(|s| s.duration_ms).sum();
         let start = &segs[0];
         let end = segs.last().unwrap();
-        let timescale = segs.iter().find_map(|s| {
-            if s.timescale > 0 { Some(s.timescale) } else { None }
-        }).unwrap_or(1000);
+        let timescale = segs
+            .iter()
+            .find_map(|s| {
+                if s.timescale > 0 {
+                    Some(s.timescale)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(1000);
 
         let range = EncodedBufferedRange {
             itag: self.selected_format.itag,
@@ -372,18 +382,11 @@ impl SabrInner {
             .map(|(i, lm, xt)| (*i, lm.as_str(), xt.as_deref()))
             .collect();
 
-        let preferred = vec![(
-            itag,
-            last_modified.as_str(),
-            xtags.as_deref(),
-        )];
+        let preferred = vec![(itag, last_modified.as_str(), xtags.as_deref())];
 
         let contexts = self.build_sabr_contexts();
         let unsent = self.unsent_context_types();
 
-        // Uses totalDownloadedMs as playerTimeMs in the ABR request, NOT the virtual clock.
-        // The virtual clock is only for tracking playback position, not for telling YouTube
-        // how much we've buffered. YouTube uses this to decide which segment to send next.
         let player_time_ms = self.total_downloaded_ms;
         let player_state = 1u64; // Always PLAYING (1). always sends 1n.
 
@@ -420,7 +423,7 @@ impl SabrInner {
                         reqwest::Url::parse(&self.server_abr_url)
                             .unwrap()
                             .query_pairs()
-                            .filter(|(k, _)| k != "rn" && k != "alr" && k != "ump" && k != "srfvp")
+                            .filter(|(k, _)| k != "rn" && k != "alr" && k != "ump" && k != "srfvp"),
                     )
                     .append_pair("alr", "yes")
                     .append_pair("ump", "1")
@@ -509,7 +512,7 @@ impl SabrInner {
             }
         }
 
-        tracing::debug!(
+        tracing::trace!(
             "SABR[{}]: response rn={} bytes={}",
             self.video_id,
             rn,
@@ -537,7 +540,7 @@ impl SabrInner {
             }
             UMP_SABR_REDIRECT => {
                 if let Some(new_url) = proto::decode_sabr_redirect(payload) {
-                    tracing::info!(
+                    tracing::debug!(
                         "SABR[{}]: redirect → {}",
                         self.video_id,
                         &new_url[..new_url.len().min(80)]
@@ -547,12 +550,12 @@ impl SabrInner {
                 }
             }
             UMP_RELOAD_PLAYER_RESPONSE => {
-                tracing::warn!("SABR[{}]: server requested player reload", self.video_id);
+                tracing::debug!("SABR[{}]: server requested player reload", self.video_id);
                 return Err("SABR reload requested by server".into());
             }
             UMP_SABR_CONTEXT_UPDATE => {
                 if let Some(ctx) = proto::decode_sabr_context_update(payload) {
-                    tracing::debug!(
+                    tracing::trace!(
                         "SABR[{}]: context update type={} len={} sendByDefault={}",
                         self.video_id,
                         ctx.context_type,
@@ -609,23 +612,26 @@ impl SabrInner {
     fn handle_format_init(&mut self, payload: &[u8]) {
         if let Some(m) = proto::decode_format_init_metadata(payload) {
             let key = format_key(m.itag, m.xtags.as_deref());
-            tracing::debug!(
+            tracing::trace!(
                 "SABR[{}]: format init key={} end_seg={:?} mime={}",
                 self.video_id,
                 key,
                 m.end_segment_number,
                 m.mime_type
             );
-            self.initialized_formats.insert(key, FormatInitMeta {
-                end_segment_number: m.end_segment_number,
-                mime_type: m.mime_type,
-            });
+            self.initialized_formats.insert(
+                key,
+                FormatInitMeta {
+                    end_segment_number: m.end_segment_number,
+                    mime_type: m.mime_type,
+                },
+            );
         }
     }
 
     fn handle_next_request_policy(&mut self, payload: &[u8]) {
         let p = proto::decode_next_request_policy(payload);
-        tracing::debug!(
+        tracing::trace!(
             "SABR[{}]: next request policy backoff={}ms cookieLen={}",
             self.video_id,
             p.backoff_ms,
@@ -646,7 +652,11 @@ impl SabrInner {
                 h.sequence_number
             } else {
                 // FALLBACK: Uses formatSequenceCounters[itag]++
-                self.format_sequence_counters.get(&h.itag).cloned().unwrap_or(0) + 1
+                self.format_sequence_counters
+                    .get(&h.itag)
+                    .cloned()
+                    .unwrap_or(0)
+                    + 1
             };
 
             if !h.is_init_seg {
@@ -665,7 +675,7 @@ impl SabrInner {
             let mut media_header = h;
             media_header.duration_ms = duration_ms;
 
-            tracing::debug!(
+            tracing::trace!(
                 "SABR[{}]: media header id={} itag={} key={} seq={} init={} dur={}ms",
                 self.video_id,
                 media_header.header_id,
@@ -689,7 +699,7 @@ impl SabrInner {
 
     fn handle_stream_protection_status(&mut self, status: i32) {
         if status == 2 {
-            tracing::warn!(
+            tracing::debug!(
                 "SABR[{}]: stream protection status=2 (limited playback). Signaling stall and resetting PO token.",
                 self.video_id
             );
@@ -697,9 +707,16 @@ impl SabrInner {
             self.recovery_pending = true;
             let _ = self.event_tx.send(SabrEvent::Stall);
         } else if status == 1 {
-            tracing::warn!("SABR[{}]: Stream Protection Status: 1 (Enabled)", self.video_id);
+            tracing::warn!(
+                "SABR[{}]: Stream Protection Status: 1 (Enabled)",
+                self.video_id
+            );
         } else {
-            tracing::debug!("SABR[{}]: stream protection status={}", self.video_id, status);
+            tracing::debug!(
+                "SABR[{}]: stream protection status={}",
+                self.video_id,
+                status
+            );
         }
     }
 
@@ -731,10 +748,14 @@ impl SabrInner {
     }
 
     fn handle_media_end(&mut self, payload: &[u8]) {
-        if payload.is_empty() { return; }
+        if payload.is_empty() {
+            return;
+        }
         let header_id = payload[0];
 
-        let Some(pending) = self.partial_segments.remove(&header_id) else { return };
+        let Some(pending) = self.partial_segments.remove(&header_id) else {
+            return;
+        };
         let h = &pending.media_header;
 
         let duration_ms = if h.duration_ms > 0 {
@@ -788,7 +809,7 @@ impl SabrInner {
             if let Some(meta) = self.initialized_formats.get(&key) {
                 if let Some(end_seg) = meta.end_segment_number {
                     if pending.sequence_number >= end_seg {
-                        tracing::info!(
+                        tracing::debug!(
                             "SABR[{}]: stream complete at segment {}/{}",
                             self.video_id,
                             pending.sequence_number,
@@ -802,17 +823,15 @@ impl SabrInner {
     }
 
     fn update_bandwidth_estimate(&mut self, bytes: usize, elapsed_ms: u64) {
-        if elapsed_ms == 0 || bytes == 0 { return; }
+        if elapsed_ms == 0 || bytes == 0 {
+            return;
+        }
         let measured_bps = (bytes as u64 * 8 * 1000) / elapsed_ms;
         self.bandwidth_estimate = (self.bandwidth_estimate * 3 + measured_bps) / 4;
     }
 }
 
-/// Starts a SABR streaming session for `video_id` using the given `config`.
-///
-/// Returns:
-/// - A `Receiver<Bytes>` that yields raw audio bytes as they arrive
-/// - A `JoinHandle` for the background polling task (can be aborted to stop the stream)
+
 pub fn start_sabr_stream(
     video_id: String,
     config: SabrConfig,
@@ -822,9 +841,7 @@ pub fn start_sabr_stream(
     flume::Sender<SabrCommand>,
     JoinHandle<()>,
 )> {
-    // Pick the best format (AAC/mp4 preferred over webm/opus).
-    // If no formats are present in the player response, bail out —
-    // we have no opus codec handler so the opus/webm fallback is useless.
+   
     let selected = match config.best_audio_format().cloned() {
         Some(fmt) => fmt,
         None => {
@@ -856,32 +873,27 @@ pub fn start_sabr_stream(
         let mut last_request_at = std::time::Instant::now();
 
         loop {
-            // 1. Check for session update commands (recovery)
             inner.check_commands();
-
-            // 2. Terminate if finished
             if inner.stream_finished {
-                tracing::info!("SABR[{}]: stream finished", inner.video_id);
+                tracing::debug!("SABR[{}]: stream finished", inner.video_id);
                 let _ = inner.event_tx.send(SabrEvent::Finished);
                 break;
             }
 
-            // 3. Exit if audio channel closed (track cleared by bot)
             if inner.tx.is_closed() {
-                tracing::debug!("SABR[{}]: audio channel closed — exiting poll loop", inner.video_id);
+                tracing::debug!(
+                    "SABR[{}]: audio channel closed — exiting poll loop",
+                    inner.video_id
+                );
                 break;
             }
 
-            // 4. Wait if recovery is pending
             if inner.recovery_pending {
                 sleep(Duration::from_millis(200)).await;
                 inner.check_commands();
                 continue;
             }
 
-            // Pacing: only throttle when we are well ahead of playback.
-            // Using virtualPlayerTime prevents a startup stall where the channel fills
-            // with raw WebM bytes while symphonia is still parsing the container headers.
             let vpt = inner.virtual_player_time_ms();
             let downloaded = inner.total_downloaded_ms;
             const TARGET_BUFFER_MS: u64 = 30_000;
@@ -938,7 +950,10 @@ pub fn start_sabr_stream(
                 Err(e) => {
                     let err_str = e.to_string();
                     if err_str.contains("channel closed") {
-                        tracing::debug!("SABR[{}]: audio channel closed during fetch — exiting poll loop immediately", inner.video_id);
+                        tracing::debug!(
+                            "SABR[{}]: audio channel closed during fetch — exiting poll loop immediately",
+                            inner.video_id
+                        );
                         break;
                     }
 
@@ -946,8 +961,7 @@ pub fn start_sabr_stream(
                     let is_malformed = err_str.contains("malformed_config");
 
                     if is_enforcement_err || is_malformed {
-                        // : clears contexts on enforcement ID error, emits stall,
-                        // then waits for UpdateSession before retrying.
+        
                         if is_enforcement_err {
                             tracing::warn!(
                                 "SABR[{}]: enforcement ID error — clearing contexts and triggering recovery",
@@ -962,12 +976,9 @@ pub fn start_sabr_stream(
                             );
                         }
 
-                        // Signal recovery to the track handler
                         inner.recovery_pending = true;
                         let _ = inner.event_tx.send(SabrEvent::Stall);
 
-                        // Wait until UpdateSession resets recovery_pending, OR the audio
-                        // channel is closed (track was cleared by the bot while we waited).
                         loop {
                             sleep(Duration::from_millis(250)).await;
                             inner.check_commands();
@@ -975,7 +986,10 @@ pub fn start_sabr_stream(
                                 break; // UpdateSession arrived, resume
                             }
                             if inner.tx.is_closed() {
-                                tracing::debug!("SABR[{}]: audio channel closed during recovery wait — exiting", inner.video_id);
+                                tracing::debug!(
+                                    "SABR[{}]: audio channel closed during recovery wait — exiting",
+                                    inner.video_id
+                                );
                                 return; // Track was cleared, stop the entire SABR task
                             }
                         }
@@ -1009,8 +1023,6 @@ pub fn start_sabr_stream(
     Some((rx, event_rx, cmd_tx, handle))
 }
 
-
-/// The MIME type of the best audio format for this config, or empty string.
 pub fn best_format_mime(config: &SabrConfig) -> Option<String> {
     config.best_audio_format().map(|f| f.mime_type.clone())
 }

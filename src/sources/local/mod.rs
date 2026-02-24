@@ -223,6 +223,7 @@ impl PlayableTrack for LocalTrack {
         flume::Receiver<crate::audio::buffer::PooledBuffer>,
         flume::Sender<DecoderCommand>,
         flume::Receiver<String>,
+        Option<flume::Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
         let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
@@ -259,6 +260,6 @@ impl PlayableTrack for LocalTrack {
             }
         });
 
-        (rx, cmd_tx, err_rx)
+        (rx, cmd_tx, err_rx, None)
     }
 }
