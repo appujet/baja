@@ -121,8 +121,6 @@ impl YouTubeClient for WebRemixClient {
         let mut req = self
             .http
             .post(&url)
-            .header("X-YouTube-Client-Name", CLIENT_NAME)
-            .header("X-YouTube-Client-Version", CLIENT_VERSION)
             .header("X-Goog-Api-Format-Version", "2")
             .header("Origin", MUSIC_API);
 
@@ -152,16 +150,29 @@ impl YouTubeClient for WebRemixClient {
             .and_then(|t| t.get("content"));
 
         let mut shelf_contents = None;
-        if let Some(tab) = tab_content {
-            if let Some(section_list) = tab.get("sectionListRenderer") {
+
+        fn find_shelf(content: &Value) -> Option<&Vec<Value>> {
+            if let Some(section_list) = content.get("sectionListRenderer") {
                 if let Some(sections) = section_list.get("contents").and_then(|c| c.as_array()) {
                     for section in sections {
                         if let Some(shelf) = section.get("musicShelfRenderer") {
-                            shelf_contents = shelf.get("contents").and_then(|c| c.as_array());
-                            if shelf_contents.is_some() {
-                                break;
+                            if let Some(items) = shelf.get("contents").and_then(|c| c.as_array()) {
+                                return Some(items);
                             }
                         }
+                    }
+                }
+            }
+            None
+        }
+
+        if let Some(tab) = tab_content {
+            shelf_contents = find_shelf(tab);
+
+            if shelf_contents.is_none() {
+                if let Some(split_view) = tab.get("musicSplitViewRenderer") {
+                    if let Some(main_content) = split_view.get("mainContent") {
+                        shelf_contents = find_shelf(main_content);
                     }
                 }
             }
