@@ -879,25 +879,30 @@ pub fn start_sabr_stream(
                 continue;
             }
 
-            // Pacing logic to mimic the backpressure based on buffered media.
-            // A SABR segment is typically 10 seconds (~150KB for Opus 251).
-            // We throttle requests if the channel is holding too many unconsumed segments.
-            let max_queued_chunks = 4;
-            let queued_chunks = 256 - inner.tx.capacity();
-            if queued_chunks > max_queued_chunks {
-                tracing::trace!("SABR[{}]: buffer full ({} chunks), waiting", inner.video_id, queued_chunks);
+            // Pacing: only throttle when we are well ahead of playback.
+            // Using virtualPlayerTime prevents a startup stall where the channel fills
+            // with raw WebM bytes while symphonia is still parsing the container headers.
+            let vpt = inner.virtual_player_time_ms();
+            let downloaded = inner.total_downloaded_ms;
+            const TARGET_BUFFER_MS: u64 = 30_000;
+            if downloaded > vpt + TARGET_BUFFER_MS {
+                tracing::trace!(
+                    "SABR[{}]: ahead by {}ms, waiting (target={}ms)",
+                    inner.video_id,
+                    downloaded - vpt,
+                    TARGET_BUFFER_MS,
+                );
                 sleep(Duration::from_millis(250)).await;
                 continue;
             }
 
-            let vpt = inner.virtual_player_time_ms();
             let rn = inner.request_number;
             if rn > 0 {
                 tracing::debug!(
                     "SABR[{}]: Tracking: downloaded={}ms virtualPlayerTime={}ms",
                     inner.video_id,
-                    inner.total_downloaded_ms,
-                    vpt
+                    downloaded,
+                    vpt,
                 );
             }
 
