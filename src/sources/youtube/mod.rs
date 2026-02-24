@@ -27,7 +27,7 @@ pub mod track;
 use cipher::YouTubeCipherManager;
 use clients::{
     YouTubeClient, android::AndroidClient, android_vr::AndroidVrClient, ios::IosClient,
-    music_android::MusicAndroidClient, tv::TvClient, web::WebClient,
+    music_android::MusicAndroidClient, tv::TvClient, tv_cast::TvCastClient, web::WebClient,
     web_embedded::WebEmbeddedClient, web_remix::WebRemixClient,
 };
 use oauth::YouTubeOAuth;
@@ -97,13 +97,17 @@ impl YouTubeSource {
         let cipher_token = config.cipher.token.clone();
         let create_client = |name: &str| -> Option<Arc<dyn YouTubeClient>> {
             match name.to_uppercase().as_str() {
-                "WEB" => Some(Arc::new(WebClient::with_cipher_url(cipher_url.clone(), cipher_token.clone()))),
+                "WEB" => Some(Arc::new(WebClient::with_cipher_url(
+                    cipher_url.clone(),
+                    cipher_token.clone(),
+                ))),
                 "MWEB" | "MUSIC_WEB" | "WEB_REMIX" | "REMIX" => {
                     Some(Arc::new(WebRemixClient::new()))
                 }
                 "ANDROID" => Some(Arc::new(AndroidClient::new())),
                 "IOS" => Some(Arc::new(IosClient::new())),
                 "TV" | "TVHTML5" | "TVHTML5_SIMPLY" => Some(Arc::new(TvClient::new())),
+                "TV_CAST" | "TVHTML5_CAST" => Some(Arc::new(TvCastClient::new())),
                 "MUSIC" | "MUSIC_ANDROID" | "ANDROID_MUSIC" => {
                     Some(Arc::new(MusicAndroidClient::new()))
                 }

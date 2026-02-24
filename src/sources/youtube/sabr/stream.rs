@@ -86,6 +86,9 @@ struct SabrContext {
 }
 
 struct FormatInitMeta {
+    itag: i32,
+    last_modified: String,
+    xtags: Option<String>,
     end_segment_number: Option<u32>,
     #[allow(dead_code)]
     mime_type: String,
@@ -187,7 +190,7 @@ impl SabrInner {
             user_agent: config.user_agent.clone(),
             selected_format: selected,
             request_number: 0,
-            bandwidth_estimate: 1_000_000,
+            bandwidth_estimate: 5_000_000,
             total_downloaded_ms: config.start_time_ms,
             next_backoff_ms: 0,
             no_media_streak: 0,
@@ -267,8 +270,6 @@ impl SabrInner {
                     self.total_downloaded_ms = ms;
                     self.start_offset_ms = ms;
                     self.session_start_time = None;
-                    self.request_number = 0;
-                    self.next_backoff_ms = 0;
                     self.no_media_streak = 0;
                     self.recovery_pending = false;
                     self.partial_segments.clear();
@@ -289,19 +290,27 @@ impl SabrInner {
     }
 
     fn is_initialized(&self) -> bool {
-        self.initialized_formats.contains_key(&self.format_key())
+        !self.initialized_formats.is_empty()
     }
 
     fn build_selected_format_ids(&self) -> Vec<(i32, String, Option<String>)> {
-        if self.is_initialized() {
-            vec![(
-                self.selected_format.itag,
-                self.selected_format.last_modified.clone(),
-                self.selected_format.xtags.clone(),
-            )]
-        } else {
-            vec![]
+        if !self.is_initialized() {
+            return vec![];
         }
+
+        let prefix = format!("{}:", self.selected_format.itag);
+
+        for (key, meta) in &self.initialized_formats {
+            if key.starts_with(&prefix) {
+                return vec![(meta.itag, meta.last_modified.clone(), meta.xtags.clone())];
+            }
+        }
+
+        vec![(
+            self.selected_format.itag,
+            self.selected_format.last_modified.clone(),
+            self.selected_format.xtags.clone(),
+        )]
     }
 
     fn build_buffered_ranges(&mut self) -> Vec<EncodedBufferedRange> {
@@ -622,6 +631,9 @@ impl SabrInner {
             self.initialized_formats.insert(
                 key,
                 FormatInitMeta {
+                    itag: m.itag,
+                    last_modified: m.last_modified,
+                    xtags: m.xtags,
                     end_segment_number: m.end_segment_number,
                     mime_type: m.mime_type,
                 },
@@ -831,7 +843,6 @@ impl SabrInner {
     }
 }
 
-
 pub fn start_sabr_stream(
     video_id: String,
     config: SabrConfig,
@@ -841,7 +852,6 @@ pub fn start_sabr_stream(
     flume::Sender<SabrCommand>,
     JoinHandle<()>,
 )> {
-   
     let selected = match config.best_audio_format().cloned() {
         Some(fmt) => fmt,
         None => {
@@ -961,7 +971,6 @@ pub fn start_sabr_stream(
                     let is_malformed = err_str.contains("malformed_config");
 
                     if is_enforcement_err || is_malformed {
-        
                         if is_enforcement_err {
                             tracing::warn!(
                                 "SABR[{}]: enforcement ID error — clearing contexts and triggering recovery",

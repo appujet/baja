@@ -5,6 +5,7 @@ pub mod common;
 pub mod ios;
 pub mod music_android;
 pub mod tv;
+pub mod tv_cast;
 pub mod web;
 pub mod web_embedded;
 pub mod web_remix;
