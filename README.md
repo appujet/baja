@@ -4,7 +4,7 @@
 
 # Rustalink
 
-**Rustalink** is a high-performance, v4-compatible Lavalink server implementation written in **Rust**. Built for efficiency and low latency, it provides a robust alternative for Discord bot audio providers.
+A high-performance Discord audio sending server written in Rust.
 
 ## 🚀 Status
 
