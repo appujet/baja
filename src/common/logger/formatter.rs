@@ -98,7 +98,11 @@ where
         // Thread ID
         let thread_id_full = format!("{:?}", std::thread::current().id());
         let id_num = thread_id_full.replace("ThreadId(", "").replace(")", "");
-        write!(writer, "ThreadId({}) ", id_num)?;
+        if self.use_ansi {
+            write!(writer, "[Thread: {}]{} ", id_num, reset)?;
+        } else {
+            write!(writer, "[Thread: {}] ", id_num)?;
+        }
 
         // Target and Line
         let target = metadata.target();
