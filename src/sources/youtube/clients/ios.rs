@@ -37,7 +37,7 @@ impl IosClient {
         Self { http }
     }
 
-    /// Build the InnerTube context block mirroring NodeLink's IOS getClient().
+    /// Build the InnerTube context block mirroring the IOS getClient().
     fn build_context(&self, visitor_data: Option<&str>) -> Value {
         let mut client = json!({
             "clientName": CLIENT_NAME,
@@ -105,7 +105,7 @@ impl YouTubeClient for IosClient {
         USER_AGENT
     }
 
-    // IOS client delegates search to Web (same as NodeLink's IOS.js).
+    // IOS client delegates search to Web .
     async fn search(
         &self,
         query: &str,
@@ -189,7 +189,7 @@ impl YouTubeClient for IosClient {
         Ok(extract_from_player(&body, "youtube"))
     }
 
-    // IOS doesn't handle playlists natively (same as NodeLink).
+    // IOS doesn't handle playlists natively .
     async fn get_playlist(
         &self,
         _playlist_id: &str,

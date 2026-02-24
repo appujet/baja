@@ -289,21 +289,21 @@ pub async fn update_player(
 
                     if !no_replace || !is_playing {
                         crate::player::start_playback(
-                            &mut player,
-                            track_data,
-                            session.clone(),
-                            state.source_manager.clone(),
-                            state.lyrics_manager.clone(),
-                            state.routeplanner.clone(),
-                            state.config.server.player_update_interval,
-                            track_update.user_data.clone(),
-                            end_time_val,
-                        )
-                        .await;
-                    }
+                        &mut player,
+                        track_data,
+                        session.clone(),
+                        state.source_manager.clone(),
+                        state.lyrics_manager.clone(),
+                        state.routeplanner.clone(),
+                        state.config.server.player_update_interval,
+                        track_update.user_data.clone(),
+                        end_time_val,
+                    )
+                    .await;
                 }
             }
-        } else if let Some(identifier) = track_update.identifier {
+        }
+    } else if let Some(identifier) = track_update.identifier {
             let is_playing = if let Some(handle) = &player.track_handle {
                 handle.get_state() == crate::audio::playback::handle::PlaybackState::Playing
             } else {

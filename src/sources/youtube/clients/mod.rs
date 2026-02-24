@@ -14,7 +14,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use super::{cipher::YouTubeCipherManager, oauth::YouTubeOAuth};
+use super::{cipher::YouTubeCipherManager, oauth::YouTubeOAuth, sabr::SabrConfig};
 use crate::api::tracks::Track;
 
 #[async_trait]
@@ -55,4 +55,16 @@ pub trait YouTubeClient: Send + Sync {
         context: &Value,
         oauth: Arc<YouTubeOAuth>,
     ) -> AnyResult<Option<(Vec<Track>, String)>>;
+
+    /// Try to fetch a SABR config for this client. Default: returns `None`.
+    /// Only the WEB client overrides this with a real implementation.
+    async fn get_sabr_config(
+        &self,
+        _track_id: &str,
+        _visitor_data: Option<&str>,
+        _signature_timestamp: Option<u32>,
+        _cipher_manager: Arc<YouTubeCipherManager>,
+    ) -> Option<SabrConfig> {
+        None
+    }
 }

@@ -19,6 +19,7 @@ pub mod extractor;
 pub mod hls;
 pub mod oauth;
 pub mod reader;
+pub mod sabr;
 pub mod ua;
 
 pub mod track;
@@ -92,9 +93,11 @@ impl YouTubeSource {
             }
         });
 
+        let cipher_url = config.cipher.url.clone();
+        let cipher_token = config.cipher.token.clone();
         let create_client = |name: &str| -> Option<Arc<dyn YouTubeClient>> {
             match name.to_uppercase().as_str() {
-                "WEB" => Some(Arc::new(WebClient::new())),
+                "WEB" => Some(Arc::new(WebClient::with_cipher_url(cipher_url.clone(), cipher_token.clone()))),
                 "MWEB" | "MUSIC_WEB" | "WEB_REMIX" | "REMIX" => {
                     Some(Arc::new(WebRemixClient::new()))
                 }

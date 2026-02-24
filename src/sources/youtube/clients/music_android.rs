@@ -117,7 +117,7 @@ impl YouTubeClient for MusicAndroidClient {
         let body = json!({
             "context": self.build_context(visitor_data),
             "query": query,
-            "params": "EgWKAQIIAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D" // NodeLink Track params
+            "params": "EgWKAQIIAWoQEAMQBBAJEAoQBRAREBAQFQ%3D%3D" // Track params
         });
 
         let url = format!("{}/youtubei/v1/search?prettyPrint=false", INNERTUBE_API);

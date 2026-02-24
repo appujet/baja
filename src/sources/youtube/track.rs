@@ -1,16 +1,17 @@
 use std::{net::IpAddr, sync::Arc};
 
 use flume::{Receiver, Sender};
-use tracing::{debug, error};
+use tracing::{debug, error, info, warn};
 
 use crate::{
-    audio::processor::{AudioProcessor, DecoderCommand},
+    audio::processor::DecoderCommand,
     configs::HttpProxyConfig,
     sources::{
         plugin::PlayableTrack,
         youtube::{
-            cipher::YouTubeCipherManager, clients::YouTubeClient, hls::HlsReader,
+            cipher::YouTubeCipherManager, clients::YouTubeClient,
             oauth::YouTubeOAuth,
+            sabr::SabrConfig,
         },
     },
 };
@@ -25,183 +26,313 @@ pub struct YoutubeTrack {
     pub proxy: Option<HttpProxyConfig>,
 }
 
+enum ResolvedStream {
+    /// Direct HTTP/HLS URL + source client name
+    Url(String, String),
+    /// SABR config + source client name + the client object (for re-resolution)
+    Sabr(SabrConfig, String, Arc<dyn YouTubeClient>),
+}
+
 impl PlayableTrack for YoutubeTrack {
-    fn start_decoding(
-        &self,
-    ) -> (
-        Receiver<crate::audio::buffer::PooledBuffer>,
-        Sender<DecoderCommand>,
-        flume::Receiver<String>,
-    ) {
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
-        let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
-        // unbounded so multiple consecutive errors are never silently dropped (#19)
-        let (err_tx, err_rx) = flume::unbounded::<String>();
+    fn start_decoding(&self) -> (Receiver<crate::audio::PooledBuffer>, Sender<DecoderCommand>, flume::Receiver<String>) {
+        let (tx, rx) = flume::bounded(32);
+        let (cmd_tx, cmd_rx) = flume::bounded(8);
+        let (err_tx, err_rx) = flume::bounded(1);
 
-        // Prepare data for the decoding thread
-        let identifier = self.identifier.clone();
-        let clients = self.clients.clone();
-        let oauth = self.oauth.clone();
-        let cipher_manager = self.cipher_manager.clone();
-        let visitor_data = self.visitor_data.clone();
-        let local_addr = self.local_addr;
-        let proxy = self.proxy.clone();
-
-        let (url_tx, url_rx) = tokio::sync::oneshot::channel::<(String, String)>();
-        let identifier_async = identifier.clone();
-        let err_tx_async = err_tx.clone();
-        let cipher_manager_async = cipher_manager.clone();
-        let oauth_async = oauth.clone();
-        let clients_async = clients.clone();
+        let identifier_async = self.identifier.clone();
+        let cipher_manager_async = self.cipher_manager.clone();
+        let oauth_async = self.oauth.clone();
+        let clients_async = self.clients.clone();
+        let visitor_data_for_task = self.visitor_data.clone();
+        let proxy_bg = self.proxy.clone();
+        let local_addr_bg = self.local_addr;
 
         tokio::spawn(async move {
-            let context = serde_json::json!({ "visitorData": visitor_data });
+            let context = serde_json::json!({ "visitorData": visitor_data_for_task });
+            let visitor_data_str = context
+                .get("visitorData")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
 
-            use futures::stream::{FuturesUnordered, StreamExt};
-            let mut futs: FuturesUnordered<_> = clients_async
-                .into_iter()
-                .map(|client| {
-                    let id = identifier_async.clone();
-                    let ctx = context.clone();
-                    let cipher = cipher_manager_async.clone();
-                    let oauth_token = oauth_async.clone();
-                    async move {
-                        let client_name = client.name().to_string();
-                        debug!("YoutubeTrack: Resolving '{}' using {}", id, client_name);
-                        let res = client.get_track_url(&id, &ctx, cipher, oauth_token).await;
-                        (client_name, res)
-                    }
-                })
-                .collect();
+            // 1. Resolve URL (Async resolution)
+            let signature_timestamp = cipher_manager_async
+                .get_signature_timestamp()
+                .await
+                .ok();
 
-            while let Some((client_name, res)) = futs.next().await {
-                match res {
-                    Ok(Some(url)) => {
-                        debug!(
-                            "YoutubeTrack: Resolved stream URL via {}: {}",
-                            client_name, url
+            let mut resolved = None;
+
+            for client in &clients_async {
+                let client_name = client.name().to_string();
+
+                // 1. Try SABR (ONLY if client is WEB)
+                if client_name == "Web" {
+                    if let Some(sabr_cfg) = client
+                        .get_sabr_config(
+                            &identifier_async,
+                            visitor_data_str.as_deref(),
+                            signature_timestamp,
+                            cipher_manager_async.clone(),
+                        )
+                        .await
+                    {
+                        info!(
+                            "YoutubeTrack: starting SABR stream for '{}' using client '{}' at 0ms",
+                            identifier_async, client_name
                         );
-                        let _ = url_tx.send((url, client_name));
-                        return;
+                        resolved = Some(ResolvedStream::Sabr(sabr_cfg, client_name, client.clone()));
+                        break;
                     }
-                    Ok(None) => debug!("YoutubeTrack: {} returned no stream URL", client_name),
-                    Err(e) => debug!("YoutubeTrack: {} failed to resolve: {}", client_name, e),
+                }
+
+                // 2. Try URL resolution (fallback)
+                debug!("YoutubeTrack: Resolving '{}' using {}", identifier_async, client_name);
+                match client.get_track_url(&identifier_async, &context, cipher_manager_async.clone(), oauth_async.clone()).await {
+                    Ok(Some(url)) => {
+                        info!(
+                            "YoutubeTrack: resolved track URL for '{}' using client '{}'",
+                            identifier_async, client_name
+                        );
+                        resolved = Some(ResolvedStream::Url(url, client_name));
+                        break;
+                    }
+                    Ok(None) => {
+                        debug!("YoutubeTrack: client {} returned no URL for {}", client_name, identifier_async);
+                    }
+                    Err(e) => {
+                        warn!("YoutubeTrack: client {} failed to resolve {}: {}", client_name, identifier_async, e);
+                    }
                 }
             }
 
-            // All clients exhausted.
-            let msg = format!(
-                "YoutubeTrack: All clients failed to resolve '{}'",
-                identifier_async
-            );
-            error!("{}", msg);
-            let _ = err_tx_async.send(msg);
-            // url_tx is dropped here → url_rx.await will return Err, decode task exits.
-        });
-
-
-        let tx_clone = tx;
-        let cmd_rx_clone = cmd_rx;
-        let err_tx_clone = err_tx;
-        let identifier_decode = identifier;
-        let cipher_manager_decode = cipher_manager;
-        tokio::task::spawn_blocking(move || {
-       
-            let (url, client_name) = match url_rx.blocking_recv() {
-                Ok(pair) => pair,
-                Err(_) => {
-                    // url_tx was dropped (all clients failed) — error already sent.
-                    return;
+            let resolved = match resolved {
+                Some(r) => r,
+                None => {
+                    let msg = format!("YoutubeTrack: All clients failed to resolve '{}'", identifier_async);
+                    error!("{}", msg);
+                    let _ = err_tx.send(msg);
+                    return; // Orchestrator exits
                 }
             };
 
-            let reader: Box<dyn symphonia::core::io::MediaSource> =
-                if url.contains(".m3u8") || url.contains("/playlist") {
-                    let player_url = if url.contains("youtube.com") {
+            // 2. Build MediaSource and spawn AudioProcessor
+            let (reader, kind, _client_name, opt_sabr_cmd_tx, opt_sabr_event_rx) = match resolved {
+                ResolvedStream::Sabr(cfg, client_name, _client) => {
+                    let mime = crate::sources::youtube::sabr::best_format_mime(&cfg);
+                    let Some((rx, event_rx, cmd_tx, handle)) =
+                        crate::sources::youtube::sabr::stream::start_sabr_stream(identifier_async.clone(), cfg)
+                    else {
+                        let msg = format!("YoutubeTrack: SABR start_sabr_stream returned None for {}", identifier_async);
+                        error!("{}", msg);
+                        let _ = err_tx.send(msg);
+                        return;
+                    };
+
+                    let kind = mime.as_deref().and_then(|m| {
+                        if m.contains("webm") {
+                            Some(crate::common::types::AudioKind::Webm)
+                        } else if m.contains("mp4") {
+                            Some(crate::common::types::AudioKind::Mp4)
+                        } else {
+                            None
+                        }
+                    });
+
+                    (
+                        Box::new(crate::sources::youtube::sabr::reader::SabrReader::new(rx, handle))
+                            as Box<dyn symphonia::core::io::MediaSource>,
+                        kind,
+                        client_name,
+                        Some(cmd_tx),
+                        Some(event_rx),
+                    )
+                }
+
+                ResolvedStream::Url(url, client_name) => {
+                    let is_hls = url.contains(".m3u8") || url.contains("/playlist");
+                    let player_url_clone = if url.contains("youtube.com") {
                         Some(url.clone())
                     } else {
                         None
                     };
-                    match HlsReader::new(
-                        &url,
-                        local_addr,
-                        Some(cipher_manager_decode.clone()),
-                        player_url,
-                        proxy.clone(),
-                    ) {
-                        Ok(r) => Box::new(r),
-                        Err(e) => {
-                            error!(
-                                "YoutubeTrack: HlsReader initialization failed for {}: {}",
-                                client_name, e
-                            );
-                            return;
-                        }
-                    }
-                } else {
-                    match super::reader::YoutubeReader::new(&url, local_addr, proxy.clone()) {
-                        Ok(r) => Box::new(r),
-                        Err(e) => {
-                            error!(
-                                "YoutubeTrack: YoutubeReader initialization failed for {}: {}",
-                                client_name, e
-                            );
-                            return;
-                        }
-                    }
-                };
+                    let url_clone = url.clone();
+                    let cipher_clone = cipher_manager_async.clone();
+                    let proxy_clone = proxy_bg.clone();
 
-            // Determine codec from itag param → mime= → path extension.
-            let is_hls = url.contains(".m3u8") || url.contains("/playlist");
-            let kind = if is_hls {
-                Some(crate::common::types::AudioKind::Aac)
-            } else {
-                let itag: Option<u32> = url.split('?').nth(1).and_then(|qs| {
-                    qs.split('&').find_map(|kv| {
-                        let mut parts = kv.splitn(2, '=');
-                        if parts.next() == Some("itag") {
-                            parts.next().and_then(|v| v.parse().ok())
+                    let reader_res = tokio::task::spawn_blocking(move || {
+                        if is_hls {
+                            match crate::sources::youtube::hls::HlsReader::new(
+                                &url_clone,
+                                local_addr_bg,
+                                Some(cipher_clone),
+                                player_url_clone,
+                                proxy_clone,
+                            ) {
+                                Ok(r) => Ok(Box::new(r) as Box<dyn symphonia::core::io::MediaSource>),
+                                Err(e) => Err(e),
+                            }
                         } else {
-                            None
+                            match crate::sources::youtube::reader::YoutubeReader::new(&url_clone, local_addr_bg, proxy_clone) {
+                                Ok(r) => Ok(Box::new(r) as Box<dyn symphonia::core::io::MediaSource>),
+                                Err(e) => Err(e),
+                            }
                         }
-                    })
-                });
-                match itag {
-                    Some(249) | Some(250) | Some(251) => {
-                        Some(crate::common::types::AudioKind::Webm)
-                    }
-                    Some(139) | Some(140) | Some(141) => Some(crate::common::types::AudioKind::Mp4),
-                    _ => {
-                        if url.contains("mime=audio%2Fwebm") || url.contains("mime=audio/webm") {
-                            Some(crate::common::types::AudioKind::Webm)
-                        } else if url.contains("mime=audio%2Fmp4") || url.contains("mime=audio/mp4")
-                        {
-                            Some(crate::common::types::AudioKind::Mp4)
-                        } else {
-                            std::path::Path::new(url.split('?').next().unwrap_or(&url))
-                                .extension()
-                                .and_then(|s| s.to_str())
-                                .and_then(crate::common::types::AudioKind::from_ext)
+                    }).await.expect("YoutubeTrack: reader spawn_blocking failed");
+
+                    let reader = match reader_res {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!("YoutubeTrack: Reader initialization failed: {}", e);
+                            let _ = err_tx.send(e.to_string());
+                            return;
                         }
-                    }
+                    };
+
+                    // Determine codec
+                    let kind = if is_hls {
+                        Some(crate::common::types::AudioKind::Aac)
+                    } else {
+                        let itag: Option<u32> = url.split('?').nth(1).and_then(|qs| {
+                            qs.split('&').find_map(|kv| {
+                                let mut parts = kv.splitn(2, '=');
+                                if parts.next() == Some("itag") {
+                                    parts.next().and_then(|v| v.parse().ok())
+                                } else {
+                                    None
+                                }
+                            })
+                        });
+                        match itag {
+                            Some(249) | Some(250) | Some(251) => {
+                                Some(crate::common::types::AudioKind::Webm)
+                            }
+                            Some(139) | Some(140) | Some(141) => {
+                                Some(crate::common::types::AudioKind::Mp4)
+                            }
+                            _ => {
+                                if url.contains("mime=audio%2Fwebm") || url.contains("mime=audio/webm") {
+                                    Some(crate::common::types::AudioKind::Webm)
+                                } else if url.contains("mime=audio%2Fmp4") || url.contains("mime=audio/mp4") {
+                                    Some(crate::common::types::AudioKind::Mp4)
+                                } else {
+                                    std::path::Path::new(url.split('?').next().unwrap_or(&url))
+                                        .extension()
+                                        .and_then(|s| s.to_str())
+                                        .and_then(crate::common::types::AudioKind::from_ext)
+                                }
+                            }
+                        }
+                    };
+
+                    (reader, kind, client_name, None, None)
                 }
             };
-
-            match AudioProcessor::new(reader, kind, tx_clone, cmd_rx_clone, Some(err_tx_clone)) {
-                Ok(mut processor) => {
-                    debug!(
-                        "YoutubeTrack: Playback session started for {} using {}",
-                        identifier_decode, client_name
-                    );
-                    if let Err(e) = processor.run() {
-                        error!("YoutubeTrack: Decoding session finished with error: {}", e);
+            
+            // Spawn AudioProcessor on blocking thread
+            let (inner_cmd_tx, inner_cmd_rx) = flume::bounded(8);
+            let tx_clone = tx.clone();
+            let err_tx_clone = err_tx.clone();
+            
+            let mut process_task = tokio::task::spawn_blocking(move || {
+                match crate::audio::processor::AudioProcessor::new(reader, kind, tx_clone, inner_cmd_rx, Some(err_tx_clone)) {
+                    Ok(mut processor) => {
+                        if let Err(e) = processor.run() {
+                            error!("YoutubeTrack: Decoding session finished with error: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("YoutubeTrack: AudioProcessor initialization failed: {}", e);
                     }
                 }
-                Err(e) => {
-                    error!(
-                        "YoutubeTrack: AudioProcessor initialization failed with {}: {}",
-                        client_name, e
-                    );
+            });
+
+            // Spawn SABR recovery orchestrator if needed
+            let sabr_cmd_tx_clone = opt_sabr_cmd_tx.clone();
+            let sabr_abort_tx = if let (Some(sabr_event_rx), Some(sabr_cmd_tx)) = (opt_sabr_event_rx, sabr_cmd_tx_clone) {
+                let id_rec = identifier_async.clone();
+                let visitor_data_rec = visitor_data_str.clone();
+                let cipher_rec = cipher_manager_async.clone();
+                let clients_rec = clients_async.clone();
+                
+                let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
+                
+                tokio::spawn(async move {
+                    tokio::select! {
+                        _ = abort_rx => {
+                            // aborted by seek or stop
+                        }
+                        event_opt = sabr_event_rx.recv_async() => {
+                            if let Ok(event) = event_opt {
+                                match event {
+                                    crate::sources::youtube::sabr::stream::SabrEvent::Stall => {
+                                        debug!("YoutubeTrack: SABR stall detected for {}. Refreshing session...", id_rec);
+                                        let sig_ts = cipher_rec.get_signature_timestamp().await.ok();
+                                        // Find a client that can give SABR config
+                                        let mut new_cfg_opt = None;
+                                        for client in &clients_rec {
+                                            if let Some(cfg) = client.get_sabr_config(&id_rec, visitor_data_rec.as_deref(), sig_ts, cipher_rec.clone()).await {
+                                                new_cfg_opt = Some(cfg);
+                                                break;
+                                            }
+                                        }
+                                        
+                                        if let Some(new_cfg) = new_cfg_opt {
+                                            debug!("YoutubeTrack: SABR session re-resolved for {}", id_rec);
+                                            let po_token = new_cfg.po_token.as_deref().and_then(crate::sources::youtube::sabr::stream::decode_po_token);
+                                            let _ = sabr_cmd_tx.send(crate::sources::youtube::sabr::stream::SabrCommand::UpdateSession {
+                                                server_abr_url: new_cfg.server_abr_url,
+                                                ustreamer_config: new_cfg.ustreamer_config,
+                                                po_token,
+                                                playback_cookie: None,
+                                            });
+                                        } else {
+                                            error!("YoutubeTrack: SABR session re-resolution failed for {}", id_rec);
+                                        }
+                                    }
+                                    crate::sources::youtube::sabr::stream::SabrEvent::Finished => {}
+                                    crate::sources::youtube::sabr::stream::SabrEvent::Error(e) => {
+                                        error!("YoutubeTrack: SABR stream error for {}: {}", id_rec, e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                Some(abort_tx)
+            } else {
+                None
+            };
+
+            // Wait for commands or natural task completion
+            loop {
+                tokio::select! {
+                    cmd_res = cmd_rx.recv_async() => {
+                        match cmd_res {
+                            Ok(DecoderCommand::Seek(ms)) => {
+                                let _ = inner_cmd_tx.send(DecoderCommand::Seek(ms));
+                            }
+                            Ok(DecoderCommand::Stop) => {
+                                let _ = inner_cmd_tx.send(DecoderCommand::Stop);
+                                if let Some(tx) = sabr_abort_tx {
+                                    let _ = tx.send(());
+                                }
+                                return; // Complete orchestrator
+                            }
+                            Err(_) => {
+                                // cmd_rx dropped, TrackHandle is gone
+                                let _ = inner_cmd_tx.send(DecoderCommand::Stop);
+                                if let Some(tx) = sabr_abort_tx {
+                                    let _ = tx.send(());
+                                }
+                                return;
+                            }
+                        }
+                    }
+                    _ = &mut process_task => {
+                        // AudioProcessor naturally finished (EOF or error)
+                        return;
+                    }
                 }
             }
         });

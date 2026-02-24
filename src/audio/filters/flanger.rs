@@ -44,7 +44,7 @@ impl AudioFilter for FlangerFilter {
         let max_delay_width = self.depth * (fs * 0.005);
         let center_delay = max_delay_width;
 
-        // Note: NodeLink processes mono chunk equivalents (i+=2), but works on both channels equally
+        // Note:  processes mono chunk equivalents (i+=2), but works on both channels equally
         for sample in samples.iter_mut() {
             let lfo_value = self.lfo.get_value() as f32;
             let delay = center_delay + lfo_value * max_delay_width;
