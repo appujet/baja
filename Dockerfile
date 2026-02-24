@@ -1,48 +1,4 @@
-# Builder Stage
-FROM rust:1.93-slim-bookworm AS builder
-
-WORKDIR /app
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config \
-    cmake \
-    git \
-    clang \
-    libclang-dev \
-    build-essential \
-    perl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Enable static opus
-ENV LIBOPUS_STATIC=1 \
-    OPUS_STATIC=1 \
-    AUDIOPUS_STATIC=1 \
-    CMAKE_POLICY_VERSION_MINIMUM=3.5
-
-# Cache dependencies first
-COPY Cargo.toml Cargo.lock ./
-
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/app/target \
-    cargo build --release --locked
-
-RUN rm -rf src
-
-# Copy real source
-COPY . .
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/app/target \
-    cargo build --release --locked
-
-RUN strip target/release/rustalink
-
-
-# Runtime Stage
-
+# Runtime Stage Only — binaries are pre-built by CI
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -54,7 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/rustalink /app/rustalink
+# Binary is injected at build time by CI (bin/linux/amd64 or bin/linux/arm64)
+ARG TARGETARCH
+COPY bin/linux/${TARGETARCH}/rustalink /app/rustalink
 
 USER rustalink
 
