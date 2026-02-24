@@ -63,7 +63,7 @@ where
 
         // Timestamp
         let format = time::macros::format_description!(
-            "[month repr:numerical padding:none]/[day padding:none]/[year] [hour repr:12]:[minute]:[second] [period case:upper]"
+            "[year]-[month]-[day] [hour]:[minute]:[second]"
         );
         let now =
             time::OffsetDateTime::now_local().unwrap_or_else(|_| time::OffsetDateTime::now_utc());
