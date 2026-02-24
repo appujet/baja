@@ -35,11 +35,11 @@ Rustalink supports direct playback and **Mirroring**. Mirroring allows playback 
 | Source | Type | Search Prefix | Features |
 | :--- | :---: | :--- | :--- |
 | **YouTube** | Direct | `ytsearch:`, `ytmsearch:` | `ytrec:`, Lyrics |
-| **SoundCloud** | Hybrid | `scsearch:` | - |
+| **SoundCloud** | Direct | `scsearch:` | - |
 | **Spotify** | Mirror | `spsearch:` | `sprec:` |
 | **Apple Music**| Mirror | `amsearch:` | - |
 | **Deezer** | Hybrid | `dzsearch:`, `dzisrc:` | `dzrec:`, Lyrics |
-| **Tidal** | Hybrid | `tdsearch:` | `tdrec:` |
+| **Tidal** | Mirror | `tdsearch:` | `tdrec:` |
 | **Qobuz** | Hybrid | `qbsearch:`, `qbisrc:` | `qbrec:` |
 | **Bandcamp** | Direct | `bcsearch:` | - |
 | **MixCloud** | Direct | `mcsearch:` | - |
@@ -50,7 +50,7 @@ Rustalink supports direct playback and **Mirroring**. Mirroring allows playback 
 | **Anghami** | Mirror | `agsearch:` | - |
 | **Shazam** | Mirror | `shsearch:` | - |
 | **Pandora** | Mirror | `pdsearch:` | `pdrec:` |
-| **Audius** | Hybrid | `adsearch:` | - |
+| **Audius** | Direct | `ausearch:`, `audsearch:` | - |
 | **HTTP / Local**| Direct | - | - |
 
 > [!NOTE]
@@ -71,18 +71,18 @@ docker pull ghcr.io/bong-project/rustalink:latest
 #### 2. Setup configuration
 Create a directory for your configuration and logs:
 ```bash
-mkdir rustalink-data
-cp config.default.toml rustalink-data/config.toml
+mkdir rustalink
+cp config.default.toml rustalink/config.toml
 ```
-Edit `rustalink-data/config.toml` to your liking.
+Edit `rustalink/config.toml` to your liking.
 
 #### 3. Run the container
 ```bash
 docker run -d \
   --name rustalink \
   -p 2333:2333 \
-  -v $(pwd)/rustalink-data/config.toml:/app/config.toml \
-  -v $(pwd)/rustalink-data/logs:/app/logs \
+  -v $(pwd)/rustalink/config.toml:/app/config.toml \
+  -v $(pwd)/rustalink/logs:/app/logs \
   --restart unless-stopped \
   ghcr.io/bong-project/rustalink:latest
 ```
