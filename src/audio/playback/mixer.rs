@@ -7,23 +7,22 @@ use crate::{
     audio::{
         buffer::PooledBuffer,
         playback::{
-            effects::{
-                TransitionEffect,
-                tape::{TapeEffect, TapeState},
-            },
+            audio_mixer::AudioMixer,
+            effects::{fade::FadeEffect, tape::TapeEffect, volume::VolumeEffect},
             handle::PlaybackState,
         },
     },
     configs::player::PlayerConfig,
 };
 
-const MIXER_CHANNELS: u64 = 2;
+const MIXER_CHANNELS: usize = 2;
 
 pub struct Mixer {
     tracks: Vec<MixerTrack>,
     mix_buf: Vec<i32>,
+    /// Multi-layer mixer for sound effects etc.
+    pub audio_mixer: AudioMixer,
     /// Passthrough channel: raw Opus frames that bypass the PCM mix entirely.
-    /// Only set for YouTube WebM/Opus tracks when no filters are active.
     opus_passthrough: Option<PassthroughTrack>,
 }
 
@@ -35,22 +34,31 @@ struct PassthroughTrack {
 
 struct MixerTrack {
     rx: flume::Receiver<PooledBuffer>,
-    /// Partially-consumed frame — leftover samples.
+    /// The NodeLink-style "Flow" chain for this track.
+    /// In a full refactor, this would replace the old transition logic.
+    // flow: FlowController,
+
+    /// Old transition components (to be replaced by FlowController ideally,
+    /// but keeping for now for minimal breakage).
     pending: Vec<i16>,
     pending_pos: usize,
     state: Arc<AtomicU8>,
     volume: Arc<AtomicU32>,
     position: Arc<AtomicU64>,
     config: PlayerConfig,
-    /// Active transition effect (tape stop/start, etc.)
-    effect: Option<Box<dyn TransitionEffect>>,
+
+    // New components integrated into MixerTrack
+    tape: TapeEffect,
+    vol_effect: VolumeEffect,
+    fade: FadeEffect,
 }
 
 impl Mixer {
-    pub fn new() -> Self {
+    pub fn new(_sample_rate: u32) -> Self {
         Self {
             tracks: Vec::new(),
             mix_buf: Vec::with_capacity(1920),
+            audio_mixer: AudioMixer::new(),
             opus_passthrough: None,
         }
     }
@@ -62,7 +70,9 @@ impl Mixer {
         volume: Arc<AtomicU32>,
         position: Arc<AtomicU64>,
         config: PlayerConfig,
+        sample_rate: u32,
     ) {
+        let vol_raw = f32::from_bits(volume.load(Ordering::Acquire));
         self.tracks.push(MixerTrack {
             rx,
             pending: Vec::new(),
@@ -71,15 +81,12 @@ impl Mixer {
             volume,
             position,
             config,
-            effect: None,
+            tape: TapeEffect::new(sample_rate, MIXER_CHANNELS),
+            vol_effect: VolumeEffect::new(vol_raw, sample_rate, MIXER_CHANNELS),
+            fade: FadeEffect::new(1.0, MIXER_CHANNELS),
         });
     }
 
-    /// Register a raw-Opus passthrough receiver.
-    ///
-    /// When set, `take_opus_frame()` polls this receiver before the PCM mix
-    /// path.  The speak_loop sends the returned frame directly to Discord
-    /// without encoding.
     pub fn add_passthrough_track(
         &mut self,
         opus_rx: flume::Receiver<std::sync::Arc<Vec<u8>>>,
@@ -93,9 +100,6 @@ impl Mixer {
         });
     }
 
-    /// Try to receive one raw Opus frame from the passthrough receiver.
-    ///
-    /// Returns `Some(frame)` if a frame is ready, `None` if not (use PCM path).
     pub fn take_opus_frame(&mut self) -> Option<std::sync::Arc<Vec<u8>>> {
         if let Some(ref pt) = self.opus_passthrough {
             let state_raw = pt.state.load(Ordering::Acquire);
@@ -111,12 +115,10 @@ impl Mixer {
 
             match pt.rx.try_recv() {
                 Ok(frame) => {
-                    // Update position. Every Opus frame is 20ms (960 samples @ 48kHz).
                     pt.position.fetch_add(960, Ordering::Relaxed);
                     return Some(frame);
                 }
                 Err(flume::TryRecvError::Disconnected) => {
-                    // Processor finished — clear passthrough slot.
                     self.opus_passthrough = None;
                 }
                 Err(flume::TryRecvError::Empty) => {}
@@ -132,16 +134,15 @@ impl Mixer {
                 .store(PlaybackState::Stopped as u8, Ordering::Release);
         }
         self.tracks.clear();
+        self.audio_mixer.enabled = false; // or clear it
     }
 
     pub fn mix(&mut self, buf: &mut [i16]) -> bool {
         if self.mix_buf.len() != buf.len() {
             self.mix_buf.resize(buf.len(), 0);
         }
-
         self.mix_buf.fill(0);
 
-        // Clean up stopped tracks
         self.tracks
             .retain(|t| t.state.load(Ordering::Acquire) != PlaybackState::Stopped as u8);
 
@@ -152,147 +153,124 @@ impl Mixer {
             let state = PlaybackState::from_u8(state_raw);
 
             if state == PlaybackState::Paused || state == PlaybackState::Stopped {
-                track.effect = None;
                 continue;
             }
 
-            let vol_bits = track.volume.load(Ordering::Acquire);
-            let vol = f32::from_bits(vol_bits);
-
             let out_len = buf.len();
-            let mut i = 0;
             let mut finished = false;
             let mut track_contributed = false;
 
-            // ── Transition Handling ───────────────────────────────────────────
-            let is_stopping = state == PlaybackState::Stopping;
-            let is_starting = state == PlaybackState::Starting;
+            // Update volume effect from atomic if needed
+            let vol_bits = track.volume.load(Ordering::Acquire);
+            let vol_f = f32::from_bits(vol_bits);
+            if (vol_f - track.vol_effect.current_volume()).abs() > 0.001 {
+                track.vol_effect.set_volume(vol_f);
+            }
 
-            if is_stopping || is_starting {
-                // Initialize effect if missing
-                if track.effect.is_none() {
-                    let tape_state = if is_stopping {
-                        TapeState::Stopping
-                    } else {
-                        TapeState::Starting
-                    };
-                    track.effect = Some(Box::new(TapeEffect::new(
-                        tape_state,
-                        track.config.tape_stop_duration_ms,
-                    )));
+            // NodeLink-style state transition triggers
+            if state == PlaybackState::Stopping && !track.tape.is_active() {
+                track.tape.tape_to(
+                    track.config.tape_stop_duration_ms as f32,
+                    "stop",
+                    "sinusoidal",
+                );
+            } else if state == PlaybackState::Starting && !track.tape.is_active() {
+                track.tape.tape_to(
+                    track.config.tape_stop_duration_ms as f32,
+                    "start",
+                    "sinusoidal",
+                );
+            }
+
+            // Main processing slice
+            let mut slice = vec![0i16; out_len]; // Temporary frame for effects
+            let mut samples_read = 0;
+
+            // 1. Drain pending
+            let pending_len = track.pending.len();
+            if track.pending_pos < pending_len {
+                let to_copy = (out_len - samples_read).min(pending_len - track.pending_pos);
+                slice[samples_read..samples_read + to_copy].copy_from_slice(
+                    &track.pending[track.pending_pos..track.pending_pos + to_copy],
+                );
+                track.pending_pos += to_copy;
+                samples_read += to_copy;
+                if track.pending_pos >= pending_len {
+                    track.pending.clear();
+                    track.pending_pos = 0;
+                }
+            }
+
+            // 2. Poll receiver
+            while samples_read < out_len {
+                match track.rx.try_recv() {
+                    Ok(frame) => {
+                        let can_use = frame.len().min(out_len - samples_read);
+                        slice[samples_read..samples_read + can_use]
+                            .copy_from_slice(&frame[..can_use]);
+                        if can_use < frame.len() {
+                            track.pending.extend_from_slice(&frame[can_use..]);
+                            track.pending_pos = 0;
+                        }
+                        samples_read += can_use;
+                    }
+                    Err(flume::TryRecvError::Disconnected) => {
+                        finished = true;
+                        break;
+                    }
+                    Err(flume::TryRecvError::Empty) => break,
+                }
+            }
+
+            if samples_read > 0 {
+                // Apply NodeLink Effects Chain
+                track.tape.process(&mut slice[..samples_read]);
+                track.vol_effect.process(&mut slice[..samples_read]);
+                track.fade.process(&mut slice[..samples_read]);
+
+                // Accumulate into mix_buf
+                for j in 0..samples_read {
+                    self.mix_buf[j] += slice[j] as i32;
                 }
 
-                if let Some(ref mut effect) = track.effect {
-                    // Normalize pending buffer (stash)
-                    if track.pending_pos > 0 {
-                        track.pending.drain(..track.pending_pos);
-                        track.pending_pos = 0;
-                    }
-
-                    track_contributed = effect.process(
-                        &mut self.mix_buf,
-                        &mut i,
-                        out_len,
-                        vol,
-                        &mut track.pending,
-                        &track.rx,
-                        &track.state,
-                        &track.position,
-                    );
-
-                    if i > 0 {
-                        track
-                            .position
-                            .fetch_add(i as u64 / MIXER_CHANNELS, Ordering::Relaxed);
-                    }
-                }
-            } else {
-                // ── Normal Playback (Rate 1.0) ────────────────────────────────────
-                track.effect = None;
-                // ── 1. Drain leftover samples from the previous frame ─────────────
-                let pending_len = track.pending.len();
-                if track.pending_pos < pending_len {
-                    let to_copy = (out_len - i).min(pending_len - track.pending_pos);
-                    let vol_fixed = (vol * 65536.0) as i32;
-
-                    if vol_fixed == 65536 {
-                        for j in 0..to_copy {
-                            self.mix_buf[i + j] += track.pending[track.pending_pos + j] as i32;
-                        }
-                    } else if vol_fixed != 0 {
-                        for j in 0..to_copy {
-                            let sample = track.pending[track.pending_pos + j] as i32;
-                            self.mix_buf[i + j] += (sample * vol_fixed) >> 16;
-                        }
-                    }
-
-                    track.pending_pos += to_copy;
-                    i += to_copy;
-                    track_contributed = true;
-
-                    if track.pending_pos >= pending_len {
-                        track.pending.clear();
-                        track.pending_pos = 0;
-                    }
-                }
-
-                // ── 2. receive whole frame batches ────────────────────────────────
-                while i < out_len {
-                    match track.rx.try_recv() {
-                        Ok(frame) => {
-                            let frame_len = frame.len();
-                            let can_use = frame_len.min(out_len - i);
-                            let vol_fixed = (vol * 65536.0) as i32;
-
-                            if vol_fixed == 65536 {
-                                for j in 0..can_use {
-                                    self.mix_buf[i + j] += frame[j] as i32;
-                                }
-                            } else if vol_fixed != 0 {
-                                // Optimized fixed-point multiplication
-                                for j in 0..can_use {
-                                    let sample = frame[j] as i32;
-                                    self.mix_buf[i + j] += (sample * vol_fixed) >> 16;
-                                }
-                            }
-
-                            i += can_use;
-                            track_contributed = true;
-
-                            if can_use < frame_len {
-                                track.pending.extend_from_slice(&frame[can_use..]);
-                                track.pending_pos = 0;
-                            }
-                        }
-                        Err(flume::TryRecvError::Disconnected) => {
-                            finished = true;
-                            break;
-                        }
-                        Err(flume::TryRecvError::Empty) => break,
-                    }
-                }
-
-                // Track position using MIXER_CHANNELS (always stereo out to Opus).
-                track
-                    .position
-                    .fetch_add(i as u64 / MIXER_CHANNELS, Ordering::Relaxed);
+                track_contributed = true;
+                track.position.fetch_add(
+                    samples_read as u64 / MIXER_CHANNELS as u64,
+                    Ordering::Relaxed,
+                );
             }
 
             if track_contributed {
                 has_audio = true;
             }
 
-            if finished && track.pending.is_empty() {
+            if finished && track.pending.is_empty() && !track.tape.is_active() {
+                track
+                    .state
+                    .store(PlaybackState::Stopped as u8, Ordering::Release);
+            }
+
+            // If tape ramp finished a 'stop', move to stopped
+            if track.tape.check_ramp_completed() && state == PlaybackState::Stopping {
                 track
                     .state
                     .store(PlaybackState::Stopped as u8, Ordering::Release);
             }
         }
 
-        // Convert i32 accumulator back to i16 with saturation clamp
-        for (i, &sample) in self.mix_buf.iter().enumerate() {
-            buf[i] = sample.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        // Apply secondary layers (AudioMixer)
+        let mut final_pcm = vec![0i16; buf.len()];
+        for (i, &s) in self.mix_buf.iter().enumerate() {
+            final_pcm[i] = s.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
         }
+
+        self.audio_mixer.mix(&mut final_pcm);
+
+        if !self.audio_mixer.layers.is_empty() {
+            has_audio = true;
+        }
+
+        buf.copy_from_slice(&final_pcm);
 
         has_audio
     }

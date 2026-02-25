@@ -11,7 +11,7 @@ pub struct VoiceEngine {
 impl VoiceEngine {
     pub fn new() -> Self {
         Self {
-            mixer: Arc::new(Mutex::new(Mixer::new())),
+            mixer: Arc::new(Mutex::new(Mixer::new(48000))),
         }
     }
 }

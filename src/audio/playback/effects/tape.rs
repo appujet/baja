@@ -1,111 +1,189 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicU8, AtomicU64, Ordering},
-};
+//! `TapeEffect` — high-quality tape start/stop resampling.
+//!
+//! Mirrors NodeLink's `TapeTransformer.ts`. Uses Cubic Hermite Spline
+//! (Catmull-Rom) interpolation for smooth pitch/speed ramps.
 
-use super::TransitionEffect;
-use crate::audio::playback::handle::PlaybackState;
-
-pub struct TapeEffect {
-    pub state: TapeState,
-    pub rate: f32,
-    pub pos: f32,
-    pub step: f32,
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TapeCurve {
+    Linear,
+    Exponential,
+    Sinusoidal,
 }
 
-#[derive(PartialEq)]
-pub enum TapeState {
-    Stopping,
-    Starting,
-}
-
-impl TapeEffect {
-    pub fn new(state: TapeState, duration_ms: u64) -> Self {
-        let rate = match state {
-            TapeState::Stopping => 1.0,
-            TapeState::Starting => 0.0,
-        };
-        // 48kHz stereo frames per ms = 48.0
-        // We want to complete the transition in duration_ms.
-        let frames = (duration_ms as f32 * 48.0).max(1.0);
-        let step = 1.0 / frames;
-
-        Self {
-            state,
-            rate,
-            pos: 0.0,
-            step,
+impl TapeCurve {
+    fn value(self, t: f32) -> f32 {
+        match self {
+            Self::Linear => t,
+            Self::Exponential => t * t,
+            Self::Sinusoidal => 0.5 * (1.0 - (t * std::f32::consts::PI).cos()),
         }
     }
 }
 
-impl TransitionEffect for TapeEffect {
-    fn process(
-        &mut self,
-        mix_buf: &mut [i32],
-        i: &mut usize,
-        out_len: usize,
-        vol: f32,
-        stash: &mut Vec<i16>,
-        rx: &flume::Receiver<crate::audio::buffer::PooledBuffer>,
-        state_atomic: &Arc<AtomicU8>,
-        position_atomic: &Arc<AtomicU64>,
-    ) -> bool {
-        let is_stopping = self.state == TapeState::Stopping;
-        let is_starting = self.state == TapeState::Starting;
-        let step = self.step;
-        let mut track_contributed = false;
-        let mut samples_consumed = 0.0f32;
+struct TapeState {
+    start_rate: f32,
+    target_rate: f32,
+    duration_ms: f32,
+    elapsed_ms: f32,
+    curve: TapeCurve,
+}
 
-        while *i < out_len {
-            if is_stopping {
-                self.rate = (self.rate - step).max(0.0);
-                if self.rate <= 0.0 {
-                    state_atomic.store(PlaybackState::Paused as u8, Ordering::Release);
-                    break;
-                }
-            } else if is_starting {
-                self.rate = (self.rate + step).min(1.0);
-                if self.rate >= 1.0 {
-                    state_atomic.store(PlaybackState::Playing as u8, Ordering::Release);
-                    // We don't break immediately, we finish this frame for smoothness
-                }
-            }
+pub struct TapeEffect {
+    sample_rate: u32,
+    channels: usize,
+    current_rate: f32,
+    tape: Option<TapeState>,
+    ramp_completed: bool,
 
-            let read_idx = self.pos.floor() as usize;
-            let frac = self.pos - read_idx as f32;
+    // Resampling buffer
+    input_buffer: Vec<f32>,
+    read_pos: f64,
+}
 
-            // Ensure we have enough data in stash
-            if (read_idx + 1) * 2 + 1 >= stash.len() {
-                match rx.try_recv() {
-                    Ok(frame) => {
-                        stash.extend_from_slice(&frame);
-                        // Re-check after refill
-                        if (read_idx + 1) * 2 + 1 >= stash.len() {
-                            break;
-                        }
-                    }
-                    _ => break,
-                }
-            }
+impl TapeEffect {
+    pub fn new(sample_rate: u32, channels: usize) -> Self {
+        // 10 second buffer
+        let max_size = (sample_rate as usize * channels * 10).max(96000);
+        Self {
+            sample_rate,
+            channels,
+            current_rate: 1.0,
+            tape: None,
+            ramp_completed: false,
+            input_buffer: Vec::with_capacity(max_size),
+            read_pos: 0.0,
+        }
+    }
 
-            // Linear interpolation (L/R)
-            for ch in 0..2 {
-                let s0 = stash[read_idx * 2 + ch] as f32;
-                let s1 = stash[(read_idx + 1) * 2 + ch] as f32;
-                let out_s = s0 + (s1 - s0) * frac;
-                mix_buf[*i + ch] += (out_s * vol) as i32;
-            }
+    pub fn set_rate(&mut self, rate: f32) {
+        self.current_rate = rate.max(0.01).min(2.0);
+        self.tape = None;
+        self.ramp_completed = false;
+    }
 
-            let prev_pos = self.pos;
-            self.pos += self.rate;
-            samples_consumed += self.pos - prev_pos;
-            *i += 2;
-            track_contributed = true;
+    pub fn tape_to(&mut self, duration_ms: f32, variant: &str, curve: &str) {
+        let target_rate = if variant == "start" { 1.0 } else { 0.01 };
+        let curve_type = match curve {
+            "linear" => TapeCurve::Linear,
+            "exponential" => TapeCurve::Exponential,
+            _ => TapeCurve::Sinusoidal,
+        };
+
+        if duration_ms <= 0.0 {
+            self.current_rate = target_rate;
+            self.tape = None;
+            return;
         }
 
-        position_atomic.fetch_add(samples_consumed as u64, Ordering::Relaxed);
+        self.tape = Some(TapeState {
+            start_rate: self.current_rate,
+            target_rate,
+            duration_ms,
+            elapsed_ms: 0.0,
+            curve: curve_type,
+        });
+        self.ramp_completed = false;
+    }
 
-        track_contributed
+    pub fn is_active(&self) -> bool {
+        self.tape.is_some() || (self.current_rate - 1.0).abs() > 0.001
+    }
+
+    pub fn check_ramp_completed(&mut self) -> bool {
+        if self.ramp_completed {
+            self.ramp_completed = false;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Process a PCM frame. Unlike the previous implementation which worked in-place,
+    /// this uses an internal resampling buffer to handle rate changes correctly.
+    pub fn process(&mut self, frame: &mut [i16]) {
+        if frame.is_empty() {
+            return;
+        }
+
+        let channels = self.channels;
+
+        // Push current frame to input float buffer
+        for &s in frame.iter() {
+            self.input_buffer.push(s as f32 / 32767.0);
+        }
+
+        let mut out_idx = 0;
+        let sample_duration_ms = 1000.0 / self.sample_rate as f32;
+
+        while out_idx < frame.len() {
+            // Update rate ramp
+            if let Some(state) = &mut self.tape {
+                state.elapsed_ms += sample_duration_ms;
+                let t = (state.elapsed_ms / state.duration_ms).min(1.0);
+                let curve_t = state.curve.value(t);
+                self.current_rate =
+                    state.start_rate + (state.target_rate - state.start_rate) * curve_t;
+
+                if t >= 1.0 {
+                    self.current_rate = state.target_rate;
+                    self.tape = None;
+                    self.ramp_completed = true;
+                }
+            }
+
+            if self.current_rate <= 0.01 && self.tape.is_none() {
+                // Silenced
+                while out_idx < frame.len() {
+                    frame[out_idx] = 0;
+                    out_idx += 1;
+                }
+                break;
+            }
+
+            // Cubic Hermite Spline Interpolation
+            let i_pos = (self.read_pos.floor() as usize / channels) * channels;
+            if i_pos + channels * 3 >= self.input_buffer.len() {
+                // Not enough data to interpolate, fill remainder with zero and break
+                while out_idx < frame.len() {
+                    frame[out_idx] = 0;
+                    out_idx += 1;
+                }
+                break;
+            }
+
+            let frac = ((self.read_pos - i_pos as f64) / channels as f64) as f32;
+
+            for c in 0..channels {
+                let p0 = if i_pos >= channels {
+                    self.input_buffer[i_pos - channels + c]
+                } else {
+                    self.input_buffer[i_pos + c]
+                };
+                let p1 = self.input_buffer[i_pos + c];
+                let p2 = self.input_buffer[i_pos + channels + c];
+                let p3 = self.input_buffer[i_pos + channels * 2 + c];
+
+                // Catmull-Rom
+                let val = 0.5
+                    * (2.0 * p1
+                        + (-p0 + p2) * frac
+                        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * frac * frac
+                        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * frac * frac * frac);
+
+                if out_idx < frame.len() {
+                    frame[out_idx] = (val * 32767.0).clamp(-32768.0, 32767.0).round() as i16;
+                    out_idx += 1;
+                }
+            }
+
+            self.read_pos += self.current_rate as f64 * channels as f64;
+        }
+
+        // Compact buffer
+        if self.read_pos > (self.sample_rate as f64 * channels as f64 * 2.0) {
+            let integral = (self.read_pos.floor() as usize / channels) * channels;
+            self.input_buffer.drain(0..integral);
+            self.read_pos -= integral as f64;
+        }
     }
 }

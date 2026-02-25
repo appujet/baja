@@ -182,6 +182,7 @@ pub async fn start_playback(
             vol,
             pos.clone(),
             player.config.clone(),
+            48000,
         );
         if let Some(opus) = opus_rx {
             mixer.add_passthrough_track(opus, pos, audio_state.clone());

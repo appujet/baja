@@ -1,11 +1,15 @@
+pub mod crossfade;
+pub mod fade;
+pub mod tape;
+pub mod volume;
+
+use crate::audio::buffer::PooledBuffer;
 use std::sync::{
     Arc,
     atomic::{AtomicU8, AtomicU64},
 };
 
-pub mod tape;
-use crate::audio::buffer::PooledBuffer;
-
+/// Interface for transition effects (kept for backward compatibility where needed).
 pub trait TransitionEffect: Send {
     fn process(
         &mut self,
