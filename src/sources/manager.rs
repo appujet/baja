@@ -285,14 +285,16 @@ impl SourceManager {
                 .iter()
                 .filter_map(|p| {
                     if isrc.is_empty() && p.contains("%ISRC%") {
+                        tracing::debug!("Skipping mirror provider '{}': track has no ISRC", p);
                         return None;
                     }
+
                     let resolved = p.replace("%ISRC%", isrc).replace("%QUERY%", &query);
 
                     if let Some(handling_source) = self.sources.iter().find(|s| s.can_handle(&resolved)) {
                         if handling_source.is_mirror() {
-                            tracing::debug!(
-                                "Skipping mirror provider '{}': handled by Mirror-type source '{}' which cannot direct-play",
+                            tracing::warn!(
+                                "Skipping mirror provider '{}': '{}' is a Mirror-type source and cannot direct-play",
                                 resolved,
                                 handling_source.name()
                             );
