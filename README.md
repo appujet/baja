@@ -84,7 +84,7 @@ Docker ensures a consistent environment with all dependencies pre-configured.
 
 #### 1. Pull the latest image
 ```bash
-docker pull ghcr.io/bong-project/rustalink:latest
+docker pull ghcr.io/bongodevs/rustalink:latest
 ```
 
 #### 2. Setup configuration
@@ -103,7 +103,7 @@ docker run -d \
   -v $(pwd)/rustalink/config.toml:/app/config.toml \
   -v $(pwd)/rustalink/logs:/app/logs \
   --restart unless-stopped \
-  ghcr.io/bong-project/rustalink:latest
+  ghcr.io/bongodevs/rustalink:latest
 ```
 
 #### 4. Docker Compose (Alternative)
@@ -111,7 +111,7 @@ Create a `docker-compose.yml`:
 ```yaml
 services:
   rustalink:
-    image: ghcr.io/bong-project/rustalink:latest
+    image: ghcr.io/bongodevs/rustalink:latest
     ports:
       - "2333:2333"
     volumes:
@@ -124,7 +124,7 @@ Run with: `docker compose up -d`
 ---
 
 ### Running Native
-Download the appropriate binary for your system from the [Releases](https://github.com/bong-project/rustalink/releases) page or build from source.
+Download the appropriate binary for your system from the [Releases](https://github.com/bongodevs/Rustalink/releases) page or build from source.
 
 #### 🪟 Windows
 1. Download `rustalink-x86_64-pc-windows-msvc.exe`.
@@ -172,7 +172,7 @@ Rustalink uses a `config.toml` file for its settings.
 ### Commands
 ```bash
 # Clone the repository
-git clone https://github.com/bong-project/rustalink.git
+git clone https://github.com/bongodevs/Rustalink.git
 cd rustalink
 
 # Build the project
@@ -186,5 +186,5 @@ rustup run nightly cargo fmt
 
 ## 📝 License
 
-Rustalink is published under the [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/bong-project/rustalink/blob/HEAD/LICENSE).  
-Full details on usage and permissions are available in the [LICENSE](https://github.com/bong-project/rustalink/blob/HEAD/LICENSE) file.
+Rustalink is published under the [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/bongodevs/Rustalink/blob/HEAD/LICENSE).  
+Full details on usage and permissions are available in the [LICENSE](https://github.com/bongodevs/Rustalink/blob/HEAD/LICENSE) file.
