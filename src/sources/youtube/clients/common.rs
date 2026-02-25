@@ -100,7 +100,7 @@ impl<'a> ClientConfig<'a> {
     }
 }
 
-pub const AUDIO_ITAG_PRIORITY: &[i64] = &[140, 251, 250]; // 140 is aac, 251 is opus, 250 is opus
+pub const AUDIO_ITAG_PRIORITY: &[i64] = &[251, 250, 140]; // 251/250 are opus, 140 is aac
 
 pub const ITAG_FALLBACK: i64 = 18;
 
@@ -180,6 +180,13 @@ pub async fn resolve_format_url(
             .nth(1)
             .or_else(|| url.split("?n=").nth(1))
             .and_then(|s| s.split('&').next());
+
+        // If there's no n-param to decode, return the URL directly — no cipher call needed.
+        // (e.g. AndroidVR, TV responses often omit the n throttle param entirely)
+        if n_param.is_none() {
+            return Ok(Some(url.to_string()));
+        }
+
         let resolved = cipher_manager
             .resolve_url(url, player_page_url, n_param, None)
             .await?;

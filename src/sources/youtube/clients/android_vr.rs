@@ -18,10 +18,8 @@ use crate::{
 
 const CLIENT_NAME: &str = "ANDROID_VR";
 const CLIENT_ID: &str = "28";
-const CLIENT_VERSION: &str = "1.61.48";
-const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro Build/UQ1A.240205.002; wv) \
-     AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 \
-     Chrome/121.0.6167.164 Mobile Safari/537.36 YouTubeVR/1.61.48 (gzip)";
+const CLIENT_VERSION: &str = "1.71.26";
+const USER_AGENT: &str = "com.google.android.apps.youtube.vr.oculus/1.71.26 (Linux; U; Android 15; eureka-user Build/AP4A.250205.002) gzip";
 
 pub struct AndroidVrClient {
     http: reqwest::Client,
@@ -45,10 +43,9 @@ impl AndroidVrClient {
             client_id: CLIENT_ID,
             user_agent: USER_AGENT,
             device_make: Some("Google"),
-            device_model: Some("Pixel 8 Pro"),
             os_name: Some("Android"),
-            os_version: Some("14"),
-            android_sdk_version: Some("34"),
+            os_version: Some("15"),
+            android_sdk_version: Some("35"),
             ..Default::default()
         }
     }
@@ -240,13 +237,29 @@ impl YouTubeClient for AndroidVrClient {
         let formats = streaming_data.get("formats").and_then(|v| v.as_array());
         let player_page_url = format!("https://www.youtube.com/watch?v={}", track_id);
 
-        if let Some(best) = select_best_audio_format(adaptive, formats) {
-            if let Ok(Some(url)) = resolve_format_url(best, &player_page_url, &cipher_manager).await
-            {
-                return Ok(Some(url));
+        let selected = select_best_audio_format(adaptive, formats);
+        if selected.is_none() {
+            tracing::warn!("AndroidVR: no suitable audio format found for {}", track_id);
+            return Ok(None);
+        }
+        let best = selected.unwrap();
+        let itag = best.get("itag").and_then(|v| v.as_i64()).unwrap_or(-1);
+        let mime = best.get("mimeType").and_then(|v| v.as_str()).unwrap_or("?");
+        tracing::debug!("AndroidVR: selected format itag={} mime={} for {}", itag, mime, track_id);
+
+        match resolve_format_url(best, &player_page_url, &cipher_manager).await {
+            Ok(Some(url)) => {
+                tracing::debug!("AndroidVR: resolved URL for {} (itag={})", track_id, itag);
+                Ok(Some(url))
+            }
+            Ok(None) => {
+                tracing::warn!("AndroidVR: resolve_format_url returned None for {} (itag={})", track_id, itag);
+                Ok(None)
+            }
+            Err(e) => {
+                tracing::warn!("AndroidVR: resolve_format_url error for {} (itag={}): {}", track_id, itag, e);
+                Ok(None)
             }
         }
-
-        Ok(None)
     }
 }
