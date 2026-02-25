@@ -834,6 +834,10 @@ impl SourcePlugin for PandoraSource {
         self.search_prefixes.iter().map(|s| s.as_str()).collect()
     }
 
+    fn is_mirror(&self) -> bool {
+        true
+    }
+
     fn rec_prefixes(&self) -> Vec<&str> {
         self.rec_prefixes.iter().map(|s| s.as_str()).collect()
     }

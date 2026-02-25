@@ -274,15 +274,41 @@ impl SourceManager {
             let isrc = track_info.isrc.as_deref().unwrap_or("");
             let query = format!("{} - {}", track_info.title, track_info.author);
 
+            let original_source_name: Option<&str> = self
+                .sources
+                .iter()
+                .find(|s| s.can_handle(identifier))
+                .map(|s| s.name());
+
             let provider_queries: Vec<String> = mirrors
                 .providers
                 .iter()
                 .filter_map(|p| {
                     if isrc.is_empty() && p.contains("%ISRC%") {
-                        None
-                    } else {
-                        Some(p.replace("%ISRC%", isrc).replace("%QUERY%", &query))
+                        return None;
                     }
+                    let resolved = p.replace("%ISRC%", isrc).replace("%QUERY%", &query);
+
+                    if let Some(handling_source) = self.sources.iter().find(|s| s.can_handle(&resolved)) {
+                        if handling_source.is_mirror() {
+                            tracing::debug!(
+                                "Skipping mirror provider '{}': handled by Mirror-type source '{}' which cannot direct-play",
+                                resolved,
+                                handling_source.name()
+                            );
+                            return None;
+                        }
+                        if Some(handling_source.name()) == original_source_name {
+                            tracing::debug!(
+                                "Skipping mirror provider '{}': would loop back to the same source '{}'",
+                                resolved,
+                                handling_source.name()
+                            );
+                            return None;
+                        }
+                    }
+
+                    Some(resolved)
                 })
                 .collect();
 

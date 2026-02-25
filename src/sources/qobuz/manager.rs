@@ -528,6 +528,10 @@ impl SourcePlugin for QobuzSource {
         self.search_prefixes.iter().map(|s| s.as_str()).collect()
     }
 
+    fn isrc_prefixes(&self) -> Vec<&str> {
+        self.isrc_prefixes.iter().map(|s| s.as_str()).collect()
+    }
+
     fn rec_prefixes(&self) -> Vec<&str> {
         self.rec_prefixes.iter().map(|s| s.as_str()).collect()
     }

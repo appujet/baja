@@ -75,7 +75,15 @@ pub trait SourcePlugin: Send + Sync {
         vec![]
     }
 
+    fn isrc_prefixes(&self) -> Vec<&str> {
+        vec![]
+    }
+
     fn rec_prefixes(&self) -> Vec<&str> {
         vec![]
+    }
+
+    fn is_mirror(&self) -> bool {
+        false
     }
 }

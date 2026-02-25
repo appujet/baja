@@ -419,6 +419,10 @@ impl SourcePlugin for ShazamSource {
         self.search_prefixes.iter().map(|s| s.as_str()).collect()
     }
 
+    fn is_mirror(&self) -> bool {
+        true
+    }
+
     async fn load(
         &self,
         identifier: &str,

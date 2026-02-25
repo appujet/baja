@@ -106,6 +106,10 @@ impl SourcePlugin for DeezerSource {
         self.search_prefixes.iter().map(|s| s.as_str()).collect()
     }
 
+    fn isrc_prefixes(&self) -> Vec<&str> {
+        self.isrc_prefixes.iter().map(|s| s.as_str()).collect()
+    }
+
     async fn load(
         &self,
         identifier: &str,
