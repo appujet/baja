@@ -2,6 +2,36 @@
   <img src="assets/rastalink.png" alt="Rustalink Logo" width="250" height="250">
 </p>
 
+<p align="center">
+  <a href="https://github.com/bong-project/rustalink/releases">
+    <img src="https://img.shields.io/github/v/release/bong-project/rustalink?include_prereleases&style=flat-square" alt="Latest Release">
+  </a>
+  <a href="https://github.com/bong-project/rustalink/blob/HEAD/LICENSE">
+    <img src="https://img.shields.io/github/license/bong-project/rustalink?style=flat-square" alt="License">
+  </a>
+  <a href="https://github.com/bong-project/rustalink/issues">
+    <img src="https://img.shields.io/github/issues/bong-project/rustalink?style=flat-square" alt="Issues">
+  </a>
+  <a href="https://github.com/bong-project/rustalink/pulls">
+    <img src="https://img.shields.io/github/issues-pr/bong-project/rustalink?style=flat-square" alt="Pull Requests">
+  </a>
+  <a href="https://github.com/bong-project/rustalink/stargazers">
+    <img src="https://img.shields.io/github/stars/bong-project/rustalink?style=flat-square" alt="Stars">
+  </a>
+  <a href="https://github.com/bong-project/rustalink/network/members">
+    <img src="https://img.shields.io/github/forks/bong-project/rustalink?style=flat-square" alt="Forks">
+  </a>
+  <a href="https://github.com/bong-project/rustalink">
+    <img src="https://img.shields.io/github/repo-size/bong-project/rustalink?style=flat-square" alt="Repo Size">
+  </a>
+  <a href="https://github.com/bong-project/rustalink/commits/HEAD">
+    <img src="https://img.shields.io/github/last-commit/bong-project/rustalink?style=flat-square" alt="Last Commit">
+  </a>
+  <a href="https://www.rust-lang.org/">
+    <img src="https://img.shields.io/badge/Language-Rust-orange.svg?style=flat-square" alt="Language">
+  </a>
+</p>
+
 # Rustalink
 
 A high-performance Discord audio sending server written in Rust.
@@ -178,4 +208,6 @@ rustup run nightly cargo fmt
 ---
 
 ## 📝 License
-Distributed under the Apache-2.0 License. See `LICENSE` for more information.
+
+Rustalink is published under the [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/bong-project/rustalink/blob/HEAD/LICENSE).  
+Full details on usage and permissions are available in the [LICENSE](https://github.com/bong-project/rustalink/blob/HEAD/LICENSE) file.
