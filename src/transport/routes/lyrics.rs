@@ -145,7 +145,7 @@ pub async fn unsubscribe_lyrics(
     let session_id = crate::common::types::SessionId(session_id);
     let guild_id = crate::common::types::GuildId(guild_id);
     tracing::debug!(
-        "POST /v4/sessions/{}/players/{}/lyrics/unsubscribe",
+        "DELETE /v4/sessions/{}/players/{}/lyrics/subscribe",
         session_id,
         guild_id
     );

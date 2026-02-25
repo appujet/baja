@@ -351,7 +351,7 @@ pub async fn update_session(
     State(state): State<Arc<AppState>>,
     Json(body): Json<api::SessionUpdate>,
 ) -> impl IntoResponse {
-    tracing::debug!("Update session: session={} body={:?}", session_id, body);
+    tracing::debug!("PATCH /v4/sessions/{}\n{:?}", session_id, body);
 
     match state.sessions.get(&session_id) {
         Some(session) => {
