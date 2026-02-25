@@ -3,33 +3,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/bong-project/rustalink/releases">
-    <img src="https://img.shields.io/github/v/release/bong-project/rustalink?include_prereleases&style=flat-square" alt="Latest Release">
-  </a>
-  <a href="https://github.com/bong-project/rustalink/blob/HEAD/LICENSE">
-    <img src="https://img.shields.io/github/license/bong-project/rustalink?style=flat-square" alt="License">
-  </a>
-  <a href="https://github.com/bong-project/rustalink/issues">
-    <img src="https://img.shields.io/github/issues/bong-project/rustalink?style=flat-square" alt="Issues">
-  </a>
-  <a href="https://github.com/bong-project/rustalink/pulls">
-    <img src="https://img.shields.io/github/issues-pr/bong-project/rustalink?style=flat-square" alt="Pull Requests">
-  </a>
-  <a href="https://github.com/bong-project/rustalink/stargazers">
-    <img src="https://img.shields.io/github/stars/bong-project/rustalink?style=flat-square" alt="Stars">
-  </a>
-  <a href="https://github.com/bong-project/rustalink/network/members">
-    <img src="https://img.shields.io/github/forks/bong-project/rustalink?style=flat-square" alt="Forks">
-  </a>
-  <a href="https://github.com/bong-project/rustalink">
-    <img src="https://img.shields.io/github/repo-size/bong-project/rustalink?style=flat-square" alt="Repo Size">
-  </a>
-  <a href="https://github.com/bong-project/rustalink/commits/HEAD">
-    <img src="https://img.shields.io/github/last-commit/bong-project/rustalink?style=flat-square" alt="Last Commit">
-  </a>
-  <a href="https://www.rust-lang.org/">
-    <img src="https://img.shields.io/badge/Language-Rust-orange.svg?style=flat-square" alt="Language">
-  </a>
+  <img src="https://img.shields.io/badge/Language-Rust-orange?style=flat-square&logo=rust" alt="Language">
+  <img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square" alt="Status">
 </p>
 
 # Rustalink
