@@ -40,7 +40,10 @@ fn is_reidentify_close(code: u16) -> bool {
 
 /// Close codes that mean the session is dead and shouldn't be retried.
 fn is_fatal_close(code: u16) -> bool {
-    matches!(code, 4004 | 4014)
+    // 4004: Authentication failed
+    // 4014: Channel was deleted / bot was kicked
+    // 4022: Call terminated (disconnected by user/bot leave)
+    matches!(code, 4004 | 4014 | 4022)
 }
 
 /// Outcome of a single WS session — tells the outer loop what to do next.
@@ -156,7 +159,14 @@ impl VoiceGateway {
                     is_resume = true;
                 }
                 Ok(SessionOutcome::Identify) => {
-                    attempt = 0;
+                    attempt += 1;
+                    if attempt > MAX_RECONNECT_ATTEMPTS {
+                        warn!(
+                            "Voice gateway: max re-identify attempts ({}) reached for guild {}",
+                            MAX_RECONNECT_ATTEMPTS, self.guild_id
+                        );
+                        return Ok(());
+                    }
                     is_resume = false;
                     seq_ack.store(-1, Ordering::Relaxed);
                     tracing::debug!(
