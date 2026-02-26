@@ -61,7 +61,7 @@ impl PlayableTrack for JioSaavnTrack {
             let kind = std::path::Path::new(&url)
                 .extension()
                 .and_then(|s| s.to_str())
-                .and_then(crate::common::types::AudioKind::from_ext);
+                .map(crate::common::types::AudioFormat::from_ext);
 
             match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
                 Ok(mut processor) => {

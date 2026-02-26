@@ -73,7 +73,7 @@ impl PlayableTrack for SoundCloudTrack {
                     };
                     run_processor(
                         reader,
-                        Some(crate::common::types::AudioKind::Mp3),
+                        Some(crate::common::types::AudioFormat::Mp3),
                         tx,
                         cmd_rx,
                         err_tx,
@@ -95,7 +95,7 @@ impl PlayableTrack for SoundCloudTrack {
                     };
                     run_processor(
                         reader,
-                        Some(crate::common::types::AudioKind::Mp4),
+                        Some(crate::common::types::AudioFormat::Mp4),
                         tx,
                         cmd_rx,
                         err_tx,
@@ -121,7 +121,7 @@ impl PlayableTrack for SoundCloudTrack {
                     };
                     run_processor(
                         reader,
-                        Some(crate::common::types::AudioKind::Opus),
+                        Some(crate::common::types::AudioFormat::Opus),
                         tx,
                         cmd_rx,
                         err_tx,
@@ -147,7 +147,7 @@ impl PlayableTrack for SoundCloudTrack {
                     };
                     run_processor(
                         reader,
-                        Some(crate::common::types::AudioKind::Mp3),
+                        Some(crate::common::types::AudioFormat::Mp3),
                         tx,
                         cmd_rx,
                         err_tx,
@@ -174,7 +174,7 @@ impl PlayableTrack for SoundCloudTrack {
                     // Hint as "aac" so symphonia knows what to expect from ADTS stream.
                     run_processor(
                         reader,
-                        Some(crate::common::types::AudioKind::Aac),
+                        Some(crate::common::types::AudioFormat::Aac),
                         tx,
                         cmd_rx,
                         err_tx,
@@ -189,7 +189,7 @@ impl PlayableTrack for SoundCloudTrack {
 
 fn run_processor(
     reader: Box<dyn symphonia::core::io::MediaSource>,
-    kind: Option<crate::common::types::AudioKind>,
+    kind: Option<crate::common::types::AudioFormat>,
     tx: flume::Sender<crate::audio::buffer::PooledBuffer>,
     cmd_rx: flume::Receiver<DecoderCommand>,
     err_tx: flume::Sender<String>,

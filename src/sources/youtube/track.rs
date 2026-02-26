@@ -9,8 +9,11 @@ use crate::{
     sources::{
         plugin::PlayableTrack,
         youtube::{
-            cipher::YouTubeCipherManager, clients::YouTubeClient, oauth::YouTubeOAuth,
+            cipher::YouTubeCipherManager,
+            clients::YouTubeClient,
+            oauth::YouTubeOAuth,
             sabr::SabrConfig,
+            utils::{create_reader, detect_audio_kind},
         },
     },
 };
@@ -26,9 +29,7 @@ pub struct YoutubeTrack {
 }
 
 enum ResolvedStream {
-    /// Direct HTTP/HLS URL + source client name
     Url(String, String),
-    /// SABR config + source client name + the client object (for re-resolution)
     Sabr(SabrConfig, String, Arc<dyn YouTubeClient>),
 }
 
@@ -63,15 +64,12 @@ impl PlayableTrack for YoutubeTrack {
             let mut current_seek_ms = 0u64;
 
             'playback_loop: loop {
-                // 1. Resolve URL (Async resolution)
                 let signature_timestamp = cipher_manager_async.get_signature_timestamp().await.ok();
-
                 let mut resolved = None;
 
                 for client in &clients_async {
                     let client_name = client.name().to_string();
 
-                    // 1. Try SABR (ONLY if client is WEB)
                     if client_name == "Web" {
                         if let Some(sabr_cfg) = client
                             .get_sabr_config(
@@ -145,7 +143,6 @@ impl PlayableTrack for YoutubeTrack {
 
                 let is_sabr = matches!(resolved, ResolvedStream::Sabr(..));
 
-                // 2. Build MediaSource and spawn AudioProcessor
                 let (reader, kind, _client_name, opt_sabr_cmd_tx, opt_sabr_event_rx) =
                     match resolved {
                         ResolvedStream::Sabr(cfg, client_name, _client) => {
@@ -167,9 +164,9 @@ impl PlayableTrack for YoutubeTrack {
 
                             let kind = mime.as_deref().and_then(|m| {
                                 if m.contains("webm") {
-                                    Some(crate::common::types::AudioKind::Webm)
+                                    Some(crate::common::types::AudioFormat::Webm)
                                 } else if m.contains("mp4") {
-                                    Some(crate::common::types::AudioKind::Mp4)
+                                    Some(crate::common::types::AudioFormat::Mp4)
                                 } else {
                                     None
                                 }
@@ -189,60 +186,22 @@ impl PlayableTrack for YoutubeTrack {
 
                         ResolvedStream::Url(url, client_name) => {
                             let is_hls = url.contains(".m3u8") || url.contains("/playlist");
-                            let player_url_clone = if url.contains("youtube.com") {
-                                Some(url.clone())
-                            } else {
-                                None
-                            };
                             let url_clone = url.clone();
                             let cipher_clone = cipher_manager_async.clone();
                             let proxy_clone = proxy_bg.clone();
                             let client_name_inner = client_name.clone();
 
                             let reader_res = tokio::task::spawn_blocking(move || {
-                            if is_hls {
-                                match crate::sources::youtube::hls::HlsReader::new(
+                                create_reader(
                                     &url_clone,
-                                    local_addr_bg,
-                                    Some(cipher_clone),
-                                    player_url_clone,
-                                    proxy_clone,
-                                ) {
-                                    Ok(r) => {
-                                        Ok(Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
-                                    }
-                                    Err(e) => Err(e),
-                                }
-                            } else if client_name_inner == "TV" {
-                                match crate::sources::youtube::reader::YoutubeReader::new(
-                                    &url_clone,
+                                    &client_name_inner,
                                     local_addr_bg,
                                     proxy_clone,
-                                ) {
-                                    Ok(r) => {
-                                        Ok(Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
-                                    }
-                                    Err(e) => Err(e),
-                                }
-                            } else {
-                                match crate::audio::HttpSource::new(
-                                    crate::audio::create_client(
-                                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36".to_string(),
-                                        local_addr_bg,
-                                        proxy_clone,
-                                        None
-                                    ).unwrap(),
-                                    &url_clone,
-                                ) {
-                                    Ok(r) => {
-                                        Ok(Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
-                                    }
-                                    Err(e) => Err(e),
-                                }
-                            }
-                        })
-                        .await
-                        .expect("YoutubeTrack: reader spawn_blocking failed");
+                                    cipher_clone,
+                                )
+                            })
+                            .await
+                            .expect("YoutubeTrack: reader spawn_blocking failed");
 
                             let reader = match reader_res {
                                 Ok(r) => r,
@@ -253,53 +212,11 @@ impl PlayableTrack for YoutubeTrack {
                                 }
                             };
 
-                            // Determine codec
-                            let kind = if is_hls {
-                                Some(crate::common::types::AudioKind::Aac)
-                            } else {
-                                let itag: Option<u32> = url.split('?').nth(1).and_then(|qs| {
-                                    qs.split('&').find_map(|kv| {
-                                        let mut parts = kv.splitn(2, '=');
-                                        if parts.next() == Some("itag") {
-                                            parts.next().and_then(|v| v.parse().ok())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                });
-                                match itag {
-                                    Some(249) | Some(250) | Some(251) => {
-                                        Some(crate::common::types::AudioKind::Webm)
-                                    }
-                                    Some(139) | Some(140) | Some(141) => {
-                                        Some(crate::common::types::AudioKind::Mp4)
-                                    }
-                                    _ => {
-                                        if url.contains("mime=audio%2Fwebm")
-                                            || url.contains("mime=audio/webm")
-                                        {
-                                            Some(crate::common::types::AudioKind::Webm)
-                                        } else if url.contains("mime=audio%2Fmp4")
-                                            || url.contains("mime=audio/mp4")
-                                        {
-                                            Some(crate::common::types::AudioKind::Mp4)
-                                        } else {
-                                            std::path::Path::new(
-                                                url.split('?').next().unwrap_or(&url),
-                                            )
-                                            .extension()
-                                            .and_then(|s| s.to_str())
-                                            .and_then(crate::common::types::AudioKind::from_ext)
-                                        }
-                                    }
-                                }
-                            };
-
-                            (reader, kind, client_name, None, None)
+                            let kind = detect_audio_kind(&url, is_hls);
+                            (reader, Some(kind), client_name, None, None)
                         }
                     };
 
-                // Spawn AudioProcessor on blocking thread
                 let (inner_cmd_tx, inner_cmd_rx) = flume::bounded(8);
                 let tx_clone = tx.clone();
                 let err_tx_clone = err_tx.clone();
@@ -319,12 +236,12 @@ impl PlayableTrack for YoutubeTrack {
                         }
                         Err(e) => {
                             error!("YoutubeTrack: AudioProcessor initialization failed: {}", e);
-                            let _ = err_tx_clone.send(format!("Failed to initialize processor: {}", e));
+                            let _ =
+                                err_tx_clone.send(format!("Failed to initialize processor: {}", e));
                         }
                     }
                 });
 
-                // Spawn SABR recovery orchestrator if needed
                 let sabr_cmd_tx_clone = opt_sabr_cmd_tx.clone();
                 let sabr_abort_tx = if let (Some(sabr_event_rx), Some(sabr_cmd_tx)) =
                     (opt_sabr_event_rx, sabr_cmd_tx_clone)
@@ -338,16 +255,13 @@ impl PlayableTrack for YoutubeTrack {
 
                     tokio::spawn(async move {
                         tokio::select! {
-                            _ = abort_rx => {
-                                // aborted by seek or stop
-                            }
+                            _ = abort_rx => {}
                             event_opt = sabr_event_rx.recv_async() => {
                                 if let Ok(event) = event_opt {
                                     match event {
                                         crate::sources::youtube::sabr::stream::SabrEvent::Stall => {
                                             debug!("YoutubeTrack: SABR stall detected for {}. Refreshing session...", id_rec);
                                             let sig_ts = cipher_rec.get_signature_timestamp().await.ok();
-                                            // Find a client that can give SABR config
                                             let mut new_cfg_opt = None;
                                             for client in &clients_rec {
                                                 if let Some(cfg) = client.get_sabr_config(&id_rec, visitor_data_rec.as_deref(), sig_ts, cipher_rec.clone(), 0).await {
@@ -365,8 +279,6 @@ impl PlayableTrack for YoutubeTrack {
                                                     po_token,
                                                     playback_cookie: None,
                                                 });
-                                            } else {
-                                                error!("YoutubeTrack: SABR session re-resolution failed for {}", id_rec);
                                             }
                                         }
                                         crate::sources::youtube::sabr::stream::SabrEvent::Finished => {}
@@ -384,7 +296,6 @@ impl PlayableTrack for YoutubeTrack {
                     None
                 };
 
-                // Wait for commands or natural task completion
                 loop {
                     tokio::select! {
                         cmd_res = cmd_rx.recv_async() => {
@@ -392,7 +303,6 @@ impl PlayableTrack for YoutubeTrack {
                                 Ok(DecoderCommand::Seek(ms)) => {
                                     if is_sabr {
                                         current_seek_ms = ms;
-                                        // Stop current processor and restart
                                         let _ = inner_cmd_tx.send(DecoderCommand::Stop);
                                         if let Some(tx) = sabr_abort_tx {
                                             let _ = tx.send(());
@@ -408,10 +318,9 @@ impl PlayableTrack for YoutubeTrack {
                                     if let Some(tx) = sabr_abort_tx {
                                         let _ = tx.send(());
                                     }
-                                    return; // Complete orchestrator
+                                    return;
                                 }
                                 Err(_) => {
-                                    // cmd_rx dropped, TrackHandle is gone
                                     let _ = inner_cmd_tx.send(DecoderCommand::Stop);
                                     if let Some(tx) = sabr_abort_tx {
                                         let _ = tx.send(());
@@ -421,14 +330,7 @@ impl PlayableTrack for YoutubeTrack {
                             }
                         }
                         _ = &mut process_task => {
-                            // AudioProcessor naturally finished (EOF or error)
-                            if is_sabr {
-                                // If SABR finished, we are done
-                                return;
-                            } else {
-                                // For non-SABR, if it finished naturally, we are also done
-                                return;
-                            }
+                            return;
                         }
                     }
                 }

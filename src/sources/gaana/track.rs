@@ -62,12 +62,12 @@ impl PlayableTrack for GaanaTrack {
                 };
 
                 let kind = if url.contains(".m3u8") || url.contains("/api/manifest/hls_") {
-                    Some(crate::common::types::AudioKind::Aac)
+                    Some(crate::common::types::AudioFormat::Aac)
                 } else {
                     std::path::Path::new(&url)
                         .extension()
                         .and_then(|s| s.to_str())
-                        .and_then(crate::common::types::AudioKind::from_ext)
+                        .map(crate::common::types::AudioFormat::from_ext)
                 };
 
                 if let Some(reader) = reader {

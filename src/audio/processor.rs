@@ -53,7 +53,7 @@ impl AudioProcessor {
     /// wire up a [`TranscodeEngine`] that pushes PCM onto `pcm_tx`.
     pub fn new(
         source: Box<dyn symphonia::core::io::MediaSource>,
-        kind: Option<crate::common::types::AudioKind>,
+        kind: Option<crate::common::types::AudioFormat>,
         pcm_tx: flume::Sender<PooledBuffer>,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
@@ -65,7 +65,7 @@ impl AudioProcessor {
     /// Same as [`new`] but accepts a pre-built engine (e.g. `PassthroughEngine`).
     pub fn with_engine(
         source: Box<dyn symphonia::core::io::MediaSource>,
-        kind: Option<crate::common::types::AudioKind>,
+        kind: Option<crate::common::types::AudioFormat>,
         engine: BoxedEngine,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
@@ -75,7 +75,7 @@ impl AudioProcessor {
 
     fn build(
         source: Box<dyn symphonia::core::io::MediaSource>,
-        kind: Option<crate::common::types::AudioKind>,
+        kind: Option<crate::common::types::AudioFormat>,
         engine: BoxedEngine,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
@@ -88,7 +88,10 @@ impl AudioProcessor {
             channels,
         } = open_format(source, kind)?;
 
-        info!("AudioProcessor: opened format — {}Hz {}ch", sample_rate, channels);
+        info!(
+            "AudioProcessor: opened format — {}Hz {}ch",
+            sample_rate, channels
+        );
 
         let resampler = if sample_rate == TARGET_SAMPLE_RATE {
             Resampler::linear(sample_rate, TARGET_SAMPLE_RATE, channels)

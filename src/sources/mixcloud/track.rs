@@ -54,7 +54,7 @@ impl PlayableTrack for MixcloudTrack {
                     ) {
                         Ok(r) => (
                             Some(Box::new(r) as Box<dyn symphonia::core::io::MediaSource>),
-                            Some(crate::common::types::AudioKind::Aac),
+                            Some(crate::common::types::AudioFormat::Aac),
                         ),
                         Err(e) => {
                             tracing::error!("Mixcloud HlsReader failed to initialize: {}", e);
@@ -68,8 +68,8 @@ impl PlayableTrack for MixcloudTrack {
                             std::path::Path::new(&url)
                                 .extension()
                                 .and_then(|s| s.to_str())
-                                .and_then(crate::common::types::AudioKind::from_ext)
-                                .or(Some(crate::common::types::AudioKind::Mp4)),
+                                .map(crate::common::types::AudioFormat::from_ext)
+                                .or(Some(crate::common::types::AudioFormat::Mp4)),
                         ),
                         Err(e) => {
                             tracing::error!("MixcloudReader failed to initialize: {}", e);

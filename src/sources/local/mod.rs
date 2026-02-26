@@ -246,7 +246,7 @@ impl PlayableTrack for LocalTrack {
             let kind = Path::new(&path)
                 .extension()
                 .and_then(|e| e.to_str())
-                .and_then(crate::common::types::AudioKind::from_ext);
+                .map(crate::common::types::AudioFormat::from_ext);
 
             match AudioProcessor::new(source, kind, tx, cmd_rx, Some(err_tx.clone())) {
                 Ok(mut processor) => {

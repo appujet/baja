@@ -15,7 +15,8 @@
 pub mod format;
 pub mod webm_opus;
 
-pub use format::{AudioFormat, detect_format};
+pub use crate::common::types::AudioFormat;
+pub use format::detect_format;
 pub use webm_opus::WebmOpusDemuxer;
 
 use symphonia::core::{
@@ -46,7 +47,7 @@ pub enum DemuxResult {
 /// Returns a `DemuxResult` describing the decode path, or a symphonia `Error`.
 pub fn open_format(
     source: Box<dyn MediaSource>,
-    kind: Option<crate::common::types::AudioKind>,
+    kind: Option<crate::common::types::AudioFormat>,
 ) -> Result<DemuxResult, Error> {
     let mss = MediaSourceStream::new(source, Default::default());
 
@@ -77,7 +78,11 @@ pub fn open_format(
     let track_id = track.id;
     let codec = track.codec_params.codec;
     let sample_rate = track.codec_params.sample_rate.unwrap_or(TARGET_SAMPLE_RATE);
-    let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(MIXER_CHANNELS);
+    let channels = track
+        .codec_params
+        .channels
+        .map(|c| c.count())
+        .unwrap_or(MIXER_CHANNELS);
 
     // Build the right decoder for this codec.
     let decoder: Box<dyn Decoder> = if codec == symphonia::core::codecs::CODEC_TYPE_OPUS {

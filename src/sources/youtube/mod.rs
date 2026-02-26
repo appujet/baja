@@ -21,6 +21,7 @@ pub mod oauth;
 pub mod reader;
 pub mod sabr;
 pub mod ua;
+pub mod utils;
 
 pub mod track;
 
