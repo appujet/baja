@@ -84,7 +84,7 @@ impl VoiceGateway {
         let seq_ack = Arc::new(AtomicI64::new(-1));
 
         loop {
-            let outcome = self.run_session(is_resume, seq_ack.clone()).await;
+            let outcome = self.connect(is_resume, seq_ack.clone()).await;
 
             match outcome {
                 Ok(SessionOutcome::Shutdown) => {
@@ -151,11 +151,7 @@ impl VoiceGateway {
         }
     }
 
-    async fn run_session(
-        &self,
-        is_resume: bool,
-        seq_ack: Arc<AtomicI64>,
-    ) -> AnyResult<SessionOutcome> {
+    async fn connect(&self, is_resume: bool, seq_ack: Arc<AtomicI64>) -> AnyResult<SessionOutcome> {
         let url = format!("wss://{}/?v=8", self.endpoint);
         debug!("Connecting to voice gateway: {}", url);
 
