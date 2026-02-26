@@ -75,6 +75,22 @@ pub const FETCH_WAIT_MS: u64 = 500;
 /// Timeout in seconds for the initial content-length probe request.
 pub const PROBE_TIMEOUT_SECS: u64 = 10;
 
+// ── HttpSource ───────────────────────────────────────────────────────────────
+
+/// HTTP prefetch buffer size (8 MB) — how much data can be stored ahead.
+pub const HTTP_PREFETCH_BUFFER_SIZE: usize = 8 * 1_024 * 1_024;
+
+/// Smallest buffer capacity used for initial fetching (256 KB).
+pub const HTTP_INITIAL_BUF_CAPACITY: usize = 256 * 1_024;
+
+/// Limit for socket-skipping during forward seeks (1 MB).
+/// Small forward jumps are faster to skip data on the same connection.
+pub const HTTP_SOCKET_SKIP_LIMIT: u64 = 1_000_000;
+
+/// Limit for a single HTTP range fetch in the prefetch loop (5 MB).
+/// Prevents excessively large requests and allows for more granular seeking.
+pub const HTTP_FETCH_CHUNK_LIMIT: u64 = 5 * 1_024 * 1_024;
+
 // ── Effects ───────────────────────────────────────────────────────────────────
 
 /// π / 2 — used in sinusoidal crossfade curves.
