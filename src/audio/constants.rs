@@ -62,6 +62,9 @@ pub const PREFETCH_CHUNKS: usize = 2;
 /// Maximum simultaneous in-flight HTTP fetches.
 pub const MAX_CONCURRENT_FETCHES: usize = 2;
 
+/// Default timeout for general HTTP client requests (seconds).
+pub const HTTP_CLIENT_TIMEOUT_SECS: u64 = 15;
+
 /// Maximum times a single chunk is retried before the source raises a fatal error.
 pub const MAX_FETCH_RETRIES: usize = 5;
 

@@ -1,8 +1,3 @@
-//! `SegmentedSource` — parallel-chunk HTTP audio source.
-//! Workers pre-fetch a sliding window of chunks ahead of the read cursor.
-//! Seeking is instant — just update `current_pos`; workers naturally
-//! re-prioritize chunks around the new position.
-
 use std::{
     collections::HashMap,
     io::{Read, Seek, SeekFrom},
@@ -25,9 +20,7 @@ use crate::{
 
 use super::AudioSource;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal types
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Internal types ──────────────────────────────────────────────────────────
 
 /// State of a single downloaded chunk.
 #[derive(Clone)]
@@ -48,9 +41,7 @@ struct ReaderState {
     fatal_error: Option<String>,
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SegmentedSource
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── SegmentedSource ──────────────────────────────────────────────────────────
 
 /// Parallel-chunk HTTP source for large, seekable streams (e.g. YouTube audio).
 pub struct SegmentedSource {
@@ -134,9 +125,7 @@ impl SegmentedSource {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Trait impls
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Trait impls ──────────────────────────────────────────────────────────────
 
 impl AudioSource for SegmentedSource {
     fn content_type(&self) -> Option<String> {
@@ -243,9 +232,7 @@ impl Drop for SegmentedSource {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /// Issue a Range request for `[offset, offset + size)` and return the response.
 async fn fetch_range(
@@ -269,9 +256,7 @@ async fn fetch_range(
     Ok(res)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Fetch worker
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Fetch worker ─────────────────────────────────────────────────────────────
 
 fn fetch_worker(
     worker_id: usize,
