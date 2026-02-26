@@ -27,6 +27,8 @@ use symphonia::core::{
     probe::Hint,
 };
 
+use crate::audio::constants::{MIXER_CHANNELS, TARGET_SAMPLE_RATE};
+
 /// Resolved demux result returned by `open_format`.
 pub enum DemuxResult {
     /// Symphonia-probed format reader + selected track id + codec decoder.
@@ -74,8 +76,8 @@ pub fn open_format(
 
     let track_id = track.id;
     let codec = track.codec_params.codec;
-    let sample_rate = track.codec_params.sample_rate.unwrap_or(48000);
-    let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
+    let sample_rate = track.codec_params.sample_rate.unwrap_or(TARGET_SAMPLE_RATE);
+    let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(MIXER_CHANNELS);
 
     // Build the right decoder for this codec.
     let decoder: Box<dyn Decoder> = if codec == symphonia::core::codecs::CODEC_TYPE_OPUS {

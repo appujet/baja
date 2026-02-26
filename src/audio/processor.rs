@@ -12,16 +12,16 @@ use tracing::{Level, debug, info, span, warn};
 
 use crate::audio::{
     buffer::PooledBuffer,
+    constants::TARGET_SAMPLE_RATE,
     demux::{DemuxResult, open_format},
     engine::{BoxedEngine, TranscodeEngine},
     resample::Resampler,
 };
 
-// ─── Commands ─────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecoderCommand {
-    Seek(u64), // milliseconds
+    /// Seek to the given position in milliseconds.
+    Seek(u64),
     Stop,
 }
 
@@ -33,14 +33,11 @@ pub enum CommandOutcome {
     None,
 }
 
-// ─── AudioProcessor ───────────────────────────────────────────────────────────
-
 /// Decodes any supported container to 48 kHz stereo PCM i16 and drives the
 /// injected [`Engine`] with the resulting samples.
 pub struct AudioProcessor {
     format: Box<dyn FormatReader>,
     decoder: Box<dyn Decoder>,
-    /// High-quality Catmull-Rom resampler (or identity pass-through).
     resampler: Resampler,
     track_id: u32,
     engine: BoxedEngine,
@@ -48,13 +45,12 @@ pub struct AudioProcessor {
     error_tx: Option<flume::Sender<String>>,
     sample_buf: Option<SampleBuffer<i16>>,
     source_rate: u32,
-    target_rate: u32,
     channels: usize,
 }
 
 impl AudioProcessor {
-    /// Open `source`, detect its format/codec, initialise the Hermite resampler
-    /// and wire up the provided `engine`.
+    /// Open `source`, detect its format/codec, initialise the resampler and
+    /// wire up a [`TranscodeEngine`] that pushes PCM onto `pcm_tx`.
     pub fn new(
         source: Box<dyn symphonia::core::io::MediaSource>,
         kind: Option<crate::common::types::AudioKind>,
@@ -62,47 +58,22 @@ impl AudioProcessor {
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
     ) -> Result<Self, Error> {
-        let DemuxResult::Transcode {
-            format,
-            track_id,
-            decoder,
-            sample_rate,
-            channels,
-        } = open_format(source, kind)?;
-
-        info!(
-            "AudioProcessor: opened format — {}Hz {}ch",
-            sample_rate, channels
-        );
-
-        let target_rate = 48_000u32;
-
-        // Use Hermite resampling for music quality.
-        let resampler = if sample_rate == target_rate {
-            Resampler::linear(sample_rate, target_rate, channels) // identity
-        } else {
-            Resampler::hermite(sample_rate, target_rate, channels)
-        };
-
         let engine: BoxedEngine = Box::new(TranscodeEngine::new(pcm_tx));
-
-        Ok(Self {
-            format,
-            decoder,
-            resampler,
-            track_id,
-            engine,
-            cmd_rx,
-            error_tx,
-            sample_buf: None,
-            source_rate: sample_rate,
-            target_rate,
-            channels,
-        })
+        Self::build(source, kind, engine, cmd_rx, error_tx)
     }
 
     /// Same as [`new`] but accepts a pre-built engine (e.g. `PassthroughEngine`).
     pub fn with_engine(
+        source: Box<dyn symphonia::core::io::MediaSource>,
+        kind: Option<crate::common::types::AudioKind>,
+        engine: BoxedEngine,
+        cmd_rx: Receiver<DecoderCommand>,
+        error_tx: Option<flume::Sender<String>>,
+    ) -> Result<Self, Error> {
+        Self::build(source, kind, engine, cmd_rx, error_tx)
+    }
+
+    fn build(
         source: Box<dyn symphonia::core::io::MediaSource>,
         kind: Option<crate::common::types::AudioKind>,
         engine: BoxedEngine,
@@ -117,17 +88,12 @@ impl AudioProcessor {
             channels,
         } = open_format(source, kind)?;
 
-        info!(
-            "AudioProcessor: opened format — {}Hz {}ch",
-            sample_rate, channels
-        );
+        info!("AudioProcessor: opened format — {}Hz {}ch", sample_rate, channels);
 
-        let target_rate = 48_000u32;
-
-        let resampler = if sample_rate == target_rate {
-            Resampler::linear(sample_rate, target_rate, channels)
+        let resampler = if sample_rate == TARGET_SAMPLE_RATE {
+            Resampler::linear(sample_rate, TARGET_SAMPLE_RATE, channels)
         } else {
-            Resampler::hermite(sample_rate, target_rate, channels)
+            Resampler::hermite(sample_rate, TARGET_SAMPLE_RATE, channels)
         };
 
         Ok(Self {
@@ -140,19 +106,18 @@ impl AudioProcessor {
             error_tx,
             sample_buf: None,
             source_rate: sample_rate,
-            target_rate,
             channels,
         })
     }
 
-    /// Run the decode loop until the stream ends naturally or a Stop command
+    /// Run the decode loop until the stream ends naturally or a `Stop` command
     /// arrives.
     pub fn run(&mut self) -> Result<(), Error> {
         let _span = span!(Level::DEBUG, "audio_processor").entered();
 
         info!(
             "Starting transcode loop: {}Hz {}ch -> {}Hz",
-            self.source_rate, self.channels, self.target_rate
+            self.source_rate, self.channels, TARGET_SAMPLE_RATE
         );
 
         loop {
@@ -187,10 +152,10 @@ impl AudioProcessor {
 
                     if !samples.is_empty() {
                         let mut pooled: PooledBuffer = Vec::with_capacity(samples.len());
-                        if self.source_rate != self.target_rate {
-                            self.resampler.process(samples, &mut pooled);
-                        } else {
+                        if self.resampler.is_passthrough() {
                             pooled.extend_from_slice(samples);
+                        } else {
+                            self.resampler.process(samples, &mut pooled);
                         }
 
                         if !pooled.is_empty() && !self.engine.push_pcm(pooled) {

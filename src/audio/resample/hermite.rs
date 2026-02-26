@@ -102,6 +102,7 @@ impl HermiteResampler {
         }
     }
 
+    /// Returns `true` when source and target rates are equal (no conversion needed).
     pub fn is_passthrough(&self) -> bool {
         (self.ratio - 1.0).abs() < f32::EPSILON
     }

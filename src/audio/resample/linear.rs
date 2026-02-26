@@ -1,7 +1,7 @@
 //! `resample/linear.rs` — fast linear-interpolation resampler.
 //!
-//! Identical algorithm to the original `pipeline/resampler.rs`, now exposed
-//! as a named type so callers can choose quality vs. speed.
+//! Exposed as a named type so callers can choose quality vs. speed
+//! (see [`HermiteResampler`](super::HermiteResampler) for the higher-quality option).
 
 pub struct LinearResampler {
     /// Source / target ratio (< 1.0 upsamples, > 1.0 downsamples).
