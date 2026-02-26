@@ -9,30 +9,27 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{error, warn};
+use tracing::error;
+
+const DISCOVERY_PACKET_SIZE: usize = 74;
+const FRAME_DURATION_MS: u64 = 20;
+const PCM_FRAME_SIZE: usize = 960 * 2; // 20ms at 48kHz stereo
 
 pub async fn discover_ip(
     socket: &tokio::net::UdpSocket,
     addr: SocketAddr,
     ssrc: u32,
 ) -> AnyResult<(String, u16)> {
-    let mut packet = [0u8; 74];
+    let mut packet = [0u8; DISCOVERY_PACKET_SIZE];
     packet[0..2].copy_from_slice(&1u16.to_be_bytes());
     packet[2..4].copy_from_slice(&70u16.to_be_bytes());
     packet[4..8].copy_from_slice(&ssrc.to_be_bytes());
 
     socket.send_to(&packet, addr).await.map_err(map_boxed_err)?;
 
-    let mut buf = [0u8; 74];
-    let timeout = tokio::time::Duration::from_secs(2);
-    match tokio::time::timeout(timeout, socket.recv(&mut buf)).await {
-        Ok(Ok(n)) => {
-            if n < 74 {
-                return Err(map_boxed_err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "IP discovery response too short",
-                )));
-            }
+    let mut buf = [0u8; DISCOVERY_PACKET_SIZE];
+    match tokio::time::timeout(tokio::time::Duration::from_secs(2), socket.recv(&mut buf)).await {
+        Ok(Ok(n)) if n >= DISCOVERY_PACKET_SIZE => {
             let ip_str = std::str::from_utf8(&buf[8..72])
                 .map_err(map_boxed_err)?
                 .trim_matches('\0')
@@ -40,15 +37,18 @@ pub async fn discover_ip(
             let port = u16::from_le_bytes([buf[72], buf[73]]);
             Ok((ip_str, port))
         }
+        Ok(Ok(_)) => Err(map_boxed_err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Malformed IP discovery response",
+        ))),
         Ok(Err(e)) => Err(map_boxed_err(e)),
         Err(_) => Err(map_boxed_err(std::io::Error::new(
             std::io::ErrorKind::TimedOut,
-            "IP discovery timeout",
+            "IP discovery timed out",
         ))),
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn speak_loop(
     mixer: Shared<Mixer>,
     socket: Arc<tokio::net::UdpSocket>,
@@ -64,84 +64,81 @@ pub async fn speak_loop(
 ) -> AnyResult<()> {
     let mut encoder = Encoder::new().map_err(map_boxed_err)?;
     let mut udp = UdpBackend::new(socket, addr, ssrc, key, &mode).map_err(map_boxed_err)?;
-    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(20));
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(FRAME_DURATION_MS));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    let mut pcm_buf = vec![0i16; 1920];
+    let mut pcm_buf = vec![0i16; PCM_FRAME_SIZE];
     let mut opus_buf = vec![0u8; 4000];
     let mut silence_frames = 0;
-    let mut ts_frame_buf = vec![0i16; 1920];
+    let mut ts_frame_buf = vec![0i16; PCM_FRAME_SIZE];
 
     loop {
         tokio::select! {
             _ = cancel_token.cancelled() => break,
             _ = interval.tick() => {
-                let has_audio;
-                {
-                    let mut mixer_lock = mixer.lock().await;
-                    if let Some(opus_frame) = mixer_lock.take_opus_frame() {
-                        drop(mixer_lock);
-                        silence_frames = 0;
-                        frames_sent.fetch_add(1, Ordering::Relaxed);
-                        let encrypted = dave.lock().await.encrypt_opus(&opus_frame);
-                        match encrypted {
-                            Ok(packet) => {
-                                if let Err(e) = udp.send_opus_packet(&packet).await {
-                                    warn!("Failed to send passthrough UDP packet: {}", e);
-                                }
-                            }
-                            Err(e) => error!("DAVE passthrough encryption failed: {}", e),
-                        }
-                        continue;
-                    }
-                    has_audio = mixer_lock.mix(&mut pcm_buf);
-                }
+                // 1. Try taking an Opus frame (passthrough)
+                let opus_frame = {
+                    let mut m = mixer.lock().await;
+                    m.take_opus_frame()
+                };
 
-                if has_audio {
+                if let Some(frame) = opus_frame {
                     silence_frames = 0;
                     frames_sent.fetch_add(1, Ordering::Relaxed);
-                } else {
+                    let mut d = dave.lock().await;
+                    if let Ok(packet) = d.encrypt_opus(&frame) {
+                        let _ = udp.send_opus_packet(&packet).await;
+                    }
+                    continue;
+                }
+
+                // 2. Mix PCM
+                let has_audio = {
+                    let mut m = mixer.lock().await;
+                    m.mix(&mut pcm_buf)
+                };
+
+                if !has_audio {
                     silence_frames += 1;
                     frames_nulled.fetch_add(1, Ordering::Relaxed);
                     if silence_frames > 5 { continue; }
+                    pcm_buf.fill(0);
+                } else {
+                    silence_frames = 0;
+                    frames_sent.fetch_add(1, Ordering::Relaxed);
                 }
 
+                // 3. Process Effects & Filter Chain
+                let mut use_ts = false;
+                let mut encode_ready = true;
                 {
                     let mut fc = filter_chain.lock().await;
                     if fc.is_active() {
                         fc.process(&mut pcm_buf);
                         if fc.has_timescale() {
-                            let timescale_frame_ready = fc.fill_frame(&mut ts_frame_buf);
-                            drop(fc);
-                            if timescale_frame_ready {
-                                let size = encoder.encode(&ts_frame_buf, &mut opus_buf).map_err(map_boxed_err)?;
-                                if size > 0 {
-                                    let encrypted = dave.lock().await.encrypt_opus(&opus_buf[..size]);
-                                    match encrypted {
-                                        Ok(packet) => {
-                                            if let Err(e) = udp.send_opus_packet(&packet).await {
-                                                warn!("Failed to send UDP packet: {}", e);
-                                            }
-                                        }
-                                        Err(e) => error!("DAVE encryption failed: {}", e),
-                                    }
-                                }
-                            }
-                            continue;
+                            encode_ready = fc.fill_frame(&mut ts_frame_buf);
+                            use_ts = true;
                         }
                     }
                 }
 
-                let size = encoder.encode(&pcm_buf, &mut opus_buf).map_err(map_boxed_err)?;
+                if !encode_ready { continue; }
+
+                // 4. Encode & Send
+                let target_buf = if use_ts { &ts_frame_buf } else { &pcm_buf };
+
+                let size = match encoder.encode(target_buf, &mut opus_buf) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!("Encoding failure: {}", e);
+                        0
+                    }
+                };
+
                 if size > 0 {
-                    let encrypted = dave.lock().await.encrypt_opus(&opus_buf[..size]);
-                    match encrypted {
-                        Ok(packet) => {
-                            if let Err(e) = udp.send_opus_packet(&packet).await {
-                                warn!("Failed to send UDP packet: {}", e);
-                            }
-                        }
-                        Err(e) => error!("DAVE encryption failed: {}", e),
+                    let mut d = dave.lock().await;
+                    if let Ok(packet) = d.encrypt_opus(&opus_buf[..size]) {
+                        let _ = udp.send_opus_packet(&packet).await;
                     }
                 }
             }
