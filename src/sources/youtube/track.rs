@@ -44,8 +44,6 @@ impl PlayableTrack for YoutubeTrack {
         let (tx, rx) = flume::bounded(32);
         let (cmd_tx, cmd_rx) = flume::bounded(8);
         let (err_tx, err_rx) = flume::bounded(1);
-        // Passthrough channel for raw Opus frames (YouTube WebM/Opus — zero transcode)
-        let (opus_tx, opus_rx) = flume::bounded::<std::sync::Arc<Vec<u8>>>(32);
 
         let identifier_async = self.identifier.clone();
         let cipher_manager_async = self.cipher_manager.clone();
@@ -305,14 +303,12 @@ impl PlayableTrack for YoutubeTrack {
                 let (inner_cmd_tx, inner_cmd_rx) = flume::bounded(8);
                 let tx_clone = tx.clone();
                 let err_tx_clone = err_tx.clone();
-                let opus_tx_clone = opus_tx.clone();
 
                 let mut process_task = tokio::task::spawn_blocking(move || {
-                    match crate::audio::processor::AudioProcessor::new_with_passthrough(
+                    match crate::audio::processor::AudioProcessor::new(
                         reader,
                         kind,
                         tx_clone,
-                        Some(opus_tx_clone),
                         inner_cmd_rx,
                         Some(err_tx_clone),
                     ) {
@@ -438,6 +434,6 @@ impl PlayableTrack for YoutubeTrack {
             }
         });
 
-        (rx, cmd_tx, err_rx, Some(opus_rx))
+        (rx, cmd_tx, err_rx, None)
     }
 }

@@ -89,6 +89,10 @@ impl TapeEffect {
         self.tape.is_some() || (self.current_rate - 1.0).abs() > 0.001
     }
 
+    pub fn is_ramping(&self) -> bool {
+        self.tape.is_some()
+    }
+
     pub fn check_ramp_completed(&mut self) -> bool {
         if self.ramp_completed {
             self.ramp_completed = false;

@@ -168,13 +168,13 @@ impl Mixer {
             }
 
             // NodeLink-style state transition triggers
-            if state == PlaybackState::Stopping && !track.tape.is_active() {
+            if state == PlaybackState::Stopping && !track.tape.is_ramping() {
                 track.tape.tape_to(
                     track.config.tape_stop_duration_ms as f32,
                     "stop",
                     "sinusoidal",
                 );
-            } else if state == PlaybackState::Starting && !track.tape.is_active() {
+            } else if state == PlaybackState::Starting && !track.tape.is_ramping() {
                 track.tape.tape_to(
                     track.config.tape_stop_duration_ms as f32,
                     "start",
@@ -250,11 +250,17 @@ impl Mixer {
                     .store(PlaybackState::Stopped as u8, Ordering::Release);
             }
 
-            // If tape ramp finished a 'stop', move to stopped
-            if track.tape.check_ramp_completed() && state == PlaybackState::Stopping {
-                track
-                    .state
-                    .store(PlaybackState::Stopped as u8, Ordering::Release);
+            // Tape ramp transitions
+            if track.tape.check_ramp_completed() {
+                if state == PlaybackState::Stopping {
+                    track
+                        .state
+                        .store(PlaybackState::Paused as u8, Ordering::Release);
+                } else if state == PlaybackState::Starting {
+                    track
+                        .state
+                        .store(PlaybackState::Playing as u8, Ordering::Release);
+                }
             }
         }
 

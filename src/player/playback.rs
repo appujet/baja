@@ -191,6 +191,11 @@ pub async fn start_playback(
 
     player.track_handle = Some(handle.clone());
 
+    // Propagate paused state to the new handle immediately
+    if player.paused {
+        handle.pause();
+    }
+
     let track_data = match player.to_player_response().track {
         Some(t) => t,
         None => {

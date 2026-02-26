@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use flume::{Receiver, Sender};
 use symphonia::core::{
     audio::SampleBuffer,
@@ -12,10 +10,10 @@ use symphonia::core::{
 };
 use tracing::{Level, debug, info, span, warn};
 
-use crate::audio::{
+use crate::{api::info, audio::{
     buffer::{PooledBuffer, get_pool},
     pipeline::resampler::Resampler,
-};
+}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecoderCommand {
@@ -46,14 +44,10 @@ pub struct AudioProcessor {
     decoder: Option<Box<dyn Decoder>>,
     resampler: Resampler,
     track_id: u32,
-    /// PCM output channel — used in transcode mode.
     pcm_tx: Sender<PooledBuffer>,
-    /// Raw Opus output channel — used in passthrough mode.
-    opus_tx: Option<Sender<Arc<Vec<u8>>>>,
     cmd_rx: Receiver<DecoderCommand>,
     error_tx: Option<flume::Sender<String>>,
     sample_buf: Option<SampleBuffer<i16>>,
-    passthrough: bool,
 
     // Audio specs
     source_rate: u32,
@@ -73,21 +67,8 @@ impl AudioProcessor {
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
     ) -> Result<Self, Error> {
-        Self::new_with_passthrough(source, kind, pcm_tx, None, cmd_rx, error_tx)
-    }
-
-    /// Like `new`, but with an optional passthrough sender for raw Opus frames.
-    pub fn new_with_passthrough(
-        source: Box<dyn MediaSource>,
-        kind: Option<crate::common::types::AudioKind>,
-        pcm_tx: Sender<PooledBuffer>,
-        opus_tx: Option<Sender<Arc<Vec<u8>>>>,
-        cmd_rx: Receiver<DecoderCommand>,
-        error_tx: Option<flume::Sender<String>>,
-    ) -> Result<Self, Error> {
         let mss = MediaSourceStream::new(source, Default::default());
         let mut hint = Hint::new();
-
         if let Some(k) = kind {
             hint.with_extension(k.as_ext());
         }
@@ -114,18 +95,9 @@ impl AudioProcessor {
         let track_id = track.id;
         let codec = track.codec_params.codec;
 
-        // Enable passthrough when:
-        //  1. The stream is Opus (already encoded to what Discord needs), AND
-        //  2. A passthrough sender was provided (i.e. no active filters requiring PCM).
-        let passthrough = codec == CODEC_TYPE_OPUS && opus_tx.is_some();
-
-        let decoder: Option<Box<dyn Decoder>> = if passthrough {
-            // Passthrough: we only read packets, never decode. No decoder needed.
-            info!("AudioProcessor: OpusPassthrough mode — raw frames, zero transcode");
-            None
-        } else if codec == CODEC_TYPE_OPUS {
-            // Opus codec but no passthrough tx (filters active) — use audiopus decoder.
-            info!("AudioProcessor: Transcode mode (Opus → PCM, filters active)");
+        let decoder: Option<Box<dyn Decoder>> = if codec == CODEC_TYPE_OPUS {
+            // Opus codec — use audiopus decoder.
+            info!("AudioProcessor: Transcode mode (Opus → PCM)");
             Some(Box::new(
                 crate::audio::codecs::opus::OpusCodecDecoder::try_new(
                     &track.codec_params,
@@ -150,11 +122,9 @@ impl AudioProcessor {
             resampler: Resampler::new(source_rate, target_rate, channels),
             track_id,
             pcm_tx,
-            opus_tx,
             cmd_rx,
             error_tx,
             sample_buf: None,
-            passthrough,
             source_rate,
             target_rate,
             channels,
@@ -165,58 +135,11 @@ impl AudioProcessor {
     pub fn run(&mut self) -> Result<(), Error> {
         let _span = span!(Level::DEBUG, "audio_processor").entered();
 
-        if self.passthrough {
-            info!(
-                "OpusPassthrough loop: {}Hz {}ch (raw Opus → Discord)",
-                self.source_rate, self.channels
-            );
-            return self.run_passthrough();
-        }
-
         info!(
             "Starting transcode loop: {}Hz {}ch -> {}Hz",
             self.source_rate, self.channels, self.target_rate
         );
         self.run_transcode()
-    }
-
-    /// Passthrough mode: read raw Opus packets from the container and forward
-    /// them directly.  Zero decode, zero resample, zero encode.
-    fn run_passthrough(&mut self) -> Result<(), Error> {
-        let opus_tx = match &self.opus_tx {
-            Some(tx) => tx.clone(),
-            None => return Ok(()),
-        };
-
-        loop {
-            if self.check_commands() == CommandOutcome::Stop {
-                break;
-            }
-
-            let packet = match self.format.next_packet() {
-                Ok(p) => p,
-                Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-                Err(e) => {
-                    if let Some(tx) = &self.error_tx {
-                        let _ = tx.send(format!("Packet read error: {}", e));
-                    }
-                    return Err(e);
-                }
-            };
-
-            if packet.track_id() != self.track_id {
-                continue;
-            }
-
-            // Forward raw Opus bytes — no decoding whatsoever.
-            let frame = Arc::new(packet.data.to_vec());
-            if opus_tx.send(frame).is_err() {
-                break; // Mixer disconnected
-            }
-        }
-
-        debug!("Passthrough loop finished");
-        Ok(())
     }
 
     /// Transcode mode: decode packets to PCM, resample, and send PooledBuffers.
