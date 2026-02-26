@@ -2,7 +2,13 @@ use super::types::map_boxed_err;
 use crate::{
     audio::{Mixer, engine::Encoder},
     common::types::{AnyResult, Shared},
-    gateway::{DaveHandler, UdpBackend},
+    gateway::{
+        DaveHandler, UdpBackend,
+        constants::{
+            DISCOVERY_PACKET_SIZE, FRAME_DURATION_MS, IP_DISCOVERY_TIMEOUT_SECS,
+            MAX_OPUS_FRAME_SIZE, MAX_SILENCE_FRAMES, PCM_FRAME_SAMPLES,
+        },
+    },
 };
 use std::{
     net::SocketAddr,
@@ -11,9 +17,7 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 
-const DISCOVERY_PACKET_SIZE: usize = 74;
-const FRAME_DURATION_MS: u64 = 20;
-const PCM_FRAME_SIZE: usize = 960 * 2; // 20ms at 48kHz stereo
+const PCM_FRAME_SIZE: usize = PCM_FRAME_SAMPLES * 2; // Stereo
 
 pub async fn discover_ip(
     socket: &tokio::net::UdpSocket,
@@ -28,7 +32,12 @@ pub async fn discover_ip(
     socket.send_to(&packet, addr).await.map_err(map_boxed_err)?;
 
     let mut buf = [0u8; DISCOVERY_PACKET_SIZE];
-    match tokio::time::timeout(tokio::time::Duration::from_secs(2), socket.recv(&mut buf)).await {
+    match tokio::time::timeout(
+        tokio::time::Duration::from_secs(IP_DISCOVERY_TIMEOUT_SECS),
+        socket.recv(&mut buf),
+    )
+    .await
+    {
         Ok(Ok(n)) if n >= DISCOVERY_PACKET_SIZE => {
             let ip_str = std::str::from_utf8(&buf[8..72])
                 .map_err(map_boxed_err)?
@@ -68,7 +77,7 @@ pub async fn speak_loop(
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let mut pcm_buf = vec![0i16; PCM_FRAME_SIZE];
-    let mut opus_buf = vec![0u8; 4000];
+    let mut opus_buf = vec![0u8; MAX_OPUS_FRAME_SIZE];
     let mut silence_frames = 0;
     let mut ts_frame_buf = vec![0i16; PCM_FRAME_SIZE];
 
@@ -101,7 +110,7 @@ pub async fn speak_loop(
                 if !has_audio {
                     silence_frames += 1;
                     frames_nulled.fetch_add(1, Ordering::Relaxed);
-                    if silence_frames > 5 { continue; }
+                    if silence_frames > MAX_SILENCE_FRAMES { continue; }
                     pcm_buf.fill(0);
                 } else {
                     silence_frames = 0;

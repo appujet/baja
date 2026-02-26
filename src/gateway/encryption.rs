@@ -4,9 +4,21 @@ use std::{
 };
 
 use davey::{DaveSession, ProposalsOperationType};
-use tracing::info;
+use tracing::{debug, info, warn};
 
-use crate::common::types::{AnyError, AnyResult};
+use crate::{
+    common::types::{AnyError, AnyResult},
+    gateway::{
+        constants::{DAVE_INITIAL_VERSION, MAX_PENDING_PROPOSALS, SILENCE_FRAME},
+        session::types::map_boxed_err,
+    },
+};
+
+/// Minimum NonZeroU16 version (1) used for DAVE session init.
+const DAVE_MIN_VERSION: NonZeroU16 = match NonZeroU16::new(DAVE_INITIAL_VERSION) {
+    Some(v) => v,
+    None => unreachable!(),
+};
 
 pub struct DaveHandler {
     session: Option<DaveSession>,
@@ -17,13 +29,6 @@ pub struct DaveHandler {
     external_sender_set: bool,
     pending_proposals: Vec<Vec<u8>>,
     was_ready: bool,
-}
-
-fn map_boxed_err<E: std::fmt::Display>(e: E) -> AnyError {
-    Box::new(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        e.to_string(),
-    ))
 }
 
 impl DaveHandler {
@@ -45,34 +50,31 @@ impl DaveHandler {
 
     pub fn setup_session(&mut self, version: u16) -> AnyResult<Vec<u8>> {
         self.protocol_version = version;
-        let nz_version = NonZeroU16::new(version).unwrap_or(NonZeroU16::new(1).unwrap());
+        let nz_version = NonZeroU16::new(version).unwrap_or(DAVE_MIN_VERSION);
 
-        if let Some(session) = &mut self.session {
-            session
-                .reinit(nz_version, self.user_id.0, self.channel_id.0, None)
+        let session = if let Some(s) = &mut self.session {
+            s.reinit(nz_version, self.user_id.0, self.channel_id.0, None)
                 .map_err(map_boxed_err)?;
+            s
         } else {
             self.session = Some(
                 DaveSession::new(nz_version, self.user_id.0, self.channel_id.0, None)
                     .map_err(map_boxed_err)?,
             );
-        }
+            self.session.as_mut().expect("just inserted")
+        };
 
-        // Reset state on session (re)init
+        // Reset handshake state on every (re)init.
         self.external_sender_set = false;
         self.pending_proposals.clear();
         self.was_ready = false;
 
-        let key_package = self
-            .session
-            .as_mut()
-            .unwrap()
-            .create_key_package()
-            .map_err(map_boxed_err)?;
-        tracing::debug!("DAVE session setup for version {}", version);
+        let key_package = session.create_key_package().map_err(map_boxed_err)?;
+        debug!("DAVE session setup for version {}", version);
         Ok(key_package)
     }
 
+    /// Returns `true` if the caller should acknowledge the transition (send op 23).
     pub fn prepare_transition(&mut self, transition_id: u16, protocol_version: u16) -> bool {
         self.pending_transitions
             .insert(transition_id, protocol_version);
@@ -89,15 +91,8 @@ impl DaveHandler {
         self.external_sender_set = false;
         self.pending_proposals.clear();
         self.was_ready = false;
-        if let Some(session) = &mut self.session {
-            // Try to re-init with version 0 (passthrough)
-            let _ = session.reinit(
-                NonZeroU16::new(1).unwrap(),
-                self.user_id.0,
-                self.channel_id.0,
-                None,
-            );
-        }
+        // Drop the session entirely — it is invalid after a reset.
+        self.session = None;
         info!("DAVE session reset to plaintext/passthrough due to error");
     }
 
@@ -114,7 +109,9 @@ impl DaveHandler {
     pub fn prepare_epoch(&mut self, epoch: u64, protocol_version: u16) {
         if epoch == 1 {
             self.protocol_version = protocol_version;
-            let _ = self.setup_session(protocol_version);
+            if let Err(e) = self.setup_session(protocol_version) {
+                warn!("DAVE prepare_epoch: setup_session failed: {}", e);
+            }
         }
     }
 
@@ -131,10 +128,12 @@ impl DaveHandler {
 
             if !self.pending_proposals.is_empty() {
                 let pending = std::mem::take(&mut self.pending_proposals);
-                tracing::debug!("DAVE: Processing {} buffered proposals", pending.len());
+                debug!("DAVE: Processing {} buffered proposals", pending.len());
 
                 for prop_data in pending {
-                    if let Ok(Some(res)) = self.process_proposals(&prop_data, connected_users) {
+                    if let Ok(Some(res)) =
+                        Self::do_process_proposals(session, &prop_data, connected_users)
+                    {
                         responses.push(res);
                     }
                 }
@@ -145,10 +144,7 @@ impl DaveHandler {
 
     pub fn process_welcome(&mut self, data: &[u8]) -> AnyResult<u16> {
         if data.len() < 2 {
-            return Err(map_boxed_err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Invalid DAVE welcome payload",
-            )));
+            return Err(short_payload_err("DAVE welcome"));
         }
         let transition_id = u16::from_be_bytes([data[0], data[1]]);
         if let Some(session) = &mut self.session {
@@ -157,17 +153,14 @@ impl DaveHandler {
                 self.pending_transitions
                     .insert(transition_id, self.protocol_version);
             }
-            tracing::debug!("DAVE welcome processed for transition {}", transition_id);
+            debug!("DAVE welcome processed for transition {}", transition_id);
         }
         Ok(transition_id)
     }
 
     pub fn process_commit(&mut self, data: &[u8]) -> AnyResult<u16> {
         if data.len() < 2 {
-            return Err(map_boxed_err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Invalid DAVE commit payload",
-            )));
+            return Err(short_payload_err("DAVE commit"));
         }
         let transition_id = u16::from_be_bytes([data[0], data[1]]);
         if let Some(session) = &mut self.session {
@@ -176,7 +169,7 @@ impl DaveHandler {
                 self.pending_transitions
                     .insert(transition_id, self.protocol_version);
             }
-            tracing::debug!("DAVE commit processed for transition {}", transition_id);
+            debug!("DAVE commit processed for transition {}", transition_id);
         }
         Ok(transition_id)
     }
@@ -187,60 +180,72 @@ impl DaveHandler {
         connected_users: &HashSet<crate::common::types::UserId>,
     ) -> AnyResult<Option<Vec<u8>>> {
         if data.is_empty() {
-            return Err(map_boxed_err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Empty DAVE proposals payload",
-            )));
+            return Err(short_payload_err("DAVE proposals"));
         }
 
         if !self.external_sender_set {
-            tracing::info!(
-                "DAVE: Buffering proposal ({} bytes) - external sender not set yet",
-                data.len()
-            );
-            self.pending_proposals.push(data.to_vec());
+            if self.pending_proposals.len() < MAX_PENDING_PROPOSALS {
+                debug!(
+                    "DAVE: Buffering proposal ({} bytes) — external sender not set yet",
+                    data.len()
+                );
+                self.pending_proposals.push(data.to_vec());
+            } else {
+                warn!(
+                    "DAVE: Proposal buffer full ({} entries), dropping incoming proposal",
+                    MAX_PENDING_PROPOSALS
+                );
+            }
             return Ok(None);
         }
 
-        let op_type_raw = data[0];
-        let op_type = match op_type_raw {
+        let session = match &mut self.session {
+            Some(s) => s,
+            None => return Ok(None),
+        };
+        Self::do_process_proposals(session, data, connected_users)
+    }
+
+    /// Inner implementation that operates directly on a `DaveSession` reference
+    /// to avoid borrowing `self` mutably in two places simultaneously.
+    fn do_process_proposals(
+        session: &mut DaveSession,
+        data: &[u8],
+        connected_users: &HashSet<crate::common::types::UserId>,
+    ) -> AnyResult<Option<Vec<u8>>> {
+        let op_type = match data[0] {
             0 => ProposalsOperationType::APPEND,
             1 => ProposalsOperationType::REVOKE,
-            _ => {
-                return Err(map_boxed_err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Unknown DAVE proposals op type {}", op_type_raw),
+            raw => {
+                return Err(map_boxed_err(format!(
+                    "Unknown DAVE proposals op type {}",
+                    raw
                 )));
             }
         };
 
-        if let Some(session) = &mut self.session {
-            let user_ids: Vec<u64> = connected_users.iter().map(|u| u.0).collect();
-            let result = session
-                .process_proposals(op_type, &data[1..], Some(&user_ids))
-                .map_err(map_boxed_err)?;
-            if let Some(cw) = result {
-                let mut out = cw.commit;
-                if let Some(w) = cw.welcome {
-                    out.extend_from_slice(&w);
-                }
-                return Ok(Some(out));
+        let user_ids: Vec<u64> = connected_users.iter().map(|u| u.0).collect();
+        let result = session
+            .process_proposals(op_type, &data[1..], Some(&user_ids))
+            .map_err(map_boxed_err)?;
+
+        if let Some(cw) = result {
+            let mut out = cw.commit;
+            if let Some(w) = cw.welcome {
+                out.extend_from_slice(&w);
             }
+            return Ok(Some(out));
         }
         Ok(None)
     }
 
-    fn has_pending_downgrade(&self) -> bool {
-        self.pending_transitions.values().any(|&v| v == 0)
-    }
-
     pub fn encrypt_opus(&mut self, packet: &[u8]) -> AnyResult<Vec<u8>> {
-        // Discord special 3-byte silence frame: [0xf8, 0xff, 0xfe]
-        if packet.len() == 3 && packet[0] == 0xf8 && packet[1] == 0xff && packet[2] == 0xfe {
+        // Pass Discord silence frames through unmodified.
+        if packet == SILENCE_FRAME {
             return Ok(packet.to_vec());
         }
 
-        if self.protocol_version == 0 || self.has_pending_downgrade() {
+        if self.protocol_version == 0 {
             return Ok(packet.to_vec());
         }
 
@@ -249,13 +254,13 @@ impl DaveHandler {
 
             if is_ready != self.was_ready {
                 if is_ready {
-                    tracing::info!(
-                        "DAVE session (v{}) is now READY. Starting encrypted transmission.",
+                    info!(
+                        "DAVE session (v{}) is now READY — starting encrypted transmission",
                         self.protocol_version
                     );
                 } else {
-                    tracing::warn!(
-                        "DAVE session (v{}) LOST readiness. Falling back to plaintext.",
+                    warn!(
+                        "DAVE session (v{}) LOST readiness — falling back to plaintext",
                         self.protocol_version
                     );
                 }
@@ -263,10 +268,18 @@ impl DaveHandler {
             }
 
             if is_ready {
-                let encrypted = session.encrypt_opus(packet).map_err(map_boxed_err)?;
-                return Ok(encrypted.into_owned());
+                return session
+                    .encrypt_opus(packet)
+                    .map(|c| c.into_owned())
+                    .map_err(map_boxed_err);
             }
         }
         Ok(packet.to_vec())
     }
+}
+
+/// Creates a short, consistent `AnyError` for truncated payloads.
+#[inline]
+fn short_payload_err(context: &str) -> AnyError {
+    map_boxed_err(format!("Invalid {context} payload: too short"))
 }

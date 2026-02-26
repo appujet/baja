@@ -113,6 +113,7 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                         }))
                         .await;
                     warn!("Track {} got stuck", track.info.title);
+                    handle.stop();
                 }
             } else {
                 stuck_ms = 0;

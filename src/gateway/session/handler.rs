@@ -15,6 +15,7 @@ use crate::{
     common::types::{Shared, UserId},
     gateway::{
         DaveHandler,
+        constants::{DAVE_INITIAL_VERSION, DEFAULT_VOICE_MODE},
         session::types::{SessionOutcome, VoiceGatewayMessage},
     },
 };
@@ -63,7 +64,7 @@ impl<'a> SessionState<'a> {
             seq_ack,
             ssrc: 0,
             udp_addr: None,
-            selected_mode: "xsalsa20_poly1305".to_string(),
+            selected_mode: DEFAULT_VOICE_MODE.to_string(),
             connected_users,
             udp_socket,
             dave: Arc::new(Mutex::new(DaveHandler::new(
@@ -244,7 +245,7 @@ impl<'a> SessionState<'a> {
         // Initialize DAVE protocol if applicable
         if self.gateway.channel_id.0 > 0 {
             let mut dave = self.dave.lock().await;
-            if let Ok(kp) = dave.setup_session(1) {
+            if let Ok(kp) = dave.setup_session(DAVE_INITIAL_VERSION) {
                 debug!("[{}] Sending DAVE keyring (op 26)", self.gateway.guild_id);
                 self.send_binary(26, &kp);
             }
@@ -343,7 +344,7 @@ impl<'a> SessionState<'a> {
                     );
                     dave.reset();
                     self.send_json(31, serde_json::json!({ "transition_id": 0 }));
-                    if let Ok(kp) = dave.setup_session(1) {
+                    if let Ok(kp) = dave.setup_session(DAVE_INITIAL_VERSION) {
                         self.send_binary(26, &kp);
                     }
                 }
