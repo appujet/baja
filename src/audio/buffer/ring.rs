@@ -1,8 +1,7 @@
 //! Fixed-size circular byte buffer.
 //!
-//! Mirrors NodeLink's `RingBuffer.ts`: a power-of-two-sized ring that supports
-//! wrap-around writes and reads. Backed by the global [`BufferPool`] to avoid
-//! heap allocations in the hot path.
+//! A power-of-two-sized ring that supports wrap-around writes and reads. 
+//! Backed by the global [`BufferPool`] to avoid heap allocations in the hot path.
 
 use crate::audio::buffer::pool::get_byte_pool;
 

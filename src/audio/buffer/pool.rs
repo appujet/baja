@@ -1,8 +1,7 @@
 //! Power-of-two aligned byte buffer pool.
 //!
-//! Mirrors NodeLink's `BufferPool.ts`: sizes are rounded up to the next power
-//! of two (minimum 1 024 bytes), pooled in per-size buckets, and evicted after
-//! a configurable idle period.
+//! Sizes are rounded up to the next power of two (minimum 1 024 bytes), 
+//! pooled in per-size buckets, and evicted after a configurable idle period.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -30,17 +29,7 @@ impl PoolInner {
 
     /// Round `size` up to the next power of two, with a floor of 1 024.
     fn aligned_size(size: usize) -> usize {
-        if size <= 1024 {
-            return 1024;
-        }
-        let mut n = size.saturating_sub(1);
-        n |= n >> 1;
-        n |= n >> 2;
-        n |= n >> 4;
-        n |= n >> 8;
-        n |= n >> 16;
-        n |= n >> 32;
-        n + 1
+        size.max(1024).next_power_of_two()
     }
 
     fn acquire(&mut self, size: usize) -> Vec<u8> {

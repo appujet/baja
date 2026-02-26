@@ -28,7 +28,6 @@ use super::layer::MixLayer;
 // ─── AudioMixer ──────────────────────────────────────────────────────────────
 
 /// Overlays multiple named [`MixLayer`]s onto a main PCM stream.
-/// Mirrors NodeLink's `AudioMixer.ts`.
 pub struct AudioMixer {
     pub layers: HashMap<String, MixLayer>,
     pub max_layers: usize,

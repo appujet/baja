@@ -1,8 +1,7 @@
 //! `VolumeEffect` — per-sample gain with sinusoidal fade transitions and a
 //! soft exponential limiter.
 //!
-//! Mirrors NodeLink's `VolumeTransformer.ts` (without AGC for simplicity;
-//! the soft limiter alone prevents clipping).
+//! Soft limiter prevents clipping.
 
 use crate::audio::constants::{INT16_MAX_F, INT16_MIN_F};
 

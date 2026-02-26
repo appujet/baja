@@ -1,7 +1,7 @@
 //! `FadeEffect` — standalone gain ramp applied after volume.
 //!
 //! Used by `FlowController` for crossfade fade-in / fade-out gain on the
-//! current track.  Mirrors NodeLink's `FadeTransformer.ts`.
+//! current track.
 
 use crate::audio::constants::{INT16_MAX_F, INT16_MIN_F};
 

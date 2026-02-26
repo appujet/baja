@@ -2,7 +2,6 @@
 //!
 //! Reassembles arbitrary PCM chunks into fixed 3840-byte (960 sample) frames
 //! and pipes them through the effects chain: Filters → Tape → Volume → Fade.
-//! Mirrors NodeLink's `FlowController.ts`.
 
 use crate::audio::buffer::PooledBuffer;
 use crate::audio::effects::{
@@ -165,7 +164,6 @@ impl FlowController {
         }
 
         // F. Multi-layer Mixing (handled in Mixer, or we could do it here)
-        // In NodeLink, FlowController calls AudioMixer.mixBuffers.
         // We'll keep layers in the Mixer for now as it's closer to the Discord send,
         // unless multi-track effects are needed.
     }

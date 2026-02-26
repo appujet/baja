@@ -1,7 +1,6 @@
 //! `TapeEffect` — high-quality tape start/stop resampling.
 //!
-//! Mirrors NodeLink's `TapeTransformer.ts`. Uses Cubic Hermite Spline
-//! (Catmull-Rom) interpolation for smooth pitch/speed ramps.
+//! Uses Cubic Hermite Spline (Catmull-Rom) interpolation for smooth pitch/speed ramps.
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TapeCurve {
