@@ -31,8 +31,7 @@ pub fn is_reidentify_close(code: u16) -> bool {
 pub fn is_fatal_close(code: u16) -> bool {
     // 4004: Authentication failed
     // 4014: Channel was deleted / bot was kicked
-    // 4022: Call terminated (disconnected by user/bot leave)
-    matches!(code, 4004 | 4014 | 4022)
+    matches!(code, 4004 | 4014)
 }
 
 pub fn map_boxed_err<E: std::fmt::Display>(e: E) -> crate::common::types::AnyError {
