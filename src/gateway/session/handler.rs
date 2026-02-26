@@ -80,13 +80,14 @@ impl<'a> SessionState<'a> {
             Ok(m) => m,
             Err(e) => {
                 warn!(
-                    "Failed to parse voice gateway message: {} - Text: {}",
-                    e, text
+                    "[{}] Failed to parse voice gateway message: {} - Text: {}",
+                    self.gateway.guild_id, e, text
                 );
                 return None;
             }
         };
 
+        // Update sequence acknowledgment if present
         if let Some(seq) = serde_json::from_str::<Value>(&text)
             .ok()
             .and_then(|v| v["seq"].as_i64())
@@ -106,7 +107,10 @@ impl<'a> SessionState<'a> {
             22 => self.handle_execute_transition(msg.d).await,
             24 => self.handle_prepare_epoch(msg.d).await,
             _ => {
-                debug!("Received voice op {}: {:?}", msg.op, msg.d);
+                debug!(
+                    "[{}] Received voice op {}: {:?}",
+                    self.gateway.guild_id, msg.op, msg.d
+                );
                 None
             }
         }
@@ -117,6 +121,11 @@ impl<'a> SessionState<'a> {
         if let Some(h) = self.heartbeat_handle.take() {
             h.abort();
         }
+
+        debug!(
+            "[{}] Heartbeat interval set to {}ms",
+            self.gateway.guild_id, interval
+        );
         self.heartbeat_handle = Some(spawn_heartbeat(
             self.tx.clone(),
             self.seq_ack.clone(),
@@ -134,29 +143,33 @@ impl<'a> SessionState<'a> {
 
         if let Some(modes) = d["modes"].as_array() {
             let preferred = ["aead_aes256_gcm_rtpsize", "xsalsa20_poly1305"];
-            for p in preferred {
-                if modes.iter().any(|m| m.as_str() == Some(p)) {
-                    self.selected_mode = p.to_string();
-                    break;
-                }
+            if let Some(found) = preferred
+                .iter()
+                .find(|&&p| modes.iter().any(|m| m.as_str() == Some(p)))
+            {
+                self.selected_mode = found.to_string();
             }
         }
 
-        if let Some(addr) = self.udp_addr {
-            match discover_ip(&self.udp_socket, addr, self.ssrc).await {
-                Ok((my_ip, my_port)) => {
-                    let select = VoiceGatewayMessage {
-                        op: 1,
-                        d: serde_json::json!({
-                            "protocol": "udp",
-                            "data": { "address": my_ip, "port": my_port, "mode": self.selected_mode }
-                        }),
-                    };
-                    if let Ok(json) = serde_json::to_string(&select) {
-                        let _ = self.tx.send(Message::Text(json.into()));
-                    }
-                }
-                Err(_) => return Some(SessionOutcome::Reconnect),
+        let addr = self.udp_addr?;
+        debug!(
+            "[{}] Ready! IP: {}, Port: {}, SSRC: {}, Mode: {}",
+            self.gateway.guild_id, ip, port, self.ssrc, self.selected_mode
+        );
+
+        match discover_ip(&self.udp_socket, addr, self.ssrc).await {
+            Ok((my_ip, my_port)) => {
+                self.send_json(
+                    1,
+                    serde_json::json!({
+                        "protocol": "udp",
+                        "data": { "address": my_ip, "port": my_port, "mode": self.selected_mode }
+                    }),
+                );
+            }
+            Err(e) => {
+                error!("[{}] IP discovery failed: {}", self.gateway.guild_id, e);
+                return Some(SessionOutcome::Reconnect);
             }
         }
         None
@@ -166,59 +179,74 @@ impl<'a> SessionState<'a> {
         if let Some(m) = d["mode"].as_str() {
             self.selected_mode = m.to_string();
         }
-        if let Some(ka) = d["secret_key"].as_array() {
+
+        let secret_key = d["secret_key"].as_array().and_then(|ka| {
+            if ka.len() < 32 {
+                return None;
+            }
             let mut key = [0u8; 32];
             for (i, v) in ka.iter().enumerate().take(32) {
                 key[i] = v.as_u64().unwrap_or(0) as u8;
             }
+            Some(key)
+        });
 
-            if let Some(addr) = self.udp_addr {
-                let mixer = self.gateway.mixer.clone();
-                let dave_handle = self.dave.clone();
-                let socket = self.udp_socket.clone();
-                let mode = self.selected_mode.clone();
-                let filter_chain = self.gateway.filter_chain.clone();
-                let f_sent = self.gateway.frames_sent.clone();
-                let f_nulled = self.gateway.frames_nulled.clone();
-                let cancel = self.gateway.cancel_token.clone();
-                let ssrc = self.ssrc;
+        let Some(key) = secret_key else {
+            error!(
+                "[{}] Missing or invalid secret_key in session_description",
+                self.gateway.guild_id
+            );
+            return Some(SessionOutcome::Reconnect);
+        };
 
-                tokio::spawn(async move {
-                    if let Err(e) = speak_loop(
-                        mixer,
-                        socket,
-                        addr,
-                        ssrc,
-                        key,
-                        mode,
-                        dave_handle,
-                        filter_chain,
-                        f_sent,
-                        f_nulled,
-                        cancel,
-                    )
-                    .await
-                    {
-                        error!("Voice playback loop error: {}", e);
-                    }
-                });
+        if let Some(addr) = self.udp_addr {
+            debug!(
+                "[{}] Starting voice playback loop with mode {}",
+                self.gateway.guild_id, self.selected_mode
+            );
 
-                let speaking = VoiceGatewayMessage {
-                    op: 5,
-                    d: serde_json::json!({"speaking": 1, "delay": 0, "ssrc": self.ssrc}),
-                };
-                if let Ok(json) = serde_json::to_string(&speaking) {
-                    let _ = self.tx.send(Message::Text(json.into()));
+            let mixer = self.gateway.mixer.clone();
+            let dave_handle = self.dave.clone();
+            let socket = self.udp_socket.clone();
+            let mode = self.selected_mode.clone();
+            let filter_chain = self.gateway.filter_chain.clone();
+            let f_sent = self.gateway.frames_sent.clone();
+            let f_nulled = self.gateway.frames_nulled.clone();
+            let cancel = self.gateway.cancel_token.clone();
+            let ssrc = self.ssrc;
+
+            tokio::spawn(async move {
+                if let Err(e) = speak_loop(
+                    mixer,
+                    socket,
+                    addr,
+                    ssrc,
+                    key,
+                    mode,
+                    dave_handle,
+                    filter_chain,
+                    f_sent,
+                    f_nulled,
+                    cancel,
+                )
+                .await
+                {
+                    error!("Voice playback loop error: {}", e);
                 }
-            }
+            });
+
+            self.send_json(
+                5,
+                serde_json::json!({"speaking": 1, "delay": 0, "ssrc": self.ssrc}),
+            );
         }
 
+        // Initialize DAVE protocol if applicable
         if self.gateway.channel_id.0 > 0 {
             let mut dave = self.dave.lock().await;
             if let Ok(kp) = dave.setup_session(1) {
-                let mut bin = vec![26];
-                bin.extend_from_slice(&kp);
-                let _ = self.tx.send(Message::Binary(bin.into()));
+                debug!("[{}] Sending DAVE keyring (op 26)", self.gateway.guild_id);
+                self.send_binary(26, &kp);
             }
         }
         None
@@ -229,18 +257,17 @@ impl<'a> SessionState<'a> {
         if sent_ms > 0 {
             let now_ms = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_millis() as u64;
-            self.gateway
-                .ping
-                .store((now_ms.saturating_sub(sent_ms)) as i64, Ordering::Relaxed);
+            let latency = now_ms.saturating_sub(sent_ms);
+            self.gateway.ping.store(latency as i64, Ordering::Relaxed);
         }
         None
     }
 
     fn handle_resumed(&self) -> Option<SessionOutcome> {
         info!(
-            "Voice session resumed successfully for guild {}",
+            "[{}] Voice session resumed successfully",
             self.gateway.guild_id
         );
         None
@@ -268,13 +295,7 @@ impl<'a> SessionState<'a> {
         let tid = d["transition_id"].as_u64().unwrap_or(0) as u16;
         let version = d["protocol_version"].as_u64().unwrap_or(0) as u16;
         if self.dave.lock().await.prepare_transition(tid, version) {
-            let ready = VoiceGatewayMessage {
-                op: 23,
-                d: serde_json::json!({ "transition_id": tid }),
-            };
-            if let Ok(json) = serde_json::to_string(&ready) {
-                let _ = self.tx.send(Message::Text(json.into()));
-            }
+            self.send_json(23, serde_json::json!({ "transition_id": tid }));
         }
         None
     }
@@ -296,6 +317,7 @@ impl<'a> SessionState<'a> {
         if bin.len() < 3 {
             return;
         }
+
         let seq = u16::from_be_bytes([bin[0], bin[1]]);
         let op = bin[2];
         let payload = &bin[3..];
@@ -307,77 +329,72 @@ impl<'a> SessionState<'a> {
                 if let Ok(responses) = dave.process_external_sender(payload, &self.connected_users)
                 {
                     for resp in responses {
-                        let mut out = vec![28];
-                        out.extend_from_slice(&resp);
-                        let _ = self.tx.send(Message::Binary(out.into()));
+                        self.send_binary(28, &resp);
                     }
                 }
             }
             27 => match dave.process_proposals(payload, &self.connected_users) {
-                Ok(Some(cw)) => {
-                    let mut out = vec![28];
-                    out.extend_from_slice(&cw);
-                    let _ = self.tx.send(Message::Binary(out.into()));
-                }
+                Ok(Some(cw)) => self.send_binary(28, &cw),
                 Ok(None) => {}
                 Err(_) => {
+                    warn!(
+                        "[{}] DAVE proposals failed, resetting session",
+                        self.gateway.guild_id
+                    );
                     dave.reset();
-                    let invalid = VoiceGatewayMessage {
-                        op: 31,
-                        d: serde_json::json!({ "transition_id": 0 }),
-                    };
-                    if let Ok(json) = serde_json::to_string(&invalid) {
-                        let _ = self.tx.send(Message::Text(json.into()));
-                    }
+                    self.send_json(31, serde_json::json!({ "transition_id": 0 }));
                     if let Ok(kp) = dave.setup_session(1) {
-                        let mut out = vec![26];
-                        out.extend_from_slice(&kp);
-                        let _ = self.tx.send(Message::Binary(out.into()));
+                        self.send_binary(26, &kp);
                     }
                 }
             },
-            30 | 29 => {
+            29 | 30 => {
                 let res = if op == 30 {
                     dave.process_welcome(payload)
                 } else {
                     dave.process_commit(payload)
                 };
                 match res {
-                    Ok(tid) => {
-                        if tid != 0 {
-                            let ready = VoiceGatewayMessage {
-                                op: 23,
-                                d: serde_json::json!({ "transition_id": tid }),
-                            };
-                            if let Ok(json) = serde_json::to_string(&ready) {
-                                let _ = self.tx.send(Message::Text(json.into()));
-                            }
-                        }
+                    Ok(tid) if tid != 0 => {
+                        self.send_json(23, serde_json::json!({ "transition_id": tid }));
                     }
+                    Ok(_) => {}
                     Err(_) => {
                         let tid = if payload.len() >= 2 {
                             u16::from_be_bytes([payload[0], payload[1]])
                         } else {
                             0
                         };
+                        warn!(
+                            "[{}] DAVE transition failed (op {}), resetting",
+                            self.gateway.guild_id, op
+                        );
                         dave.reset();
-                        let invalid = VoiceGatewayMessage {
-                            op: 31,
-                            d: serde_json::json!({ "transition_id": tid }),
-                        };
-                        if let Ok(json) = serde_json::to_string(&invalid) {
-                            let _ = self.tx.send(Message::Text(json.into()));
-                        }
+                        self.send_json(31, serde_json::json!({ "transition_id": tid }));
                         if let Ok(kp) = dave.setup_session(1) {
-                            let mut out = vec![26];
-                            out.extend_from_slice(&kp);
-                            let _ = self.tx.send(Message::Binary(out.into()));
+                            self.send_binary(26, &kp);
                         }
                     }
                 }
             }
-            _ => debug!("Received unknown binary op {} (seq {})", op, seq),
+            _ => debug!(
+                "[{}] Received unknown binary op {} (seq {})",
+                self.gateway.guild_id, op, seq
+            ),
         }
+    }
+
+    fn send_json(&self, op: u8, d: Value) {
+        let msg = VoiceGatewayMessage { op, d };
+        if let Ok(json) = serde_json::to_string(&msg) {
+            let _ = self.tx.send(Message::Text(json.into()));
+        }
+    }
+
+    fn send_binary(&self, op: u8, payload: &[u8]) {
+        let mut out = vec![op];
+        out.extend_from_slice(payload);
+        let _ = self.tx.send(Message::Binary(out.into()));
     }
 }
 
