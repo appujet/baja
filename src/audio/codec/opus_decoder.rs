@@ -10,7 +10,7 @@ use symphonia::core::{
 };
 
 /// Max decoded samples per opus frame at 48 kHz: 120 ms → 5760 samples/channel.
-const MAX_FRAME_SIZE: usize = 5760;
+use crate::audio::constants::MAX_OPUS_FRAME_SIZE;
 
 pub struct OpusCodecDecoder {
     params: CodecParameters,
@@ -61,9 +61,8 @@ impl Decoder for OpusCodecDecoder {
             Layout::Stereo
         };
         let spec = SignalSpec::new_with_layout(sample_rate, layout);
-        let buf = AudioBuffer::<i16>::new(MAX_FRAME_SIZE as Duration, spec);
-        // Pre-allocate scratch buffer once; all zeroes is a safe initial state.
-        let pcm = vec![0i16; MAX_FRAME_SIZE * channels];
+        let buf = AudioBuffer::<i16>::new(MAX_OPUS_FRAME_SIZE as Duration, spec);
+        let pcm = vec![0i16; MAX_OPUS_FRAME_SIZE * channels];
 
         Ok(Self {
             params: params.clone(),

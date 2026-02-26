@@ -11,7 +11,7 @@ use crate::audio::playback::effects::{
 };
 use flume::{Receiver, Sender};
 
-const FRAME_SIZE_SAMPLES: usize = 960 * 2;
+use crate::audio::constants::FRAME_SIZE_SAMPLES;
 
 pub struct FlowController {
     // Effects chain

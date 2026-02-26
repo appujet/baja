@@ -1,16 +1,12 @@
 use flume::{Receiver, Sender};
-use symphonia::core::{
-    audio::SampleBuffer,
-    codecs::{CODEC_TYPE_NULL, CODEC_TYPE_OPUS, Decoder, DecoderOptions},
-    errors::Error,
-    formats::{FormatOptions, FormatReader},
-    io::{MediaSource, MediaSourceStream},
-    meta::MetadataOptions,
-    probe::Hint,
-};
+use symphonia::core::{audio::SampleBuffer, codecs::Decoder, errors::Error, formats::FormatReader};
 use tracing::{Level, debug, info, span, warn};
 
-use crate::audio::{buffer::PooledBuffer, pipeline::resampler::Resampler};
+use crate::audio::{
+    buffer::PooledBuffer,
+    demux::{DemuxResult, open_format},
+    pipeline::resampler::Resampler,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecoderCommand {
@@ -26,109 +22,67 @@ pub enum CommandOutcome {
     None,
 }
 
-/// Audio processor that handles decoding and resampling.
+/// Audio processor: decodes any container to PCM i16 at 48 kHz stereo and
+/// sends `PooledBuffer` chunks downstream to the Mixer.
 ///
-/// ## Modes
-///
-/// **Passthrough** (`CODEC_TYPE_OPUS`): Reads raw Opus packet bytes from the
-/// container and forwards them directly via `opus_tx`.  No decode, no resample,
-/// no encode — the bytes go straight to Discord.
-///
-/// **Transcode** (all other codecs): Decodes to PCM i16, resamples to 48 kHz,
-/// and sends `PooledBuffer` chunks via `pcm_tx`.
+/// Format detection and codec selection are delegated to [`open_format`] in
+/// the `demux` module, keeping this struct focused purely on the decode loop.
 pub struct AudioProcessor {
     format: Box<dyn FormatReader>,
-    decoder: Option<Box<dyn Decoder>>,
+    decoder: Box<dyn Decoder>,
     resampler: Resampler,
     track_id: u32,
     pcm_tx: Sender<PooledBuffer>,
     cmd_rx: Receiver<DecoderCommand>,
     error_tx: Option<flume::Sender<String>>,
     sample_buf: Option<SampleBuffer<i16>>,
-
-    // Audio specs
     source_rate: u32,
     target_rate: u32,
     channels: usize,
 }
 
 impl AudioProcessor {
-    /// Create a new processor.
-    ///
-    /// - `pcm_tx`  — channel for decoded PCM samples (transcode path)
-    /// - `opus_tx` — if `Some`, enables Opus passthrough for WebM/Opus streams
+    /// Open `source`, detect its format, select a decoder, and return a ready
+    /// processor.  If the format cannot be probed, a symphonia `Error` is
+    /// returned.
     pub fn new(
-        source: Box<dyn MediaSource>,
+        source: Box<dyn symphonia::core::io::MediaSource>,
         kind: Option<crate::common::types::AudioKind>,
         pcm_tx: Sender<PooledBuffer>,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
     ) -> Result<Self, Error> {
-        let mss = MediaSourceStream::new(source, Default::default());
-        let mut hint = Hint::new();
-        if let Some(k) = kind {
-            hint.with_extension(k.as_ext());
-        }
+        let DemuxResult::Transcode {
+            format,
+            track_id,
+            decoder,
+            sample_rate,
+            channels,
+        } = open_format(source, kind)?;
 
-        let probed = symphonia::default::get_probe().format(
-            &hint,
-            mss,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
-        )?;
+        info!(
+            "AudioProcessor: opened format — {}Hz {}ch",
+            sample_rate, channels
+        );
 
-        let format = probed.format;
-        let track = format
-            .tracks()
-            .iter()
-            .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-            .ok_or_else(|| {
-                Error::IoError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "no audio track found",
-                ))
-            })?;
-
-        let track_id = track.id;
-        let codec = track.codec_params.codec;
-
-        let decoder: Option<Box<dyn Decoder>> = if codec == CODEC_TYPE_OPUS {
-            // Opus codec — use audiopus decoder.
-            info!("AudioProcessor: Transcode mode (Opus → PCM)");
-            Some(Box::new(
-                crate::audio::codec::opus_decoder::OpusCodecDecoder::try_new(
-                    &track.codec_params,
-                    &DecoderOptions::default(),
-                )?,
-            ))
-        } else {
-            info!("AudioProcessor: Transcode mode ({})", codec);
-            Some(
-                symphonia::default::get_codecs()
-                    .make(&track.codec_params, &DecoderOptions::default())?,
-            )
-        };
-
-        let source_rate = track.codec_params.sample_rate.unwrap_or(48000);
-        let target_rate = 48000;
-        let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
+        let target_rate = 48000u32;
 
         Ok(Self {
             format,
             decoder,
-            resampler: Resampler::new(source_rate, target_rate, channels),
+            resampler: Resampler::new(sample_rate, target_rate, channels),
             track_id,
             pcm_tx,
             cmd_rx,
             error_tx,
             sample_buf: None,
-            source_rate,
+            source_rate: sample_rate,
             target_rate,
             channels,
         })
     }
 
-    /// The main execution loop.
+    /// Run the decode loop until the stream ends or a Stop command arrives.
     pub fn run(&mut self) -> Result<(), Error> {
         let _span = span!(Level::DEBUG, "audio_processor").entered();
 
@@ -136,11 +90,7 @@ impl AudioProcessor {
             "Starting transcode loop: {}Hz {}ch -> {}Hz",
             self.source_rate, self.channels, self.target_rate
         );
-        self.run_transcode()
-    }
 
-    /// Transcode mode: decode packets to PCM, resample, and send PooledBuffers.
-    fn run_transcode(&mut self) -> Result<(), Error> {
         loop {
             if self.check_commands() == CommandOutcome::Stop {
                 break;
@@ -151,7 +101,7 @@ impl AudioProcessor {
                 Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(e) => {
                     if let Some(tx) = &self.error_tx {
-                        let _ = tx.send(format!("Packet read error: {}", e));
+                        let _ = tx.send(format!("Packet read error: {e}"));
                     }
                     return Err(e);
                 }
@@ -161,18 +111,12 @@ impl AudioProcessor {
                 continue;
             }
 
-            let decoder = match &mut self.decoder {
-                Some(d) => d,
-                None => break,
-            };
-
-            match decoder.decode(&packet) {
+            match self.decoder.decode(&packet) {
                 Ok(decoded) => {
                     let spec = *decoded.spec();
-                    let mut buf = match self.sample_buf.take() {
-                        Some(b) => b,
-                        None => SampleBuffer::<i16>::new(decoded.capacity() as u64, spec),
-                    };
+                    let mut buf = self.sample_buf.take().unwrap_or_else(|| {
+                        SampleBuffer::<i16>::new(decoded.capacity() as u64, spec)
+                    });
 
                     buf.copy_interleaved_ref(decoded);
                     let samples = buf.samples();
@@ -185,22 +129,21 @@ impl AudioProcessor {
                             pooled.extend_from_slice(samples);
                         }
 
-                        if !pooled.is_empty() {
-                            if self.pcm_tx.send(pooled).is_err() {
-                                return Ok(()); // Mixer disconnected
-                            }
+                        if !pooled.is_empty() && self.pcm_tx.send(pooled).is_err() {
+                            return Ok(()); // Mixer disconnected — clean exit
                         }
                     }
+
                     self.sample_buf = Some(buf);
                 }
                 Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(Error::DecodeError(e)) => {
-                    warn!("Decode error (recoverable): {}", e);
+                    warn!("Decode error (recoverable): {e}");
                     continue;
                 }
                 Err(e) => {
                     if let Some(tx) = &self.error_tx {
-                        let _ = tx.send(format!("Decode error: {}", e));
+                        let _ = tx.send(format!("Decode error: {e}"));
                     }
                     return Err(e);
                 }
@@ -215,17 +158,19 @@ impl AudioProcessor {
         match self.cmd_rx.try_recv() {
             Ok(DecoderCommand::Seek(ms)) => {
                 let time = symphonia::core::units::Time::from(ms as f64 / 1000.0);
-                if let Ok(_) = self.format.seek(
-                    symphonia::core::formats::SeekMode::Coarse,
-                    symphonia::core::formats::SeekTo::Time {
-                        time,
-                        track_id: Some(self.track_id),
-                    },
-                ) {
+                if self
+                    .format
+                    .seek(
+                        symphonia::core::formats::SeekMode::Coarse,
+                        symphonia::core::formats::SeekTo::Time {
+                            time,
+                            track_id: Some(self.track_id),
+                        },
+                    )
+                    .is_ok()
+                {
                     self.resampler.reset();
-                    if let Some(ref mut dec) = self.decoder {
-                        dec.reset();
-                    }
+                    self.decoder.reset();
                     self.sample_buf = None;
                     CommandOutcome::Seeked
                 } else {

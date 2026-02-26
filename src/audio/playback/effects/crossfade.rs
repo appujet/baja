@@ -9,9 +9,7 @@ use crate::audio::RingBuffer;
 use crate::audio::buffer::PooledBuffer;
 use flume::Receiver;
 
-const HALF_PI: f32 = std::f32::consts::PI / 2.0;
-const INT16_MAX_F: f32 = 32767.0;
-const INT16_MIN_F: f32 = -32768.0;
+use crate::audio::constants::{HALF_PI, INT16_MAX_F, INT16_MIN_F};
 
 pub struct CrossfadeController {
     sample_rate: u32,

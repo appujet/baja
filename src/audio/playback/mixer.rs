@@ -15,7 +15,7 @@ use crate::{
     configs::player::PlayerConfig,
 };
 
-const MIXER_CHANNELS: usize = 2;
+use crate::audio::constants::MIXER_CHANNELS;
 
 pub struct Mixer {
     tracks: Vec<MixerTrack>,

@@ -9,13 +9,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// Maximum total bytes held in the pool (50 MB).
-const MAX_POOL_BYTES: usize = 50 * 1024 * 1024;
-
-/// Maximum buffers per bucket.
-const MAX_BUCKET_ENTRIES: usize = 8;
-
-/// Idle period before the pool is cleared (3 minutes).
-const IDLE_CLEAR_SECS: u64 = 180;
+use crate::audio::constants::{MAX_BUCKET_ENTRIES, MAX_POOL_BYTES, POOL_IDLE_CLEAR_SECS};
 
 // ── Inner state ──────────────────────────────────────────────────────────────
 
@@ -90,7 +84,7 @@ impl PoolInner {
         if self.total_bytes == 0 {
             return;
         }
-        if self.last_activity.elapsed() >= Duration::from_secs(IDLE_CLEAR_SECS) {
+        if self.last_activity.elapsed() >= Duration::from_secs(POOL_IDLE_CLEAR_SECS) {
             self.buckets.clear();
             self.total_bytes = 0;
         } else if self.total_bytes > MAX_POOL_BYTES {

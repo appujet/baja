@@ -11,9 +11,7 @@ use tracing::{debug, trace, warn};
 
 use crate::common::types::AnyResult;
 
-const CHUNK_SIZE: usize = 256 * 1024;
-const PREFETCH_CHUNKS: usize = 4;
-const MAX_CONCURRENT_FETCHES: usize = 2;
+use crate::audio::constants::{CHUNK_SIZE, MAX_CONCURRENT_FETCHES, PREFETCH_CHUNKS};
 
 #[derive(Clone)]
 enum ChunkState {

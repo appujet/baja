@@ -4,8 +4,7 @@
 //! Mirrors NodeLink's `VolumeTransformer.ts` (without AGC for simplicity;
 //! the soft limiter alone prevents clipping).
 
-const INT16_MAX_F: f32 = 32767.0;
-const INT16_MIN_F: f32 = -32768.0;
+use crate::audio::constants::{INT16_MAX_F, INT16_MIN_F};
 
 /// Fade curve shapes.
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -3,8 +3,7 @@
 //! Used by `FlowController` for crossfade fade-in / fade-out gain on the
 //! current track.  Mirrors NodeLink's `FadeTransformer.ts`.
 
-const INT16_MAX_F: f32 = 32767.0;
-const INT16_MIN_F: f32 = -32768.0;
+use crate::audio::constants::{INT16_MAX_F, INT16_MIN_F};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FadeCurve {

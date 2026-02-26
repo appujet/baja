@@ -8,8 +8,7 @@ use crate::audio::buffer::PooledBuffer;
 use flume::Receiver;
 use std::collections::HashMap;
 
-const MAX_LAYERS: usize = 5;
-const LAYER_BUFFER_SIZE: usize = 1024 * 1024; // 1 MB (~5.4s of PCM)
+use crate::audio::constants::{LAYER_BUFFER_SIZE, MAX_LAYERS};
 
 pub struct AudioMixer {
     pub layers: HashMap<String, Layer>,
