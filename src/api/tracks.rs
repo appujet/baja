@@ -145,7 +145,7 @@ fn read_opt_utf<R: Read>(r: &mut R) -> Option<String> {
 }
 
 /// Metadata for an audio track.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackInfo {
     pub identifier: String,

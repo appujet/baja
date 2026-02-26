@@ -2,6 +2,8 @@
 host = "0.0.0.0"
 port = 2333
 password = "youshallnotpass"
+# Maximum number of events to queue when a session is paused. Recommended: 500 for small bots, 50000+ for large bots with 30k+ guilds.
+max_event_queue_size = 100
 player_update_interval = 5
 stats_interval = 60
 websocket_ping_interval = 30

@@ -78,6 +78,32 @@ impl PlayerContext {
         self.lyrics_subscribed.store(false, Ordering::SeqCst);
     }
 
+    pub fn set_volume(&mut self, vol: i32) {
+        let vol = vol.clamp(0, 1000);
+        self.volume = vol;
+        if let Some(handle) = &self.track_handle {
+            handle.set_volume(vol as f32 / 100.0);
+        }
+    }
+
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+        if let Some(handle) = &self.track_handle {
+            if paused {
+                handle.pause();
+            } else {
+                handle.play();
+            }
+        }
+    }
+
+    pub fn seek(&mut self, pos: u64) {
+        self.position = pos;
+        if let Some(handle) = &self.track_handle {
+            handle.seek(pos);
+        }
+    }
+
     pub fn to_player_response(&self) -> Player {
         let track = self.track_info.clone();
 

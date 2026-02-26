@@ -27,16 +27,36 @@ pub struct Session {
     pub resume_timeout: AtomicU64,
     /// True when WS is disconnected but session is kept for resume.
     pub paused: AtomicBool,
-    /// Events queued while session is paused (bounded to 1000 entries).
+    /// Events queued while session is paused.
     pub event_queue: Mutex<VecDeque<String>>,
+    pub max_queue_size: usize,
 }
 
 impl Session {
+    pub fn new(
+        session_id: SessionId,
+        user_id: Option<UserId>,
+        sender: flume::Sender<Message>,
+        max_queue_size: usize,
+    ) -> Self {
+        Self {
+            session_id,
+            user_id,
+            players: DashMap::new(),
+            sender: Mutex::new(sender),
+            resumable: AtomicBool::new(false),
+            resume_timeout: AtomicU64::new(60),
+            paused: AtomicBool::new(false),
+            event_queue: Mutex::new(VecDeque::new()),
+            max_queue_size,
+        }
+    }
+
     /// Sends a JSON message. If paused, queues it for replay.
     pub fn send_json(&self, json: impl Into<String>) {
         if self.paused.load(Ordering::Relaxed) {
             let mut queue = self.event_queue.lock();
-            if queue.len() >= 1000 {
+            if queue.len() >= self.max_queue_size {
                 queue.pop_front();
             }
             queue.push_back(json.into());
