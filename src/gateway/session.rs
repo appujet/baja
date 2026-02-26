@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use crate::{
-    audio::playback::Mixer,
+    audio::Mixer,
     common::types::{AnyError, AnyResult, Shared},
     gateway::DaveHandler,
 };

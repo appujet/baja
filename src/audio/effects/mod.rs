@@ -9,7 +9,7 @@ use std::sync::{
     atomic::{AtomicU8, AtomicU64},
 };
 
-/// Interface for transition effects (kept for backward compatibility where needed).
+/// Interface for transition effects.
 pub trait TransitionEffect: Send {
     fn process(
         &mut self,
@@ -21,5 +21,5 @@ pub trait TransitionEffect: Send {
         rx: &flume::Receiver<PooledBuffer>,
         state_atomic: &Arc<AtomicU8>,
         position_atomic: &Arc<AtomicU64>,
-    ) -> bool; // returns true if track contributed audio
+    ) -> bool;
 }
