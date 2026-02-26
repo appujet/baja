@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use axum::extract::ws::Message;
 use dashmap::DashMap;
 
@@ -21,8 +23,8 @@ pub struct Session {
     pub resume_timeout: std::sync::atomic::AtomicU64,
     /// True when WS is disconnected but session is kept for resume.
     pub paused: std::sync::atomic::AtomicBool,
-    /// Events queued while session is paused.
-    pub event_queue: tokio::sync::Mutex<Vec<String>>,
+    /// Events queued while session is paused (bounded to 1 000 entries).
+    pub event_queue: tokio::sync::Mutex<VecDeque<String>>,
 }
 
 impl Session {
@@ -31,9 +33,9 @@ impl Session {
         if self.paused.load(std::sync::atomic::Ordering::Relaxed) {
             let mut queue = self.event_queue.lock().await;
             if queue.len() >= 1000 {
-                queue.remove(0); // Drop oldest event if queue is too large
+                queue.pop_front(); // O(1) drop of oldest event
             }
-            queue.push(json.to_string());
+            queue.push_back(json.to_string());
         } else {
             let sender = self.sender.lock().await;
             let msg = Message::Text(json.to_string().into());

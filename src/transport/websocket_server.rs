@@ -301,6 +301,6 @@ fn create_session(
         resumable: std::sync::atomic::AtomicBool::new(false),
         resume_timeout: std::sync::atomic::AtomicU64::new(60),
         paused: std::sync::atomic::AtomicBool::new(false),
-        event_queue: Mutex::new(Vec::new()),
+        event_queue: Mutex::new(std::collections::VecDeque::new()),
     })
 }

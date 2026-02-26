@@ -10,16 +10,21 @@ use tracing::{debug, error, info, warn};
 use crate::{
     audio::Mixer,
     common::types::{AnyResult, Shared},
+    gateway::constants::{RECONNECT_DELAY_FRESH_MS, VOICE_GATEWAY_VERSION, WRITE_TASK_SHUTDOWN_MS},
 };
 
+pub mod backoff;
 pub mod handler;
 pub mod heartbeat;
 pub mod types;
 pub mod voice;
 
-use self::types::{
-    SessionOutcome, VoiceGatewayMessage, is_fatal_close, is_reconnectable_close,
-    is_reidentify_close, map_boxed_err,
+use self::{
+    backoff::Backoff,
+    types::{
+        SessionOutcome, VoiceGatewayMessage, is_fatal_close, is_reconnectable_close,
+        is_reidentify_close, map_boxed_err,
+    },
 };
 
 pub struct VoiceGateway {
@@ -36,32 +41,6 @@ pub struct VoiceGateway {
     frames_sent: Arc<std::sync::atomic::AtomicU64>,
     frames_nulled: Arc<std::sync::atomic::AtomicU64>,
     cancel_token: CancellationToken,
-}
-
-const MAX_RECONNECT_ATTEMPTS: u32 = 5;
-
-struct Backoff {
-    attempt: u32,
-    base_ms: u64,
-}
-
-impl Backoff {
-    fn new(base_ms: u64) -> Self {
-        Self {
-            attempt: 0,
-            base_ms,
-        }
-    }
-
-    fn next(&mut self) -> std::time::Duration {
-        self.attempt += 1;
-        let delay = self.base_ms * 2u64.pow((self.attempt - 1).min(3));
-        std::time::Duration::from_millis(delay)
-    }
-
-    fn is_exhausted(&self, max: u32) -> bool {
-        self.attempt >= max
-    }
 }
 
 impl Drop for VoiceGateway {
@@ -103,7 +82,7 @@ impl VoiceGateway {
     }
 
     pub async fn run(self) -> AnyResult<()> {
-        let mut backoff = Backoff::new(1000);
+        let mut backoff = Backoff::new();
         let mut is_resume = false;
         let seq_ack = Arc::new(AtomicI64::new(-1));
 
@@ -120,7 +99,7 @@ impl VoiceGateway {
                     return Ok(());
                 }
                 Ok(SessionOutcome::Reconnect) => {
-                    if backoff.is_exhausted(MAX_RECONNECT_ATTEMPTS) {
+                    if backoff.is_exhausted() {
                         warn!("[{}] Max reconnect attempts reached", self.guild_id);
                         return Ok(());
                     }
@@ -133,13 +112,13 @@ impl VoiceGateway {
                     is_resume = true;
                 }
                 Ok(SessionOutcome::Identify) => {
-                    if backoff.is_exhausted(MAX_RECONNECT_ATTEMPTS) {
+                    if backoff.is_exhausted() {
                         warn!("[{}] Max re-identify attempts reached", self.guild_id);
                         return Ok(());
                     }
                     is_resume = false;
                     seq_ack.store(-1, Ordering::Relaxed);
-                    let delay = std::time::Duration::from_millis(500);
+                    let delay = std::time::Duration::from_millis(RECONNECT_DELAY_FRESH_MS);
                     debug!(
                         "[{}] Session invalid; identifying fresh in {:?}",
                         self.guild_id, delay
@@ -148,10 +127,10 @@ impl VoiceGateway {
                     backoff.next();
                 }
                 Err(e) => {
-                    if backoff.is_exhausted(MAX_RECONNECT_ATTEMPTS) {
+                    if backoff.is_exhausted() {
                         error!(
-                            "[{}] Connection error after {} attempts: {}",
-                            self.guild_id, MAX_RECONNECT_ATTEMPTS, e
+                            "[{}] Connection error after max attempts: {}",
+                            self.guild_id, e
                         );
                         return Err(e);
                     }
@@ -168,7 +147,7 @@ impl VoiceGateway {
     }
 
     async fn connect(&self, is_resume: bool, seq_ack: Arc<AtomicI64>) -> AnyResult<SessionOutcome> {
-        let url = format!("wss://{}/?v=8", self.endpoint);
+        let url = format!("wss://{}/?v={}", self.endpoint, VOICE_GATEWAY_VERSION);
         debug!("[{}] Connecting to voice gateway: {}", self.guild_id, url);
 
         let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
@@ -176,7 +155,6 @@ impl VoiceGateway {
             .map_err(map_boxed_err)?;
         let (mut write, mut read) = ws_stream.split();
 
-        // Build and send initial protocol message
         let msg = if is_resume {
             self.resume_message(seq_ack.load(Ordering::Relaxed))
         } else {
@@ -191,7 +169,6 @@ impl VoiceGateway {
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
 
-        // Spawn write task with cleanup monitoring
         let cancel = self.cancel_token.clone();
         let guild_id = self.guild_id.clone();
         let write_task = tokio::spawn(async move {
@@ -233,23 +210,35 @@ impl VoiceGateway {
 
                     match msg {
                         Message::Text(text) => {
+                            // Pass the owned String directly — no extra allocation.
                             if let Some(outcome) = state.handle_text(text.to_string()).await {
                                 break outcome;
                             }
                         }
                         Message::Binary(bin) => {
+                            // Pass the owned Bytes directly — no extra allocation.
                             state.handle_binary(bin.to_vec()).await;
                         }
                         Message::Close(frame) => {
-                            let (code, reason) = frame.map(|cf| (cf.code.into(), cf.reason.to_string()))
+                            let (code, reason) = frame
+                                .map(|cf| (cf.code.into(), cf.reason.to_string()))
                                 .unwrap_or((1000u16, "No reason".into()));
 
-                            info!("[{}] WS closed: code={}, reason='{}'", self.guild_id, code, reason);
+                            info!(
+                                "[{}] WS closed: code={}, reason='{}'",
+                                self.guild_id, code, reason
+                            );
                             self.emit_close_event(code, reason.clone());
 
-                            if is_reconnectable_close(code) { break SessionOutcome::Reconnect; }
-                            if is_reidentify_close(code) { break SessionOutcome::Identify; }
-                            if is_fatal_close(code) { break SessionOutcome::Shutdown; }
+                            if is_reconnectable_close(code) {
+                                break SessionOutcome::Reconnect;
+                            }
+                            if is_reidentify_close(code) {
+                                break SessionOutcome::Identify;
+                            }
+                            if is_fatal_close(code) {
+                                break SessionOutcome::Shutdown;
+                            }
                             break SessionOutcome::Reconnect;
                         }
                         _ => {}
@@ -260,7 +249,11 @@ impl VoiceGateway {
 
         self.cancel_token.cancel();
         drop(tx);
-        let _ = tokio::time::timeout(std::time::Duration::from_millis(500), write_task).await;
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_millis(WRITE_TASK_SHUTDOWN_MS),
+            write_task,
+        )
+        .await;
 
         Ok(outcome)
     }
