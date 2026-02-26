@@ -1,11 +1,19 @@
-pub struct Resampler {
+//! `resample/linear.rs` — fast linear-interpolation resampler.
+//!
+//! Identical algorithm to the original `pipeline/resampler.rs`, now exposed
+//! as a named type so callers can choose quality vs. speed.
+
+pub struct LinearResampler {
+    /// Source / target ratio (< 1.0 upsamples, > 1.0 downsamples).
     ratio: f32,
+    /// Fractional read head within the current input block.
     index: f32,
+    /// Last sample of the previous block (per channel) for cross-block interpolation.
     last_samples: Vec<i16>,
     channels: usize,
 }
 
-impl Resampler {
+impl LinearResampler {
     pub fn new(source_rate: u32, target_rate: u32, channels: usize) -> Self {
         Self {
             ratio: source_rate as f32 / target_rate as f32,
@@ -15,7 +23,7 @@ impl Resampler {
         }
     }
 
-    /// Resample `input` and **append** output samples into `output`
+    /// Resample `input` and **append** resampled samples into `output`.
     pub fn process(&mut self, input: &[i16], output: &mut Vec<i16>) {
         let num_frames = input.len() / self.channels;
 
@@ -51,10 +59,12 @@ impl Resampler {
         }
     }
 
-    /// Reset resampler state in-place after a seek.
-
     pub fn reset(&mut self) {
         self.index = 0.0;
         self.last_samples.fill(0);
+    }
+
+    pub fn is_passthrough(&self) -> bool {
+        (self.ratio - 1.0).abs() < f32::EPSILON
     }
 }

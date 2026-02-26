@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
+use crate::{audio::engine::Encoder, gateway::UdpBackend};
 
 use crate::{
     audio::Mixer,
@@ -846,7 +847,7 @@ async fn speak_loop(
     frames_nulled: Arc<std::sync::atomic::AtomicU64>,
     cancel_token: CancellationToken,
 ) -> AnyResult<()> {
-    use crate::{audio::pipeline::encoder::Encoder, gateway::UdpBackend};
+
     let mut encoder = Encoder::new().map_err(map_boxed_err)?;
     let mut udp = UdpBackend::new(socket, addr, ssrc, key, &mode).map_err(map_boxed_err)?;
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(20));

@@ -1,16 +1,27 @@
-use flume::{Receiver, Sender};
+//! `AudioProcessor` — ties source → demux → decode → resample → engine.
+//!
+//! The processor owns the decode loop and delegates all downstream routing to
+//! whichever [`Engine`] implementation was injected at construction time:
+//!
+//! - [`TranscodeEngine`] — PCM → `FlowController` → Mixer
+//! - [`PassthroughEngine`] — raw Opus → Mixer passthrough lane
+
+use flume::Receiver;
 use symphonia::core::{audio::SampleBuffer, codecs::Decoder, errors::Error, formats::FormatReader};
 use tracing::{Level, debug, info, span, warn};
 
 use crate::audio::{
     buffer::PooledBuffer,
     demux::{DemuxResult, open_format},
-    pipeline::resampler::Resampler,
+    engine::{BoxedEngine, TranscodeEngine},
+    resample::Resampler,
 };
+
+// ─── Commands ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecoderCommand {
-    Seek(u64), // Position in milliseconds
+    Seek(u64), // milliseconds
     Stop,
 }
 
@@ -22,17 +33,17 @@ pub enum CommandOutcome {
     None,
 }
 
-/// Audio processor: decodes any container to PCM i16 at 48 kHz stereo and
-/// sends `PooledBuffer` chunks downstream to the Mixer.
-///
-/// Format detection and codec selection are delegated to [`open_format`] in
-/// the `demux` module, keeping this struct focused purely on the decode loop.
+// ─── AudioProcessor ───────────────────────────────────────────────────────────
+
+/// Decodes any supported container to 48 kHz stereo PCM i16 and drives the
+/// injected [`Engine`] with the resulting samples.
 pub struct AudioProcessor {
     format: Box<dyn FormatReader>,
     decoder: Box<dyn Decoder>,
+    /// High-quality Catmull-Rom resampler (or identity pass-through).
     resampler: Resampler,
     track_id: u32,
-    pcm_tx: Sender<PooledBuffer>,
+    engine: BoxedEngine,
     cmd_rx: Receiver<DecoderCommand>,
     error_tx: Option<flume::Sender<String>>,
     sample_buf: Option<SampleBuffer<i16>>,
@@ -42,13 +53,12 @@ pub struct AudioProcessor {
 }
 
 impl AudioProcessor {
-    /// Open `source`, detect its format, select a decoder, and return a ready
-    /// processor.  If the format cannot be probed, a symphonia `Error` is
-    /// returned.
+    /// Open `source`, detect its format/codec, initialise the Hermite resampler
+    /// and wire up the provided `engine`.
     pub fn new(
         source: Box<dyn symphonia::core::io::MediaSource>,
         kind: Option<crate::common::types::AudioKind>,
-        pcm_tx: Sender<PooledBuffer>,
+        pcm_tx: flume::Sender<PooledBuffer>,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
     ) -> Result<Self, Error> {
@@ -65,14 +75,23 @@ impl AudioProcessor {
             sample_rate, channels
         );
 
-        let target_rate = 48000u32;
+        let target_rate = 48_000u32;
+
+        // Use Hermite resampling for music quality.
+        let resampler = if sample_rate == target_rate {
+            Resampler::linear(sample_rate, target_rate, channels) // identity
+        } else {
+            Resampler::hermite(sample_rate, target_rate, channels)
+        };
+
+        let engine: BoxedEngine = Box::new(TranscodeEngine::new(pcm_tx));
 
         Ok(Self {
             format,
             decoder,
-            resampler: Resampler::new(sample_rate, target_rate, channels),
+            resampler,
             track_id,
-            pcm_tx,
+            engine,
             cmd_rx,
             error_tx,
             sample_buf: None,
@@ -82,7 +101,52 @@ impl AudioProcessor {
         })
     }
 
-    /// Run the decode loop until the stream ends or a Stop command arrives.
+    /// Same as [`new`] but accepts a pre-built engine (e.g. `PassthroughEngine`).
+    pub fn with_engine(
+        source: Box<dyn symphonia::core::io::MediaSource>,
+        kind: Option<crate::common::types::AudioKind>,
+        engine: BoxedEngine,
+        cmd_rx: Receiver<DecoderCommand>,
+        error_tx: Option<flume::Sender<String>>,
+    ) -> Result<Self, Error> {
+        let DemuxResult::Transcode {
+            format,
+            track_id,
+            decoder,
+            sample_rate,
+            channels,
+        } = open_format(source, kind)?;
+
+        info!(
+            "AudioProcessor: opened format — {}Hz {}ch",
+            sample_rate, channels
+        );
+
+        let target_rate = 48_000u32;
+
+        let resampler = if sample_rate == target_rate {
+            Resampler::linear(sample_rate, target_rate, channels)
+        } else {
+            Resampler::hermite(sample_rate, target_rate, channels)
+        };
+
+        Ok(Self {
+            format,
+            decoder,
+            resampler,
+            track_id,
+            engine,
+            cmd_rx,
+            error_tx,
+            sample_buf: None,
+            source_rate: sample_rate,
+            target_rate,
+            channels,
+        })
+    }
+
+    /// Run the decode loop until the stream ends naturally or a Stop command
+    /// arrives.
     pub fn run(&mut self) -> Result<(), Error> {
         let _span = span!(Level::DEBUG, "audio_processor").entered();
 
@@ -122,15 +186,15 @@ impl AudioProcessor {
                     let samples = buf.samples();
 
                     if !samples.is_empty() {
-                        let mut pooled: PooledBuffer = Vec::with_capacity(1920);
+                        let mut pooled: PooledBuffer = Vec::with_capacity(samples.len());
                         if self.source_rate != self.target_rate {
                             self.resampler.process(samples, &mut pooled);
                         } else {
                             pooled.extend_from_slice(samples);
                         }
 
-                        if !pooled.is_empty() && self.pcm_tx.send(pooled).is_err() {
-                            return Ok(()); // Mixer disconnected — clean exit
+                        if !pooled.is_empty() && !self.engine.push_pcm(pooled) {
+                            return Ok(()); // Engine/Mixer disconnected — clean exit
                         }
                     }
 
