@@ -4,7 +4,7 @@
 //! wrap-around writes and reads. Backed by the global [`BufferPool`] to avoid
 //! heap allocations in the hot path.
 
-use super::buffer_pool::get_byte_pool;
+use crate::audio::buffer::pool::get_byte_pool;
 
 pub struct RingBuffer {
     buf: Vec<u8>,

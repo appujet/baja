@@ -10,10 +10,7 @@ use symphonia::core::{
 };
 use tracing::{Level, debug, info, span, warn};
 
-use crate::{api::info, audio::{
-    buffer::{PooledBuffer, get_pool},
-    pipeline::resampler::Resampler,
-}};
+use crate::audio::{buffer::PooledBuffer, pipeline::resampler::Resampler};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecoderCommand {
@@ -99,7 +96,7 @@ impl AudioProcessor {
             // Opus codec — use audiopus decoder.
             info!("AudioProcessor: Transcode mode (Opus → PCM)");
             Some(Box::new(
-                crate::audio::codecs::opus::OpusCodecDecoder::try_new(
+                crate::audio::codec::opus_decoder::OpusCodecDecoder::try_new(
                     &track.codec_params,
                     &DecoderOptions::default(),
                 )?,
@@ -144,8 +141,6 @@ impl AudioProcessor {
 
     /// Transcode mode: decode packets to PCM, resample, and send PooledBuffers.
     fn run_transcode(&mut self) -> Result<(), Error> {
-        let pool = get_pool();
-
         loop {
             if self.check_commands() == CommandOutcome::Stop {
                 break;
@@ -183,7 +178,7 @@ impl AudioProcessor {
                     let samples = buf.samples();
 
                     if !samples.is_empty() {
-                        let mut pooled = pool.acquire();
+                        let mut pooled: PooledBuffer = Vec::with_capacity(1920);
                         if self.source_rate != self.target_rate {
                             self.resampler.process(samples, &mut pooled);
                         } else {

@@ -86,7 +86,7 @@ impl PoolInner {
     }
 
     /// Evict all buffers if the pool has been idle for `IDLE_CLEAR_SECS`.
-    fn maybe_cleanup(&mut self) {
+    fn cleanup(&mut self) {
         if self.total_bytes == 0 {
             return;
         }
@@ -117,7 +117,7 @@ impl BufferPool {
     /// Acquire a buffer of at least `size` bytes.
     pub fn acquire(&self, size: usize) -> Vec<u8> {
         let mut g = self.inner.lock().unwrap();
-        g.maybe_cleanup();
+        g.cleanup();
         g.acquire(size)
     }
 

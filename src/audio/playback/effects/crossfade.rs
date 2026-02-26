@@ -5,8 +5,8 @@
 //! using cos/sin curves to maintain perceived loudness.
 
 use super::fade::FadeCurve;
+use crate::audio::RingBuffer;
 use crate::audio::buffer::PooledBuffer;
-use crate::audio::ring_buffer::RingBuffer;
 use flume::Receiver;
 
 const HALF_PI: f32 = std::f32::consts::PI / 2.0;

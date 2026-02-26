@@ -4,7 +4,7 @@
 //! and pipes them through the effects chain: Filters → Tape → Volume → Fade.
 //! Mirrors NodeLink's `FlowController.ts`.
 
-use crate::audio::buffer::{PooledBuffer, get_pool};
+use crate::audio::buffer::PooledBuffer;
 use crate::audio::filters::FilterChain;
 use crate::audio::playback::effects::{
     crossfade::CrossfadeController, fade::FadeEffect, tape::TapeEffect, volume::VolumeEffect,
@@ -62,7 +62,7 @@ impl FlowController {
 
             // 2. Process all complete frames
             while self.pending_pcm.len() >= FRAME_SIZE_SAMPLES {
-                let mut frame = get_pool().acquire();
+                let mut frame: PooledBuffer = Vec::with_capacity(FRAME_SIZE_SAMPLES);
                 frame.extend(self.pending_pcm.drain(..FRAME_SIZE_SAMPLES));
 
                 self.process_frame(&mut frame);

@@ -3,8 +3,8 @@
 //! Mirrors NodeLink's `AudioMixer.ts`. Each layer has its own `RingBuffer`
 //! and volume level. Useful for sound effects or secondary audio tracks.
 
+use crate::audio::RingBuffer;
 use crate::audio::buffer::PooledBuffer;
-use crate::audio::ring_buffer::RingBuffer;
 use flume::Receiver;
 use std::collections::HashMap;
 
