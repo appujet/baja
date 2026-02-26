@@ -62,6 +62,19 @@ pub const PREFETCH_CHUNKS: usize = 2;
 /// Maximum simultaneous in-flight HTTP fetches.
 pub const MAX_CONCURRENT_FETCHES: usize = 2;
 
+/// Maximum times a single chunk is retried before the source raises a fatal error.
+pub const MAX_FETCH_RETRIES: usize = 5;
+
+/// Milliseconds a fetch worker parks on the condvar when there is no work to do.
+pub const WORKER_IDLE_MS: u64 = 50;
+
+/// Milliseconds the reader / worker waits on the condvar per iteration when a
+/// chunk is not yet ready.
+pub const FETCH_WAIT_MS: u64 = 500;
+
+/// Timeout in seconds for the initial content-length probe request.
+pub const PROBE_TIMEOUT_SECS: u64 = 10;
+
 // ── Effects ───────────────────────────────────────────────────────────────────
 
 /// π / 2 — used in sinusoidal crossfade curves.

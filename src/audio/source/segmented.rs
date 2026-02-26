@@ -1,20 +1,4 @@
 //! `SegmentedSource` — parallel-chunk HTTP audio source.
-//!
-//! Replaces `audio::remote_reader::segmented::SegmentedRemoteReader`.
-//!
-//! # How it works
-//!
-//! ```text
-//!  ┌────────────────────┐  ┌────────────────────┐
-//!  │  fetch-worker-0    │  │  fetch-worker-1    │  … (N workers)
-//!  │  (Range requests)  │  │  (Range requests)  │
-//!  └─────────┬──────────┘  └─────────┬──────────┘
-//!            │ chunk map (Arc<Vec<u8>>)
-//!  ┌─────────▼──────────────────────▼──────────┐
-//!  │         SegmentedSource                    │ ◄── Read / Seek
-//!  └────────────────────────────────────────────┘
-//! ```
-//!
 //! Workers pre-fetch a sliding window of chunks ahead of the read cursor.
 //! Seeking is instant — just update `current_pos`; workers naturally
 //! re-prioritize chunks around the new position.
@@ -24,6 +8,7 @@ use std::{
     io::{Read, Seek, SeekFrom},
     sync::Arc,
     thread,
+    time::Duration,
 };
 
 use parking_lot::{Condvar, Mutex};
@@ -31,18 +16,27 @@ use symphonia::core::io::MediaSource;
 use tracing::{debug, trace, warn};
 
 use crate::{
-    audio::constants::{CHUNK_SIZE, MAX_CONCURRENT_FETCHES, PREFETCH_CHUNKS},
+    audio::constants::{
+        CHUNK_SIZE, FETCH_WAIT_MS, MAX_CONCURRENT_FETCHES, MAX_FETCH_RETRIES, PREFETCH_CHUNKS,
+        PROBE_TIMEOUT_SECS, WORKER_IDLE_MS,
+    },
     common::types::AnyResult,
 };
 
 use super::AudioSource;
 
-// ─── Internal chunk state ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal types
+// ─────────────────────────────────────────────────────────────────────────────
 
+/// State of a single downloaded chunk.
 #[derive(Clone)]
 enum ChunkState {
-    Empty(usize), // retry count
+    /// Not yet scheduled; inner value is the number of previous failed attempts.
+    Empty(usize),
+    /// A worker has claimed this chunk and is downloading it.
     Downloading,
+    /// Data is available for reading.
     Ready(Arc<Vec<u8>>),
 }
 
@@ -54,22 +48,23 @@ struct ReaderState {
     fatal_error: Option<String>,
 }
 
-// ─── SegmentedSource ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// SegmentedSource
+// ─────────────────────────────────────────────────────────────────────────────
 
-/// Parallel-chunk HTTP source — renamed from `SegmentedRemoteReader`.
-///
-/// Best for large, seekable streams (e.g. YouTube audio).
+/// Parallel-chunk HTTP source for large, seekable streams (e.g. YouTube audio).
 pub struct SegmentedSource {
     pos: u64,
     len: u64,
-    content_type: Option<String>,
+    /// Stored as `Arc<str>` so `content_type()` clones are pointer-bump cheap.
+    content_type: Option<Arc<str>>,
     shared: Arc<(Mutex<ReaderState>, Condvar)>,
 }
 
 impl SegmentedSource {
     /// Open `url` and start the background fetch workers.
     ///
-    /// Performs a HEAD-like Range probe to determine content length.
+    /// Performs a Range probe on `bytes=0-0` to determine content length.
     pub fn new(client: reqwest::Client, url: &str) -> AnyResult<Self> {
         let handle = tokio::runtime::Handle::current();
 
@@ -78,7 +73,7 @@ impl SegmentedSource {
                 .get(url)
                 .header("Range", "bytes=0-0")
                 .header("Connection", "close")
-                .timeout(std::time::Duration::from_secs(10))
+                .timeout(Duration::from_secs(PROBE_TIMEOUT_SECS))
                 .send(),
         )?;
 
@@ -89,18 +84,20 @@ impl SegmentedSource {
             .and_then(|v| v.split('/').last())
             .and_then(|v| v.parse::<u64>().ok())
             .or_else(|| probe.content_length())
-            .ok_or("SegmentedSource: could not determine content length")?;
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "SegmentedSource: could not determine content length",
+                )
+            })?;
 
-        let content_type = probe
+        let content_type: Option<Arc<str>> = probe
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
-            .map(str::to_string);
+            .map(Arc::from);
 
-        debug!(
-            "Opened SegmentedSource: (len={}, type={:?})",
-            len, content_type
-        );
+        debug!("SegmentedSource opened: len={}, type={:?}", len, content_type);
 
         let mut chunks = HashMap::new();
         chunks.insert(0, ChunkState::Empty(0));
@@ -116,15 +113,15 @@ impl SegmentedSource {
             Condvar::new(),
         ));
 
-        for i in 0..MAX_CONCURRENT_FETCHES {
+        for worker_id in 0..MAX_CONCURRENT_FETCHES {
             let shared_clone = shared.clone();
             let client_clone = client.clone();
             let url_str = url.to_string();
             let handle_clone = handle.clone();
             thread::Builder::new()
-                .name(format!("segmented-fetch-{}", i))
+                .name(format!("segmented-fetch-{}", worker_id))
                 .spawn(move || {
-                    fetch_worker(i, shared_clone, client_clone, url_str, handle_clone);
+                    fetch_worker(worker_id, shared_clone, client_clone, url_str, handle_clone);
                 })?;
         }
 
@@ -135,37 +132,18 @@ impl SegmentedSource {
             shared,
         })
     }
-
-    async fn fetch_range(
-        client: &reqwest::Client,
-        url: &str,
-        offset: u64,
-        size: u64,
-    ) -> AnyResult<reqwest::Response> {
-        let range = format!("bytes={}-{}", offset, offset + size - 1);
-        let res = client
-            .get(url)
-            .header("Range", range)
-            .header("Accept", "*/*")
-            .send()
-            .await?;
-
-        if !res.status().is_success() && res.status() != reqwest::StatusCode::PARTIAL_CONTENT {
-            return Err(format!("Fetch failed: status={}", res.status()).into());
-        }
-        Ok(res)
-    }
 }
 
-// ─── AudioSource ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Trait impls
+// ─────────────────────────────────────────────────────────────────────────────
 
 impl AudioSource for SegmentedSource {
     fn content_type(&self) -> Option<String> {
-        self.content_type.clone()
+        // Arc<str> clone is a pointer-bump — no string copy.
+        self.content_type.as_deref().map(str::to_string)
     }
 }
-
-// ─── Read / Seek / MediaSource ────────────────────────────────────────────────
 
 impl Read for SegmentedSource {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
@@ -187,11 +165,11 @@ impl Read for SegmentedSource {
 
             match state.chunks.get(&chunk_idx) {
                 Some(ChunkState::Ready(data)) => {
+                    let data = Arc::clone(data);
                     let available = data.len().saturating_sub(offset_in_chunk);
+
                     if available == 0 {
-                        if self.pos >= self.len {
-                            return Ok(0);
-                        }
+                        // Chunk is exhausted; advance to the next one.
                         self.pos = ((chunk_idx + 1) * CHUNK_SIZE) as u64;
                         state.current_pos = self.pos;
                         continue;
@@ -202,17 +180,21 @@ impl Read for SegmentedSource {
                     self.pos += n as u64;
                     state.current_pos = self.pos;
 
-                    // Evict old chunks to bound memory usage.
+                    // Evict chunks that are no longer needed, keeping one behind the
+                    // cursor as a small backward-seek buffer.
                     if chunk_idx > 1 {
                         state.chunks.retain(|&idx, _| idx >= chunk_idx - 1);
                     }
+
                     return Ok(n);
                 }
+
                 Some(ChunkState::Downloading) | Some(ChunkState::Empty(_)) => {
                     cvar.notify_all();
                     trace!("SegmentedSource: waiting for chunk {}", chunk_idx);
-                    cvar.wait_for(&mut state, std::time::Duration::from_millis(500));
+                    cvar.wait_for(&mut state, Duration::from_millis(FETCH_WAIT_MS));
                 }
+
                 None => {
                     state.chunks.insert(chunk_idx, ChunkState::Empty(0));
                     cvar.notify_all();
@@ -246,6 +228,7 @@ impl MediaSource for SegmentedSource {
     fn is_seekable(&self) -> bool {
         true
     }
+
     fn byte_len(&self) -> Option<u64> {
         Some(self.len)
     }
@@ -260,10 +243,38 @@ impl Drop for SegmentedSource {
     }
 }
 
-// ─── Fetch workers ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Issue a Range request for `[offset, offset + size)` and return the response.
+async fn fetch_range(
+    client: &reqwest::Client,
+    url: &str,
+    offset: u64,
+    size: u64,
+) -> AnyResult<reqwest::Response> {
+    let range = format!("bytes={}-{}", offset, offset + size - 1);
+    let res = client
+        .get(url)
+        .header("Range", range)
+        .header("Accept", "*/*")
+        .send()
+        .await?;
+
+    // 206 Partial Content is what we expect; any non-2xx is an error.
+    if !res.status().is_success() {
+        return Err(format!("fetch_range: HTTP {}", res.status()).into());
+    }
+    Ok(res)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fetch worker
+// ─────────────────────────────────────────────────────────────────────────────
 
 fn fetch_worker(
-    i: usize,
+    worker_id: usize,
     shared: Arc<(Mutex<ReaderState>, Condvar)>,
     client: reqwest::Client,
     url: String,
@@ -272,92 +283,135 @@ fn fetch_worker(
     let (lock, cvar) = &*shared;
 
     loop {
-        let mut target_chunk_idx = None;
-
-        {
+        // ── Claim a chunk to download ─────────────────────────────────────────
+        let target = {
             let mut state = lock.lock();
+
             if state.is_terminated {
                 break;
             }
 
-            let current_chunk_idx = (state.current_pos / CHUNK_SIZE as u64) as usize;
+            let current_chunk = (state.current_pos / CHUNK_SIZE as u64) as usize;
+            let total_len = state.total_len;
 
-            let entry = state
-                .chunks
-                .entry(current_chunk_idx)
-                .or_insert(ChunkState::Empty(0));
-            if matches!(entry, ChunkState::Empty(_)) {
-                *entry = ChunkState::Downloading;
-                target_chunk_idx = Some(current_chunk_idx);
-            } else {
+            // Try to claim the cursor chunk first; if it is already handled,
+            // look ahead in the prefetch window.
+            let claimed = try_claim_chunk(&mut state, current_chunk, total_len);
+
+            if claimed.is_none() {
                 let cursor_ready = matches!(
-                    state.chunks.get(&current_chunk_idx),
+                    state.chunks.get(&current_chunk),
                     Some(ChunkState::Ready(_))
                 );
-                let window_limit = if cursor_ready { PREFETCH_CHUNKS } else { 2 };
+                let window = if cursor_ready { PREFETCH_CHUNKS } else { 2 };
 
-                for j in 1..window_limit {
-                    let idx = current_chunk_idx + j;
-                    if (idx * CHUNK_SIZE) as u64 >= state.total_len {
+                let mut found = None;
+                for j in 1..window {
+                    let idx = current_chunk + j;
+                    if (idx * CHUNK_SIZE) as u64 >= total_len {
                         break;
                     }
-
-                    let entry = state.chunks.entry(idx).or_insert(ChunkState::Empty(0));
-                    if matches!(entry, ChunkState::Empty(_)) {
-                        *entry = ChunkState::Downloading;
-                        target_chunk_idx = Some(idx);
+                    if let Some(c) = try_claim_chunk(&mut state, idx, total_len) {
+                        found = Some(c);
                         break;
                     }
                 }
+                found
+            } else {
+                claimed
             }
+            .map(|(idx, retries)| {
+                // Mark as in-flight *before* releasing the lock.
+                state.chunks.insert(idx, ChunkState::Downloading);
+                (idx, retries, total_len)
+            })
+        };
 
-            if target_chunk_idx.is_none() {
-                cvar.wait_for(&mut state, std::time::Duration::from_millis(50));
+        let (idx, prior_retries, total_len) = match target {
+            Some(t) => t,
+            None => {
+                // Nothing to do — wait briefly.
+                let mut state = lock.lock();
+                cvar.wait_for(&mut state, Duration::from_millis(WORKER_IDLE_MS));
                 continue;
             }
-        }
+        };
 
-        if let Some(idx) = target_chunk_idx {
-            let offset = (idx * CHUNK_SIZE) as u64;
-            let stream_len = lock.lock().total_len;
-            let size = CHUNK_SIZE.min((stream_len - offset) as usize);
+        // ── Download the chunk ────────────────────────────────────────────────
+        let offset = (idx * CHUNK_SIZE) as u64;
+        let size = CHUNK_SIZE.min((total_len - offset) as usize) as u64;
 
-            trace!("Worker {}: requesting chunk {} (offset={})", i, idx, offset);
+        trace!(
+            "Worker {}: requesting chunk {} (offset={}, size={})",
+            worker_id, idx, offset, size
+        );
 
-            let fetch_fut = SegmentedSource::fetch_range(&client, &url, offset, size as u64);
-            match handle.block_on(fetch_fut) {
-                Ok(res) => {
-                    if let Ok(data) = handle.block_on(res.bytes()) {
-                        let data = data.to_vec();
-                        let actual_len = data.len();
-                        let mut state = lock.lock();
-                        state.chunks.insert(idx, ChunkState::Ready(Arc::new(data)));
-                        trace!("Worker {}: filled chunk {} ({} bytes)", i, idx, actual_len);
-                        cvar.notify_all();
-                    } else {
-                        warn!("Worker {}: failed to read body for chunk {}", i, idx);
-                        let mut state = lock.lock();
-                        state.chunks.insert(idx, ChunkState::Empty(0));
-                        cvar.notify_all();
-                    }
+        match handle.block_on(fetch_range(&client, &url, offset, size)) {
+            Ok(res) => match handle.block_on(res.bytes()) {
+                Ok(bytes) => {
+                    let actual = bytes.len();
+                    let arc = Arc::new(bytes.to_vec());
+                    let mut state = lock.lock();
+                    state.chunks.insert(idx, ChunkState::Ready(arc));
+                    trace!("Worker {}: filled chunk {} ({} bytes)", worker_id, idx, actual);
+                    cvar.notify_all();
                 }
                 Err(e) => {
-                    warn!("Worker {}: fetch failed for chunk {}: {}", i, idx, e);
-                    let mut state = lock.lock();
-                    let retries = if let Some(ChunkState::Empty(r)) = state.chunks.get(&idx) {
-                        *r
-                    } else {
-                        0
-                    };
-                    if retries > 5 {
-                        state.fatal_error = Some(format!("Failed to fetch chunk {}: {}", idx, e));
-                    } else {
-                        state.chunks.insert(idx, ChunkState::Empty(retries + 1));
-                    }
-                    cvar.notify_all();
-                    thread::sleep(std::time::Duration::from_millis(500));
+                    warn!("Worker {}: failed to read body for chunk {}: {}", worker_id, idx, e);
+                    requeue_or_fatal(lock, cvar, idx, prior_retries, &e.to_string());
+                    thread::sleep(Duration::from_millis(FETCH_WAIT_MS));
                 }
+            },
+            Err(e) => {
+                warn!("Worker {}: fetch failed for chunk {}: {}", worker_id, idx, e);
+                requeue_or_fatal(lock, cvar, idx, prior_retries, &e.to_string());
+                thread::sleep(Duration::from_millis(FETCH_WAIT_MS));
             }
         }
     }
+}
+
+/// Try to claim a chunk at `idx` if it is in `Empty` state.
+///
+/// Returns `Some((idx, retry_count))` on success, `None` if the chunk is
+/// already `Downloading` or `Ready`.
+#[inline]
+fn try_claim_chunk(
+    state: &mut ReaderState,
+    idx: usize,
+    total_len: u64,
+) -> Option<(usize, usize)> {
+    if (idx * CHUNK_SIZE) as u64 >= total_len {
+        return None;
+    }
+    match state.chunks.get(&idx) {
+        Some(ChunkState::Empty(r)) => Some((idx, *r)),
+        None => {
+            // Newly seen chunk — treat as Empty(0).
+            Some((idx, 0))
+        }
+        _ => None,
+    }
+}
+
+/// On a download failure, either requeue the chunk for retry or mark the
+/// source as fatally errored if `MAX_FETCH_RETRIES` is exceeded.
+#[inline]
+fn requeue_or_fatal(
+    lock: &Mutex<ReaderState>,
+    cvar: &Condvar,
+    idx: usize,
+    prior_retries: usize,
+    error: &str,
+) {
+    let mut state = lock.lock();
+    if prior_retries >= MAX_FETCH_RETRIES {
+        state.fatal_error = Some(format!(
+            "Chunk {}: permanently failed after {} retries: {}",
+            idx, prior_retries, error
+        ));
+    } else {
+        state.chunks.insert(idx, ChunkState::Empty(prior_retries + 1));
+    }
+    cvar.notify_all();
 }
