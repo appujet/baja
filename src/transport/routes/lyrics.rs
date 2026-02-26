@@ -9,7 +9,7 @@ use axum::{
 use crate::{
     api::{
         models::{
-            GetLyricsQuery, GetPlayerLyricsQuery, LavalinkLyrics, LavalinkLyricsLine,
+            GetLyricsQuery, GetPlayerLyricsQuery, RustalinkLyrics, RustalinkLyricsLine,
             LyricsLoadResult, LyricsResultData as ApiLyricsData,
         },
         tracks::Track,
@@ -98,16 +98,16 @@ pub async fn subscribe_lyrics(
                                 *lock = Some(lyrics.clone());
                             }
                             let event = crate::api::OutgoingMessage::Event(
-                                crate::api::LavalinkEvent::LyricsFound {
+                                crate::api::RustalinkEvent::LyricsFound {
                                     guild_id: guild_id_lyrics,
-                                    lyrics: crate::api::models::LavalinkLyrics {
+                                    lyrics: crate::api::models::RustalinkLyrics {
                                         source_name: track_info_clone.source_name.clone(),
                                         provider: Some(lyrics.provider),
                                         text: Some(lyrics.text),
                                         lines: lyrics.lines.map(|lines| {
                                             lines
                                                 .into_iter()
-                                                .map(|l| crate::api::models::LavalinkLyricsLine {
+                                                .map(|l| crate::api::models::RustalinkLyricsLine {
                                                     timestamp: l.timestamp,
                                                     duration: Some(l.duration),
                                                     line: l.text,
@@ -122,7 +122,7 @@ pub async fn subscribe_lyrics(
                             session_lyrics_clone.send_message(&event).await;
                         } else {
                             let event = crate::api::OutgoingMessage::Event(
-                                crate::api::LavalinkEvent::LyricsNotFound {
+                                crate::api::RustalinkEvent::LyricsNotFound {
                                     guild_id: guild_id_lyrics,
                                 },
                             );
@@ -182,7 +182,7 @@ pub async fn get_lyrics(
         .await
     {
         Some(lyrics) => {
-            let response = LavalinkLyrics {
+            let response = RustalinkLyrics {
                 source_name: track.info.source_name.clone(),
                 provider: Some(lyrics.provider),
                 text: Some(lyrics.text),
@@ -191,7 +191,7 @@ pub async fn get_lyrics(
                     .map(|lines: Vec<crate::api::models::LyricsLine>| {
                         lines
                             .into_iter()
-                            .map(|l| LavalinkLyricsLine {
+                            .map(|l| RustalinkLyricsLine {
                                 timestamp: l.timestamp,
                                 duration: Some(l.duration),
                                 line: l.text,
@@ -242,7 +242,7 @@ pub async fn get_player_lyrics(
         .await
     {
         Some(lyrics) => {
-            let response = LavalinkLyrics {
+            let response = RustalinkLyrics {
                 source_name: track.info.source_name.clone(),
                 provider: Some(lyrics.provider),
                 text: Some(lyrics.text),
@@ -251,7 +251,7 @@ pub async fn get_player_lyrics(
                     .map(|lines: Vec<crate::api::models::LyricsLine>| {
                         lines
                             .into_iter()
-                            .map(|l| LavalinkLyricsLine {
+                            .map(|l| RustalinkLyricsLine {
                                 timestamp: l.timestamp,
                                 duration: Some(l.duration),
                                 line: l.text,

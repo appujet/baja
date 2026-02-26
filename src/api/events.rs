@@ -17,13 +17,13 @@ pub enum OutgoingMessage {
         state: PlayerState,
     },
     Stats(super::stats::Stats),
-    Event(LavalinkEvent),
+    Event(RustalinkEvent),
 }
 
 /// Events emitted by the player.
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum LavalinkEvent {
+pub enum RustalinkEvent {
     #[serde(rename = "TrackStartEvent")]
     #[serde(rename_all = "camelCase")]
     TrackStart {
@@ -61,7 +61,7 @@ pub enum LavalinkEvent {
     #[serde(rename_all = "camelCase")]
     LyricsFound {
         guild_id: crate::common::types::GuildId,
-        lyrics: super::models::LavalinkLyrics,
+        lyrics: super::models::RustalinkLyrics,
     },
 
     #[serde(rename = "LyricsNotFoundEvent")]
@@ -75,7 +75,7 @@ pub enum LavalinkEvent {
     LyricsLine {
         guild_id: crate::common::types::GuildId,
         line_index: i32,
-        line: super::models::LavalinkLyricsLine,
+        line: super::models::RustalinkLyricsLine,
         skipped: bool,
     },
 

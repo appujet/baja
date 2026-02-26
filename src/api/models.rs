@@ -91,17 +91,17 @@ pub struct LyricsLoadError {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct LavalinkLyrics {
+pub struct RustalinkLyrics {
     pub source_name: String,
     pub provider: Option<String>,
     pub text: Option<String>,
-    pub lines: Option<Vec<LavalinkLyricsLine>>,
+    pub lines: Option<Vec<RustalinkLyricsLine>>,
     pub plugin: serde_json::Value,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct LavalinkLyricsLine {
+pub struct RustalinkLyricsLine {
     pub timestamp: u64,
     pub duration: Option<u64>,
     pub line: String,

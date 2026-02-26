@@ -10,7 +10,7 @@ use super::{
 use crate::{
     api::{
         self,
-        events::{LavalinkEvent, TrackEndReason},
+        events::{RustalinkEvent, TrackEndReason},
     },
     audio::playback::{PlaybackState, TrackHandle},
     server::Session,
@@ -117,7 +117,7 @@ pub async fn start_playback(
     };
 
     session
-        .send_message(&api::OutgoingMessage::Event(LavalinkEvent::TrackStart {
+        .send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackStart {
             guild_id: player.guild_id.clone(),
             track: track_info_response.clone(),
         }))
@@ -159,7 +159,7 @@ async fn stop_current_track(player: &mut PlayerContext, session: &Session) {
         if handle.get_state() != PlaybackState::Stopped {
             if let Some(track) = player.to_player_response().track {
                 session
-                    .send_message(&api::OutgoingMessage::Event(LavalinkEvent::TrackEnd {
+                    .send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackEnd {
                         guild_id: player.guild_id.clone(),
                         track,
                         reason: TrackEndReason::Replaced,

@@ -75,7 +75,7 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
         None => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(crate::common::LavalinkError::bad_request(
+                Json(crate::common::RustalinkError::bad_request(
                     "No track to decode provided",
                     "/v4/decodetrack",
                 )),
@@ -88,7 +88,7 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
         Some(track) => (StatusCode::OK, Json(track)).into_response(),
         None => (
             StatusCode::BAD_REQUEST,
-            Json(crate::common::LavalinkError::bad_request(
+            Json(crate::common::RustalinkError::bad_request(
                 "Invalid track encoding",
                 "/v4/decodetrack",
             )),
@@ -109,7 +109,7 @@ pub async fn decode_tracks(Json(body): Json<api::EncodedTracks>) -> impl IntoRes
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(
-                        serde_json::to_value(crate::common::LavalinkError::bad_request(
+                        serde_json::to_value(crate::common::RustalinkError::bad_request(
                             format!("Invalid track encoding: {}", encoded),
                             "/v4/decodetracks",
                         ))

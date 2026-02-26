@@ -29,7 +29,7 @@ pub async fn get_players(
         None => (
             StatusCode::NOT_FOUND,
             Json(
-                serde_json::to_value(crate::common::LavalinkError::not_found(
+                serde_json::to_value(crate::common::RustalinkError::not_found(
                     format!("Session not found: {}", session_id),
                     format!("/v4/sessions/{}/players", session_id),
                 ))
@@ -78,7 +78,7 @@ pub async fn get_player(
         None => (
             StatusCode::NOT_FOUND,
             Json(
-                serde_json::to_value(crate::common::LavalinkError::not_found(
+                serde_json::to_value(crate::common::RustalinkError::not_found(
                     format!("Session not found: {}", session_id),
                     format!("/v4/sessions/{}/players/{}", session_id, guild_id),
                 ))

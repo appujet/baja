@@ -2,7 +2,7 @@ use super::lyrics::sync_lyrics;
 use crate::{
     api::{
         self,
-        events::{LavalinkEvent, TrackEndReason, TrackException},
+        events::{RustalinkEvent, TrackEndReason, TrackException},
         models::LyricsData,
         tracks::Track,
     },
@@ -67,7 +67,7 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                     warn!("[{}] mid-playback decoder error: {}", guild_id, err);
                     session
                         .send_message(&api::OutgoingMessage::Event(
-                            LavalinkEvent::TrackException {
+                            RustalinkEvent::TrackException {
                                 guild_id: guild_id.clone(),
                                 track: track.clone(),
                                 exception: TrackException {
@@ -85,7 +85,7 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
             };
 
             session
-                .send_message(&api::OutgoingMessage::Event(LavalinkEvent::TrackEnd {
+                .send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackEnd {
                     guild_id,
                     track,
                     reason,
@@ -106,7 +106,7 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                 };
                 if stuck_ms >= threshold {
                     session
-                        .send_message(&api::OutgoingMessage::Event(LavalinkEvent::TrackStuck {
+                        .send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackStuck {
                             guild_id: guild_id.clone(),
                             track: track.clone(),
                             threshold_ms: stuck_threshold_ms,

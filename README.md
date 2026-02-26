@@ -177,5 +177,14 @@ rustup run nightly cargo fmt
 
 ---
 
+## 💖 Credits & Inspiration
+
+Rustalink is inspired by and built upon the ideas of these amazing projects:
+
+- **[Lavalink](https://github.com/lavalink-devs/Lavalink)** - The original high-performance standalone audio sending node.
+- **[NodeLink](https://github.com/PerformanC/NodeLink)** - A lightweight and efficient Lavalink alternative.
+
+---
+
 ## 📝 License
 Distributed under the Apache-2.0 License. See `LICENSE` for more information.

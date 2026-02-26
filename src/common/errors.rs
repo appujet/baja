@@ -9,10 +9,10 @@ pub enum Severity {
     Fault,
 }
 
-/// Lavalink v4 JSON error response format.
+/// Rustalink v4 JSON error response format.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LavalinkError {
+pub struct RustalinkError {
     /// Unix timestamp in milliseconds.
     pub timestamp: u64,
     /// HTTP status code.
@@ -28,7 +28,7 @@ pub struct LavalinkError {
     pub trace: Option<String>,
 }
 
-impl LavalinkError {
+impl RustalinkError {
     #[allow(dead_code)]
     pub fn bad_request(message: impl Into<String>, path: impl Into<String>) -> Self {
         Self {

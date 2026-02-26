@@ -36,7 +36,7 @@ pub async fn update_player(
             return (
                 StatusCode::NOT_FOUND,
                 Json(
-                    serde_json::to_value(crate::common::LavalinkError::not_found(
+                    serde_json::to_value(crate::common::RustalinkError::not_found(
                         "Session not found",
                         format!("/v4/sessions/{}/players/{}", session_id, guild_id),
                     ))
@@ -128,7 +128,7 @@ pub async fn update_player(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(
-                    serde_json::to_value(crate::common::LavalinkError::bad_request(
+                    serde_json::to_value(crate::common::RustalinkError::bad_request(
                         message,
                         format!("/v4/sessions/{}/players/{}", session_id, guild_id),
                     ))
@@ -205,7 +205,7 @@ pub async fn update_player(
             return (
         StatusCode::BAD_REQUEST,
         Json(
-          serde_json::to_value(crate::common::LavalinkError::bad_request(
+          serde_json::to_value(crate::common::RustalinkError::bad_request(
             "Cannot specify both 'track' object and top-level 'encodedTrack'/'identifier'",
             format!("/v4/sessions/{}/players/{}", session_id, guild_id),
           ))
@@ -255,7 +255,7 @@ pub async fn update_player(
 
                     // Emit TrackEnd with reason Stopped
                     if let Some(encoded) = track_data {
-                        let end_event = api::OutgoingMessage::Event(api::LavalinkEvent::TrackEnd {
+                        let end_event = api::OutgoingMessage::Event(api::RustalinkEvent::TrackEnd {
                             guild_id: guild_id.clone(),
                             track: Track {
                                 encoded,
@@ -378,7 +378,7 @@ pub async fn update_session(
         None => (
             StatusCode::NOT_FOUND,
             Json(
-                serde_json::to_value(crate::common::LavalinkError::not_found(
+                serde_json::to_value(crate::common::RustalinkError::not_found(
                     "Session not found",
                     format!("/v4/sessions/{}", session_id),
                 ))

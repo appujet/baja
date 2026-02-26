@@ -6,7 +6,7 @@ use std::sync::{
 use tracing::error;
 
 use crate::{
-    api::LavalinkEvent,
+    api::RustalinkEvent,
     audio::filters::FilterChain,
     common::types::{ChannelId, GuildId, Shared, UserId},
     gateway::{VoiceEngine, VoiceGateway},
@@ -26,7 +26,7 @@ pub async fn connect_voice(
     voice: VoiceConnectionState,
     filter_chain: Shared<FilterChain>,
     ping: Arc<AtomicI64>,
-    event_tx: Option<tokio::sync::mpsc::UnboundedSender<LavalinkEvent>>,
+    event_tx: Option<tokio::sync::mpsc::UnboundedSender<RustalinkEvent>>,
     frames_sent: Arc<AtomicU64>,
     frames_nulled: Arc<AtomicU64>,
 ) -> tokio::task::JoinHandle<()> {
