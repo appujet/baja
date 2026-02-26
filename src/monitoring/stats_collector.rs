@@ -42,7 +42,9 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
 
     let (mem_used, mem_free, mem_total) = read_memory_stats();
 
-    let system_load = read_system_load();
+    let cores = num_cpus();
+    let system_load = read_system_load() / cores as f64;
+    let lavalink_load = (read_process_cpu_load() / cores as f64).clamp(0.0, 1.0);
 
     api::Stats {
         players: total_players,
@@ -55,9 +57,9 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
             reservable: mem_total,
         },
         cpu: api::Cpu {
-            cores: num_cpus(),
+            cores,
             system_load,
-            lavalink_load: read_process_cpu_load(),
+            lavalink_load,
         },
         frame_stats,
     }
@@ -171,5 +173,5 @@ fn read_process_cpu_load() -> f64 {
         return 0.0;
     }
 
-    (d_cpu / d_wall).clamp(0.0, 1.0)
+    d_cpu / d_wall
 }
