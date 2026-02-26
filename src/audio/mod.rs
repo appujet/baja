@@ -11,8 +11,9 @@ pub mod playback;
 pub mod processor;
 pub mod remote_reader;
 pub mod resample;
+pub mod source;
 
 pub use buffer::{BufferPool, PooledBuffer, RingBuffer, get_byte_pool};
 pub use flow::FlowController;
 pub use mix::{AudioMixer, MixLayer, Mixer};
-pub use remote_reader::{BaseRemoteReader, create_client, segmented::SegmentedRemoteReader};
+pub use source::{AudioSource, HttpSource, SegmentedSource, create_client};

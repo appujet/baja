@@ -3,12 +3,12 @@ use std::io::{Read, Seek, SeekFrom};
 use symphonia::core::io::MediaSource;
 
 use crate::{
-    audio::remote_reader::{BaseRemoteReader, create_client},
+    audio::source::{AudioSource, HttpSource, create_client},
     common::types::AnyResult,
 };
 
 pub struct HttpReader {
-    inner: BaseRemoteReader,
+    inner: HttpSource,
 }
 
 impl HttpReader {
@@ -20,7 +20,7 @@ impl HttpReader {
         let user_agent = crate::common::http::default_user_agent();
 
         let client = create_client(user_agent, local_addr, proxy, None)?;
-        let inner = BaseRemoteReader::new(client, url)?;
+        let inner = HttpSource::new(client, url)?;
 
         Ok(Self { inner })
     }

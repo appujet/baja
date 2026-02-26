@@ -225,7 +225,7 @@ impl PlayableTrack for YoutubeTrack {
                                     Err(e) => Err(e),
                                 }
                             } else {
-                                match crate::audio::BaseRemoteReader::new(
+                                match crate::audio::HttpSource::new(
                                     crate::audio::create_client(
                                         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36".to_string(),
                                         local_addr_bg,
