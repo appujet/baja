@@ -40,6 +40,30 @@ pub struct VoiceGateway {
 
 const MAX_RECONNECT_ATTEMPTS: u32 = 5;
 
+struct Backoff {
+    attempt: u32,
+    base_ms: u64,
+}
+
+impl Backoff {
+    fn new(base_ms: u64) -> Self {
+        Self {
+            attempt: 0,
+            base_ms,
+        }
+    }
+
+    fn next(&mut self) -> std::time::Duration {
+        self.attempt += 1;
+        let delay = self.base_ms * 2u64.pow((self.attempt - 1).min(3));
+        std::time::Duration::from_millis(delay)
+    }
+
+    fn is_exhausted(&self, max: u32) -> bool {
+        self.attempt >= max
+    }
+}
+
 impl Drop for VoiceGateway {
     fn drop(&mut self) {
         self.cancel_token.cancel();
@@ -79,72 +103,64 @@ impl VoiceGateway {
     }
 
     pub async fn run(self) -> AnyResult<()> {
-        let mut attempt = 0u32;
+        let mut backoff = Backoff::new(1000);
         let mut is_resume = false;
         let seq_ack = Arc::new(AtomicI64::new(-1));
 
         loop {
+            if self.cancel_token.is_cancelled() {
+                return Ok(());
+            }
+
             let outcome = self.connect(is_resume, seq_ack.clone()).await;
 
             match outcome {
                 Ok(SessionOutcome::Shutdown) => {
-                    debug!(
-                        "Voice gateway shutting down cleanly for guild {}",
-                        self.guild_id
-                    );
+                    debug!("[{}] Gateway shutting down cleanly", self.guild_id);
                     return Ok(());
                 }
                 Ok(SessionOutcome::Reconnect) => {
-                    attempt += 1;
-                    if attempt > MAX_RECONNECT_ATTEMPTS {
-                        warn!(
-                            "Voice gateway: max reconnect attempts ({}) reached for guild {}",
-                            MAX_RECONNECT_ATTEMPTS, self.guild_id
-                        );
+                    if backoff.is_exhausted(MAX_RECONNECT_ATTEMPTS) {
+                        warn!("[{}] Max reconnect attempts reached", self.guild_id);
                         return Ok(());
                     }
-                    let backoff =
-                        std::time::Duration::from_millis(1000 * 2u64.pow((attempt - 1).min(3)));
+                    let delay = backoff.next();
                     debug!(
-                        "Voice gateway reconnecting (attempt {}/{}) in {:?} for guild {}",
-                        attempt, MAX_RECONNECT_ATTEMPTS, backoff, self.guild_id
+                        "[{}] Reconnecting in {:?} (resume=true)",
+                        self.guild_id, delay
                     );
-                    tokio::time::sleep(backoff).await;
+                    tokio::time::sleep(delay).await;
                     is_resume = true;
                 }
                 Ok(SessionOutcome::Identify) => {
-                    attempt += 1;
-                    if attempt > MAX_RECONNECT_ATTEMPTS {
-                        warn!(
-                            "Voice gateway: max re-identify attempts ({}) reached for guild {}",
-                            MAX_RECONNECT_ATTEMPTS, self.guild_id
-                        );
+                    if backoff.is_exhausted(MAX_RECONNECT_ATTEMPTS) {
+                        warn!("[{}] Max re-identify attempts reached", self.guild_id);
                         return Ok(());
                     }
                     is_resume = false;
                     seq_ack.store(-1, Ordering::Relaxed);
+                    let delay = std::time::Duration::from_millis(500);
                     debug!(
-                        "Voice gateway session invalid; identifying fresh for guild {}",
-                        self.guild_id
+                        "[{}] Session invalid; identifying fresh in {:?}",
+                        self.guild_id, delay
                     );
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    tokio::time::sleep(delay).await;
+                    backoff.next();
                 }
                 Err(e) => {
-                    attempt += 1;
-                    if attempt > MAX_RECONNECT_ATTEMPTS {
+                    if backoff.is_exhausted(MAX_RECONNECT_ATTEMPTS) {
                         error!(
-                            "Voice gateway: connection error after {} attempts for guild {}: {}",
-                            MAX_RECONNECT_ATTEMPTS, self.guild_id, e
+                            "[{}] Connection error after {} attempts: {}",
+                            self.guild_id, MAX_RECONNECT_ATTEMPTS, e
                         );
                         return Err(e);
                     }
-                    let backoff =
-                        std::time::Duration::from_millis(1000 * 2u64.pow((attempt - 1).min(3)));
+                    let delay = backoff.next();
                     warn!(
-                        "Voice gateway connection error (attempt {}/{}): {}. Retrying in {:?}",
-                        attempt, MAX_RECONNECT_ATTEMPTS, e, backoff
+                        "[{}] Connection error: {}. Retrying in {:?}",
+                        self.guild_id, e, delay
                     );
-                    tokio::time::sleep(backoff).await;
+                    tokio::time::sleep(delay).await;
                     is_resume = false;
                 }
             }
@@ -153,61 +169,42 @@ impl VoiceGateway {
 
     async fn connect(&self, is_resume: bool, seq_ack: Arc<AtomicI64>) -> AnyResult<SessionOutcome> {
         let url = format!("wss://{}/?v=8", self.endpoint);
-        debug!("Connecting to voice gateway: {}", url);
+        debug!("[{}] Connecting to voice gateway: {}", self.guild_id, url);
 
         let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
             .await
             .map_err(map_boxed_err)?;
         let (mut write, mut read) = ws_stream.split();
 
-        if is_resume {
-            let resume = VoiceGatewayMessage {
-                op: 7,
-                d: serde_json::json!({
-                    "server_id": self.guild_id,
-                    "session_id": self.session_id,
-                    "token": self.token,
-                    "seq_ack": seq_ack.load(Ordering::Relaxed),
-                }),
-            };
-            write
-                .send(Message::Text(
-                    serde_json::to_string(&resume)
-                        .map_err(map_boxed_err)?
-                        .into(),
-                ))
-                .await
-                .map_err(map_boxed_err)?;
+        // Build and send initial protocol message
+        let msg = if is_resume {
+            self.resume_message(seq_ack.load(Ordering::Relaxed))
         } else {
-            let identify = VoiceGatewayMessage {
-                op: 0,
-                d: serde_json::json!({
-                    "server_id": self.guild_id,
-                    "user_id": self.user_id.to_string(),
-                    "session_id": self.session_id,
-                    "token": self.token,
-                    "max_dave_protocol_version": if self.channel_id.0 > 0 { 1 } else { 0 },
-                }),
-            };
-            write
-                .send(Message::Text(
-                    serde_json::to_string(&identify)
-                        .map_err(map_boxed_err)?
-                        .into(),
-                ))
-                .await
-                .map_err(map_boxed_err)?;
-        }
+            self.identify_message()
+        };
+
+        let json = serde_json::to_string(&msg).map_err(map_boxed_err)?;
+        write
+            .send(Message::Text(json.into()))
+            .await
+            .map_err(map_boxed_err)?;
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+
+        // Spawn write task with cleanup monitoring
+        let cancel = self.cancel_token.clone();
+        let guild_id = self.guild_id.clone();
         let write_task = tokio::spawn(async move {
-            while let Some(msg) = rx.recv().await {
-                if let Err(e) = write.send(msg).await {
-                    warn!(
-                        "Voice WebSocket write error (expected during reconnection): {}",
-                        e
-                    );
-                    break;
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    msg = rx.recv() => {
+                        let Some(msg) = msg else { break };
+                        if let Err(e) = write.send(msg).await {
+                            warn!("[{}] WS write error: {}", guild_id, e);
+                            break;
+                        }
+                    }
                 }
             }
         });
@@ -215,78 +212,49 @@ impl VoiceGateway {
         let mut state = handler::SessionState::new(self, tx.clone(), seq_ack.clone());
 
         let outcome = loop {
-            let msg = match read.next().await {
-                Some(Ok(msg)) => msg,
-                Some(Err(e)) => {
-                    warn!(
-                        "Voice WebSocket read error: {}. Attempting to reconnect.",
-                        e
-                    );
-                    if let Some(evt_tx) = &self.event_tx {
-                        let _ = evt_tx.send(crate::api::LavalinkEvent::WebSocketClosed {
-                            guild_id: self.guild_id.clone(),
-                            code: 1006,
-                            reason: format!("IO error: {}", e),
-                            by_remote: true,
-                        });
-                    }
-                    break SessionOutcome::Reconnect;
+            tokio::select! {
+                _ = self.cancel_token.cancelled() => {
+                    break SessionOutcome::Shutdown;
                 }
-                None => {
-                    debug!("Voice WS stream ended for guild {}", self.guild_id);
-                    if let Some(evt_tx) = &self.event_tx {
-                        let _ = evt_tx.send(crate::api::LavalinkEvent::WebSocketClosed {
-                            guild_id: self.guild_id.clone(),
-                            code: 1000,
-                            reason: "Stream ended".to_string(),
-                            by_remote: true,
-                        });
-                    }
-                    break SessionOutcome::Reconnect;
-                }
-            };
-
-            match msg {
-                Message::Text(text) => {
-                    if let Some(outcome) = state.handle_text(text.to_string()).await {
-                        break outcome;
-                    }
-                }
-                Message::Binary(bin) => {
-                    state.handle_binary(bin.to_vec()).await;
-                }
-                Message::Close(frame) => {
-                    let (code, reason) = match &frame {
-                        Some(cf) => (cf.code.into(), cf.reason.to_string()),
-                        None => (1000u16, "No reason".to_string()),
+                msg = read.next() => {
+                    let msg = match msg {
+                        Some(Ok(msg)) => msg,
+                        Some(Err(e)) => {
+                            warn!("[{}] WS read error: {}", self.guild_id, e);
+                            self.emit_close_event(1006, format!("IO error: {}", e));
+                            break SessionOutcome::Reconnect;
+                        }
+                        None => {
+                            debug!("[{}] WS stream ended", self.guild_id);
+                            self.emit_close_event(1000, "Stream ended".into());
+                            break SessionOutcome::Reconnect;
+                        }
                     };
-                    info!(
-                        "Voice WS closed: code={}, reason='{}' for guild {}",
-                        code, reason, self.guild_id
-                    );
 
-                    if let Some(event_tx) = &self.event_tx {
-                        let _ = event_tx.send(crate::api::LavalinkEvent::WebSocketClosed {
-                            guild_id: self.guild_id.clone(),
-                            code,
-                            reason: reason.clone(),
-                            by_remote: true,
-                        });
-                    }
+                    match msg {
+                        Message::Text(text) => {
+                            if let Some(outcome) = state.handle_text(text.to_string()).await {
+                                break outcome;
+                            }
+                        }
+                        Message::Binary(bin) => {
+                            state.handle_binary(bin.to_vec()).await;
+                        }
+                        Message::Close(frame) => {
+                            let (code, reason) = frame.map(|cf| (cf.code.into(), cf.reason.to_string()))
+                                .unwrap_or((1000u16, "No reason".into()));
 
-                    if is_reconnectable_close(code) {
-                        break SessionOutcome::Reconnect;
+                            info!("[{}] WS closed: code={}, reason='{}'", self.guild_id, code, reason);
+                            self.emit_close_event(code, reason.clone());
+
+                            if is_reconnectable_close(code) { break SessionOutcome::Reconnect; }
+                            if is_reidentify_close(code) { break SessionOutcome::Identify; }
+                            if is_fatal_close(code) { break SessionOutcome::Shutdown; }
+                            break SessionOutcome::Reconnect;
+                        }
+                        _ => {}
                     }
-                    if is_reidentify_close(code) {
-                        break SessionOutcome::Identify;
-                    }
-                    if is_fatal_close(code) {
-                        warn!("Voice gateway closed fatally with code {}", code);
-                        break SessionOutcome::Shutdown;
-                    }
-                    break SessionOutcome::Reconnect;
                 }
-                _ => {}
             }
         };
 
@@ -295,5 +263,41 @@ impl VoiceGateway {
         let _ = tokio::time::timeout(std::time::Duration::from_millis(500), write_task).await;
 
         Ok(outcome)
+    }
+
+    fn identify_message(&self) -> VoiceGatewayMessage {
+        VoiceGatewayMessage {
+            op: 0,
+            d: serde_json::json!({
+                "server_id": self.guild_id,
+                "user_id": self.user_id.to_string(),
+                "session_id": self.session_id,
+                "token": self.token,
+                "max_dave_protocol_version": if self.channel_id.0 > 0 { 1 } else { 0 },
+            }),
+        }
+    }
+
+    fn resume_message(&self, seq_ack: i64) -> VoiceGatewayMessage {
+        VoiceGatewayMessage {
+            op: 7,
+            d: serde_json::json!({
+                "server_id": self.guild_id,
+                "session_id": self.session_id,
+                "token": self.token,
+                "seq_ack": seq_ack,
+            }),
+        }
+    }
+
+    fn emit_close_event(&self, code: u16, reason: String) {
+        if let Some(tx) = &self.event_tx {
+            let _ = tx.send(crate::api::LavalinkEvent::WebSocketClosed {
+                guild_id: self.guild_id.clone(),
+                code,
+                reason,
+                by_remote: true,
+            });
+        }
     }
 }
