@@ -116,12 +116,10 @@ pub async fn start_playback(
         }
     };
 
-    session
-        .send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackStart {
-            guild_id: player.guild_id.clone(),
-            track: track_info_response.clone(),
-        }))
-        .await;
+    session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackStart {
+        guild_id: player.guild_id.clone(),
+        track: track_info_response.clone(),
+    }));
 
     // -- 6. Fetch lyrics (async, non-blocking) -----------------------------
     spawn_lyrics_fetch(
@@ -158,13 +156,11 @@ async fn stop_current_track(player: &mut PlayerContext, session: &Session) {
     if let Some(handle) = &player.track_handle {
         if handle.get_state() != PlaybackState::Stopped {
             if let Some(track) = player.to_player_response().track {
-                session
-                    .send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackEnd {
-                        guild_id: player.guild_id.clone(),
-                        track,
-                        reason: TrackEndReason::Replaced,
-                    }))
-                    .await;
+                session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackEnd {
+                    guild_id: player.guild_id.clone(),
+                    track,
+                    reason: TrackEndReason::Replaced,
+                }));
             }
         }
     }

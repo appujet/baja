@@ -65,32 +65,28 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
             let reason = match err_rx.try_recv() {
                 Ok(err) => {
                     warn!("[{}] mid-playback decoder error: {}", guild_id, err);
-                    session
-                        .send_message(&api::OutgoingMessage::Event(
-                            RustalinkEvent::TrackException {
-                                guild_id: guild_id.clone(),
-                                track: track.clone(),
-                                exception: TrackException {
-                                    message: Some(err.clone()),
-                                    severity: crate::common::Severity::Fault,
-                                    cause: err.clone(),
-                                    cause_stack_trace: Some(err),
-                                },
+                    session.send_message(&api::OutgoingMessage::Event(
+                        RustalinkEvent::TrackException {
+                            guild_id: guild_id.clone(),
+                            track: track.clone(),
+                            exception: TrackException {
+                                message: Some(err.clone()),
+                                severity: crate::common::Severity::Fault,
+                                cause: err.clone(),
+                                cause_stack_trace: Some(err),
                             },
-                        ))
-                        .await;
+                        },
+                    ));
                     TrackEndReason::LoadFailed
                 }
                 Err(_) => TrackEndReason::Finished,
             };
 
-            session
-                .send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackEnd {
-                    guild_id,
-                    track,
-                    reason,
-                }))
-                .await;
+            session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackEnd {
+                guild_id,
+                track,
+                reason,
+            }));
             break;
         }
 
@@ -105,13 +101,13 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                     stuck_threshold_ms
                 };
                 if stuck_ms >= threshold {
-                    session
-                        .send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackStuck {
+                    session.send_message(&api::OutgoingMessage::Event(
+                        RustalinkEvent::TrackStuck {
                             guild_id: guild_id.clone(),
                             track: track.clone(),
                             threshold_ms: stuck_threshold_ms,
-                        }))
-                        .await;
+                        },
+                    ));
                     warn!("Track {} got stuck", track.info.title);
                     handle.stop();
                 }
@@ -125,17 +121,15 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
 
         // -- PlayerUpdate --------------------------------------------------
         if tick % update_every_n == 0 {
-            session
-                .send_message(&api::OutgoingMessage::PlayerUpdate {
-                    guild_id: guild_id.clone(),
-                    state: PlayerState {
-                        time: crate::server::now_ms(),
-                        position: cur_pos,
-                        connected: true,
-                        ping: ping.load(Ordering::Relaxed),
-                    },
-                })
-                .await;
+            session.send_message(&api::OutgoingMessage::PlayerUpdate {
+                guild_id: guild_id.clone(),
+                state: PlayerState {
+                    time: crate::server::now_ms(),
+                    position: cur_pos,
+                    connected: true,
+                    ping: ping.load(Ordering::Relaxed),
+                },
+            });
         }
 
         // -- Lyrics sync ---------------------------------------------------

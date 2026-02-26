@@ -25,12 +25,13 @@ pub async fn destroy_player(
                 if player.track.is_some() {
                     if let Some(track_data) = player.to_player_response().track {
                         tracing::debug!("Emitting TrackEnd(Cleanup) for guild {}", guild_id);
-                        let end_event = api::OutgoingMessage::Event(api::RustalinkEvent::TrackEnd {
-                            guild_id: guild_id.clone(),
-                            track: track_data,
-                            reason: api::TrackEndReason::Cleanup,
-                        });
-                        session.send_message(&end_event).await;
+                        let end_event =
+                            api::OutgoingMessage::Event(api::RustalinkEvent::TrackEnd {
+                                guild_id: guild_id.clone(),
+                                track: track_data,
+                                reason: api::TrackEndReason::Cleanup,
+                            });
+                        session.send_message(&end_event);
                     }
                 }
 

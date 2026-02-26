@@ -104,7 +104,7 @@ pub async fn update_player(
             };
             let session_seek = session.clone();
             tokio::spawn(async move {
-                session_seek.send_message(&seek_update).await;
+                session_seek.send_message(&seek_update);
             });
         }
     }
@@ -170,7 +170,7 @@ pub async fn update_player(
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
                     let msg = api::OutgoingMessage::Event(event);
-                    session_clone.send_message(&msg).await;
+                    session_clone.send_message(&msg);
                 }
             });
 
@@ -255,29 +255,30 @@ pub async fn update_player(
 
                     // Emit TrackEnd with reason Stopped
                     if let Some(encoded) = track_data {
-                        let end_event = api::OutgoingMessage::Event(api::RustalinkEvent::TrackEnd {
-                            guild_id: guild_id.clone(),
-                            track: Track {
-                                encoded,
-                                info: TrackInfo {
-                                    identifier: String::new(),
-                                    is_seekable: false,
-                                    author: String::new(),
-                                    length: 0,
-                                    is_stream: false,
-                                    position: 0,
-                                    title: String::new(),
-                                    uri: None,
-                                    artwork_url: None,
-                                    isrc: None,
-                                    source_name: String::new(),
+                        let end_event =
+                            api::OutgoingMessage::Event(api::RustalinkEvent::TrackEnd {
+                                guild_id: guild_id.clone(),
+                                track: Track {
+                                    encoded,
+                                    info: TrackInfo {
+                                        identifier: String::new(),
+                                        is_seekable: false,
+                                        author: String::new(),
+                                        length: 0,
+                                        is_stream: false,
+                                        position: 0,
+                                        title: String::new(),
+                                        uri: None,
+                                        artwork_url: None,
+                                        isrc: None,
+                                        source_name: String::new(),
+                                    },
+                                    plugin_info: serde_json::json!({}),
+                                    user_data: serde_json::json!({}),
                                 },
-                                plugin_info: serde_json::json!({}),
-                                user_data: serde_json::json!({}),
-                            },
-                            reason: api::TrackEndReason::Stopped,
-                        });
-                        session.send_message(&end_event).await;
+                                reason: api::TrackEndReason::Stopped,
+                            });
+                        session.send_message(&end_event);
                     }
                 }
                 crate::player::state::TrackEncoded::Set(track_data) => {

@@ -14,11 +14,6 @@ use crate::{
 };
 
 /// Spawns the voice gateway task for the given guild.
-///
-/// Returns a `JoinHandle` so the caller can abort the task on disconnect.
-///
-/// # Errors (via tracing)
-/// Any error from `VoiceGateway::run` is logged and the task exits silently.
 pub async fn connect_voice(
     engine: Shared<VoiceEngine>,
     guild_id: GuildId,
@@ -30,15 +25,19 @@ pub async fn connect_voice(
     frames_sent: Arc<AtomicU64>,
     frames_nulled: Arc<AtomicU64>,
 ) -> tokio::task::JoinHandle<()> {
-    // `channel_id` is required — parse it from the voice state.
-    let channel_id = voice
+    let channel_id = match voice
         .channel_id
         .as_deref()
         .and_then(|id| id.parse::<u64>().ok())
         .map(ChannelId)
-        .expect("channel_id is required to connect voice");
+    {
+        Some(id) => id,
+        None => {
+            error!("Failed to connect voice: channel_id is missing or invalid");
+            return tokio::spawn(async {});
+        }
+    };
 
-    // Narrow the lock scope: release the guard as soon as we have the mixer.
     let mixer = {
         let engine_lock = engine.lock().await;
         engine_lock.mixer.clone()

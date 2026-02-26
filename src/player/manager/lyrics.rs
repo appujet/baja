@@ -2,7 +2,7 @@ use crate::{
     api::{
         self,
         events::RustalinkEvent,
-        models::{RustalinkLyrics, RustalinkLyricsLine, LyricsData},
+        models::{LyricsData, RustalinkLyrics, RustalinkLyricsLine},
         tracks::TrackInfo,
     },
     common::types::GuildId,
@@ -52,7 +52,7 @@ pub fn spawn_lyrics_fetch(
             api::OutgoingMessage::Event(RustalinkEvent::LyricsNotFound { guild_id })
         };
 
-        session.send_message(&event).await;
+        session.send_message(&event);
     });
 }
 
@@ -86,36 +86,32 @@ pub async fn sync_lyrics(
         // Forward: emit any lines we skipped.
         for i in (last + 1)..=target {
             let line = &lines[i as usize];
-            session
-                .send_message(&api::OutgoingMessage::Event(RustalinkEvent::LyricsLine {
-                    guild_id: guild_id.clone(),
-                    line_index: i as i32,
-                    line: RustalinkLyricsLine {
-                        line: line.text.clone(),
-                        timestamp: line.timestamp,
-                        duration: Some(line.duration),
-                        plugin: serde_json::json!({}),
-                    },
-                    skipped: i != target,
-                }))
-                .await;
-        }
-    } else if target >= 0 {
-        // Backward seek - emit the new current line.
-        let line = &lines[target as usize];
-        session
-            .send_message(&api::OutgoingMessage::Event(RustalinkEvent::LyricsLine {
+            session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::LyricsLine {
                 guild_id: guild_id.clone(),
-                line_index: target as i32,
+                line_index: i as i32,
                 line: RustalinkLyricsLine {
                     line: line.text.clone(),
                     timestamp: line.timestamp,
                     duration: Some(line.duration),
                     plugin: serde_json::json!({}),
                 },
-                skipped: false,
-            }))
-            .await;
+                skipped: i != target,
+            }));
+        }
+    } else if target >= 0 {
+        // Backward seek - emit the new current line.
+        let line = &lines[target as usize];
+        session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::LyricsLine {
+            guild_id: guild_id.clone(),
+            line_index: target as i32,
+            line: RustalinkLyricsLine {
+                line: line.text.clone(),
+                timestamp: line.timestamp,
+                duration: Some(line.duration),
+                plugin: serde_json::json!({}),
+            },
+            skipped: false,
+        }));
     }
 
     last_idx.store(target, Ordering::SeqCst);

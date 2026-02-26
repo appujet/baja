@@ -111,7 +111,7 @@ pub async fn handle_op(
                     tokio::spawn(async move {
                         while let Some(event) = event_rx.recv().await {
                             let msg = crate::api::OutgoingMessage::Event(event);
-                            session_clone.send_message(&msg).await;
+                            session_clone.send_message(&msg);
                         }
                     });
                     let new_task = crate::server::connect_voice(

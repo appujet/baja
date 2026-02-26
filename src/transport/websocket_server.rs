@@ -8,7 +8,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use tokio::sync::Mutex;
+use parking_lot::Mutex;
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -102,7 +102,7 @@ pub async fn handle_socket(
                 .paused
                 .store(false, std::sync::atomic::Ordering::Relaxed);
             {
-                let mut sender = existing.sender.lock().await;
+                let mut sender = existing.sender.lock();
                 *sender = tx.clone();
             }
             state.sessions.insert(sid.clone(), existing.clone());
@@ -140,7 +140,7 @@ pub async fn handle_socket(
     // If resumed, replay queued events
     if resumed {
         let queued = {
-            let mut queue = session.event_queue.lock().await;
+            let mut queue = session.event_queue.lock();
             std::mem::take(&mut *queue)
         };
         for json in queued {
@@ -239,7 +239,7 @@ pub async fn handle_socket(
         session.paused.store(true, Relaxed);
 
         {
-            let current_sender = session.sender.lock().await;
+            let current_sender = session.sender.lock();
             if !current_sender.same_channel(&tx) {
                 info!(
                     "Session {} replaced by a new connection; closing the old connection for cleanup.",

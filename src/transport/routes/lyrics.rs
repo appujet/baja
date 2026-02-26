@@ -9,8 +9,8 @@ use axum::{
 use crate::{
     api::{
         models::{
-            GetLyricsQuery, GetPlayerLyricsQuery, RustalinkLyrics, RustalinkLyricsLine,
-            LyricsLoadResult, LyricsResultData as ApiLyricsData,
+            GetLyricsQuery, GetPlayerLyricsQuery, LyricsLoadResult,
+            LyricsResultData as ApiLyricsData, RustalinkLyrics, RustalinkLyricsLine,
         },
         tracks::Track,
     },
@@ -119,14 +119,14 @@ pub async fn subscribe_lyrics(
                                     },
                                 },
                             );
-                            session_lyrics_clone.send_message(&event).await;
+                            session_lyrics_clone.send_message(&event);
                         } else {
                             let event = crate::api::OutgoingMessage::Event(
                                 crate::api::RustalinkEvent::LyricsNotFound {
                                     guild_id: guild_id_lyrics,
                                 },
                             );
-                            session_lyrics_clone.send_message(&event).await;
+                            session_lyrics_clone.send_message(&event);
                         }
                     }
                 });

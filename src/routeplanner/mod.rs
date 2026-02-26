@@ -142,7 +142,7 @@ impl BalancingIpRoutePlanner {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner());
                 if let Some(&timestamp) = failing.get(&ip_str) {
-                    let now = crate::server::app_state::now_ms();
+                    let now = crate::server::now_ms();
                     if now > timestamp + 604800000 {
                         failing.remove(&ip_str);
                         false
@@ -226,7 +226,7 @@ impl RoutePlanner for BalancingIpRoutePlanner {
     }
 
     fn mark_failed(&self, address: &str) {
-        let now = crate::server::app_state::now_ms();
+        let now = crate::server::now_ms();
         self.failing_addresses
             .lock()
             .unwrap_or_else(|e| e.into_inner())
