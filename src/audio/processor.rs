@@ -236,6 +236,9 @@ impl AudioProcessor {
                     self.resampler.reset();
                     self.decoder.reset();
                     self.sample_buf = None;
+                    // Send a flush sentinel so the FlowController drops stale
+                    // pre-seek audio from pending_pcm immediately.
+                    let _ = self.engine.push_pcm(Vec::new());
                     CommandOutcome::Seeked
                 } else {
                     warn!("AudioProcessor: seek to {}ms failed", ms);

@@ -266,8 +266,10 @@ impl Read for SegmentedRemoteReader {
                     self.pos += n as u64;
                     state.current_pos = self.pos;
 
-                    if chunk_idx > 8 {
-                        state.chunks.retain(|&idx, _| idx >= chunk_idx - 4);
+                    if chunk_idx > 1 {
+                        // Evict chunks more than 1 behind the current position.
+                        // Keeps at most ~256 KB of history = real-time streaming.
+                        state.chunks.retain(|&idx, _| idx >= chunk_idx - 1);
                     }
                     return Ok(n);
                 }

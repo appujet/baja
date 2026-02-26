@@ -34,8 +34,8 @@ pub const MAX_OPUS_FRAME_SIZE: usize = 5_760;
 
 // ── Buffer pool (byte pool) ───────────────────────────────────────────────────
 
-/// Maximum total bytes held in the byte pool (50 MB).
-pub const MAX_POOL_BYTES: usize = 50 * 1_024 * 1_024;
+/// Maximum total bytes held in the byte pool (2 MB — keep it lean).
+pub const MAX_POOL_BYTES: usize = 2 * 1_024 * 1_024;
 
 /// Maximum buffers per same-size bucket.
 pub const MAX_BUCKET_ENTRIES: usize = 8;
@@ -53,11 +53,11 @@ pub const LAYER_BUFFER_SIZE: usize = 1_024 * 1_024;
 
 // ── Segmented remote reader ───────────────────────────────────────────────────
 
-/// HTTP fetch chunk size (256 KB).
-pub const CHUNK_SIZE: usize = 256 * 1_024;
+/// HTTP fetch chunk size (128 KB) — smaller = faster eviction, less memory spike.
+pub const CHUNK_SIZE: usize = 128 * 1_024;
 
-/// Chunks to pre-fetch ahead of the read position.
-pub const PREFETCH_CHUNKS: usize = 4;
+/// Chunks to pre-fetch ahead of the read position (2 = 256 KB look-ahead).
+pub const PREFETCH_CHUNKS: usize = 2;
 
 /// Maximum simultaneous in-flight HTTP fetches.
 pub const MAX_CONCURRENT_FETCHES: usize = 2;

@@ -18,31 +18,19 @@ pub use transcode::TranscodeEngine;
 
 use crate::audio::buffer::PooledBuffer;
 
-// ─── Engine output ────────────────────────────────────────────────────────────
-
-/// What the engine sends downstream for each block of input.
-pub enum EngineOutput {
-    /// Processed PCM i16 samples (the normal transcode path).
-    Pcm(PooledBuffer),
-    /// Raw encoded Opus bytes (passthrough path — skip the encoder).
-    Opus(std::sync::Arc<Vec<u8>>),
-    /// The engine consumed the input but produced nothing this block
-    /// (e.g. buffering, silence suppression).
-    None,
-}
-
 // ─── Engine trait ─────────────────────────────────────────────────────────────
 
 /// Abstraction over the two output strategies.
 ///
 /// `AudioProcessor` calls `push_pcm` for every decoded + resampled PCM block.
-/// Passthrough engines ignore PCM and instead read from their own Opus source.
+/// An empty `pcm` is treated as a seek-flush sentinel by the downstream
+/// `FlowController` (it clears stale pre-seek audio from `pending_pcm`).
 pub trait Engine: Send {
     /// Push a decoded PCM block into the engine.
     ///
-    /// Blocks until the downstream channel accepts the data (natural
-    /// back-pressure).  Returns `false` when the downstream has disconnected
-    /// and the caller should exit.
+    /// An empty `Vec` acts as a seek-flush sentinel — the call still returns
+    /// `true` (connected) even if the sentinel is silently discarded by a
+    /// passthrough engine.
     fn push_pcm(&mut self, pcm: PooledBuffer) -> bool;
 
     /// Push a raw Opus packet (only meaningful for `PassthroughEngine`).

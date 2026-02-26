@@ -112,6 +112,12 @@ impl FlowController {
         if !self.decoder_done {
             while self.pending_pcm.len() < FRAME_SIZE_SAMPLES {
                 match self.pcm_rx.try_recv() {
+                    Ok(chunk) if chunk.is_empty() => {
+                        // Seek-flush sentinel: processor signals a seek just happened.
+                        // Drop stale pre-seek audio so the new position plays immediately.
+                        self.pending_pcm.clear();
+                        self.decoder_done = false;
+                    }
                     Ok(chunk) => self.pending_pcm.extend_from_slice(&chunk),
                     Err(flume::TryRecvError::Empty) => break,
                     Err(flume::TryRecvError::Disconnected) => {
