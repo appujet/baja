@@ -9,7 +9,6 @@ pub mod flow;
 pub mod mix;
 pub mod playback;
 pub mod processor;
-pub mod remote_reader;
 pub mod resample;
 pub mod source;
 
