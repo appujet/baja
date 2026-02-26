@@ -71,7 +71,7 @@ impl PlayableTrack for GaanaTrack {
                 };
 
                 if let Some(reader) = reader {
-                    match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
+                    match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
                         Ok(mut processor) => {
                             if let Err(e) = processor.run() {
                                 tracing::error!("GaanaTrack audio processor error: {}", e);
@@ -79,6 +79,7 @@ impl PlayableTrack for GaanaTrack {
                         }
                         Err(e) => {
                             tracing::error!("GaanaTrack failed to initialize processor: {}", e);
+                            let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
                         }
                     }
                 } else {

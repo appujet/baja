@@ -310,7 +310,7 @@ impl PlayableTrack for YoutubeTrack {
                         kind,
                         tx_clone,
                         inner_cmd_rx,
-                        Some(err_tx_clone),
+                        Some(err_tx_clone.clone()),
                     ) {
                         Ok(mut processor) => {
                             if let Err(e) = processor.run() {
@@ -319,6 +319,7 @@ impl PlayableTrack for YoutubeTrack {
                         }
                         Err(e) => {
                             error!("YoutubeTrack: AudioProcessor initialization failed: {}", e);
+                            let _ = err_tx_clone.send(format!("Failed to initialize processor: {}", e));
                         }
                     }
                 });

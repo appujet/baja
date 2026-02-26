@@ -248,7 +248,7 @@ impl PlayableTrack for LocalTrack {
                 .and_then(|e| e.to_str())
                 .and_then(crate::common::types::AudioKind::from_ext);
 
-            match AudioProcessor::new(source, kind, tx, cmd_rx, Some(err_tx)) {
+            match AudioProcessor::new(source, kind, tx, cmd_rx, Some(err_tx.clone())) {
                 Ok(mut processor) => {
                     if let Err(e) = processor.run() {
                         error!("LocalTrack audio processor error: {}", e);
@@ -256,6 +256,7 @@ impl PlayableTrack for LocalTrack {
                 }
                 Err(e) => {
                     error!("LocalTrack failed to initialize processor: {}", e);
+                    let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
                 }
             }
         });

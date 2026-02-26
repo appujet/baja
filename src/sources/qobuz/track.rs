@@ -71,9 +71,10 @@ impl PlayableTrack for QobuzTrack {
                     });
 
                     // Proxy errors
+                    let err_tx_clone = err_tx.clone();
                     std::thread::spawn(move || {
-                        if let Ok(err) = inner_err_rx.recv() {
-                            let _ = err_tx.send(err);
+                        while let Ok(err) = inner_err_rx.recv() {
+                            let _ = err_tx_clone.send(err);
                         }
                     });
 

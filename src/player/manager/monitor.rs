@@ -73,7 +73,8 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                                 exception: TrackException {
                                     message: Some(err.clone()),
                                     severity: crate::common::Severity::Fault,
-                                    cause: err,
+                                    cause: err.clone(),
+                                    cause_stack_trace: Some(err),
                                 },
                             },
                         ))

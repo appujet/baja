@@ -81,7 +81,7 @@ impl PlayableTrack for MixcloudTrack {
                 };
 
                 if let Some(r) = reader {
-                    match AudioProcessor::new(r, kind, tx, cmd_rx, Some(err_tx)) {
+                    match AudioProcessor::new(r, kind, tx, cmd_rx, Some(err_tx.clone())) {
                         Ok(mut processor) => {
                             if let Err(e) = processor.run() {
                                 tracing::error!("Mixcloud audio processor error: {}", e);
@@ -89,6 +89,7 @@ impl PlayableTrack for MixcloudTrack {
                         }
                         Err(e) => {
                             tracing::error!("Mixcloud failed to initialize processor: {}", e);
+                            let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
                         }
                     }
                 } else {

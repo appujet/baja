@@ -22,7 +22,8 @@ pub async fn send_load_failed(player: &PlayerContext, session: &Session, message
                 exception: TrackException {
                     message: Some(message.clone()),
                     severity: crate::common::Severity::Common,
-                    cause: message,
+                    cause: message.clone(),
+                    cause_stack_trace: Some(message),
                 },
             },
         ))

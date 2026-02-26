@@ -231,7 +231,7 @@ impl PlayableTrack for HttpTrack {
                 .and_then(|s| s.to_str())
                 .and_then(crate::common::types::AudioKind::from_ext);
 
-            match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
+            match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
                 Ok(mut processor) => {
                     if let Err(e) = processor.run() {
                         error!("HTTP track audio processor error: {}", e);
@@ -239,6 +239,7 @@ impl PlayableTrack for HttpTrack {
                 }
                 Err(e) => {
                     error!("HTTP track failed to initialize processor: {}", e);
+                    let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
                 }
             }
         });

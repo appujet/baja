@@ -67,6 +67,7 @@ impl PlayableTrack for SoundCloudTrack {
                         Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
                         Err(e) => {
                             error!("SoundCloud progressive MP3: failed to open stream: {}", e);
+                            let _ = err_tx.send(format!("Failed to open stream: {}", e));
                             return;
                         }
                     };
@@ -88,6 +89,7 @@ impl PlayableTrack for SoundCloudTrack {
                         Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
                         Err(e) => {
                             error!("SoundCloud progressive AAC: failed to open stream: {}", e);
+                            let _ = err_tx.send(format!("Failed to open stream: {}", e));
                             return;
                         }
                     };
@@ -113,6 +115,7 @@ impl PlayableTrack for SoundCloudTrack {
                                 "SoundCloud HLS Opus: failed to init SoundCloudHlsReader: {}",
                                 e
                             );
+                            let _ = err_tx.send(format!("Failed to init HLS reader: {}", e));
                             return;
                         }
                     };
@@ -138,6 +141,7 @@ impl PlayableTrack for SoundCloudTrack {
                                 "SoundCloud HLS MP3: failed to init SoundCloudHlsReader: {}",
                                 e
                             );
+                            let _ = err_tx.send(format!("Failed to init HLS reader: {}", e));
                             return;
                         }
                     };
@@ -163,6 +167,7 @@ impl PlayableTrack for SoundCloudTrack {
                                 "SoundCloud HLS AAC: failed to init SoundCloudHlsReader: {}",
                                 e
                             );
+                            let _ = err_tx.send(format!("Failed to init HLS reader: {}", e));
                             return;
                         }
                     };
@@ -189,7 +194,7 @@ fn run_processor(
     cmd_rx: flume::Receiver<DecoderCommand>,
     err_tx: flume::Sender<String>,
 ) {
-    match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
+    match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
         Ok(mut p) => {
             if let Err(e) = p.run() {
                 error!("SoundCloud AudioProcessor error: {}", e);
@@ -200,6 +205,7 @@ fn run_processor(
                 "SoundCloud: failed to init AudioProcessor (kind={:?}): {}",
                 kind, e
             );
+            let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
         }
     }
 }

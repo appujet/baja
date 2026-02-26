@@ -192,7 +192,7 @@ impl PlayableTrack for DeezerTrack {
                     .and_then(|s| s.to_str())
                     .and_then(crate::common::types::AudioKind::from_ext);
 
-                match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
+                match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
                     Ok(mut processor) => {
                         if let Err(e) = processor.run() {
                             error!("DeezerTrack audio processor error: {}", e);
@@ -200,6 +200,7 @@ impl PlayableTrack for DeezerTrack {
                     }
                     Err(e) => {
                         error!("DeezerTrack failed to initialize processor: {}", e);
+                        let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
                     }
                 }
             } else {

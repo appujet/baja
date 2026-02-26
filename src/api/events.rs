@@ -105,4 +105,5 @@ pub struct TrackException {
     pub message: Option<String>,
     pub severity: crate::common::Severity,
     pub cause: String,
+    pub cause_stack_trace: Option<String>,
 }
