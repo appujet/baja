@@ -27,7 +27,7 @@ pub struct Memory {
 pub struct Cpu {
     pub cores: i32,
     pub system_load: f64,
-    pub rustalink_load: f64,
+    pub lavalink_load: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]

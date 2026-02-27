@@ -44,7 +44,7 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> protocol::Stats {
 
     let cores = num_cpus();
     let system_load = read_system_load() / cores as f64;
-    let rustalink_load = (read_process_cpu_load() / cores as f64).clamp(0.0, 1.0);
+    let lavalink_load = (read_process_cpu_load() / cores as f64).clamp(0.0, 1.0);
 
     protocol::Stats {
         players: total_players,
@@ -59,7 +59,7 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> protocol::Stats {
         cpu: protocol::Cpu {
             cores,
             system_load,
-            rustalink_load,
+            lavalink_load,
         },
         frame_stats,
     }
