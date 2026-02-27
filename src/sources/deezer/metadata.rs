@@ -4,10 +4,26 @@ use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track};
 impl DeezerSource {
     pub(crate) async fn get_track_by_isrc(&self, isrc: &str) -> Option<Track> {
         let url = format!("track/isrc:{}", isrc);
+        tracing::debug!(
+            "DeezerSource: Fetching metadata for ISRC: {} (URL: {})",
+            isrc,
+            url
+        );
         let json = self.get_json_public(&url).await?;
         if json.get("id").is_some() {
-            self.parse_track(&json)
+            let res = self.parse_track(&json);
+            if let Some(ref t) = res {
+                tracing::debug!(
+                    "DeezerSource: Found track for ISRC {}: {}",
+                    isrc,
+                    t.info.identifier
+                );
+            } else {
+                tracing::debug!("DeezerSource: Failed to parse track for ISRC {}", isrc);
+            }
+            res
         } else {
+            tracing::debug!("DeezerSource: No track found for ISRC {}", isrc);
             None
         }
     }

@@ -75,7 +75,8 @@ impl PlayableTrack for DeezerTrack {
                         .await
                     {
                         Ok(r) => r,
-                        Err(_) => {
+                        Err(e) => {
+                            debug!("DeezerTrack: Failed to get song data: {}", e);
                             retry_count += 1;
                             continue;
                         }
@@ -121,7 +122,8 @@ impl PlayableTrack for DeezerTrack {
 
                     let res = match client.post(media_url).json(&media_body).send().await {
                         Ok(r) => r,
-                        Err(_) => {
+                        Err(e) => {
+                            debug!("DeezerTrack: Failed to get media URL: {}", e);
                             retry_count += 1;
                             continue;
                         }

@@ -221,12 +221,19 @@ impl SourceManager {
     ) -> crate::api::tracks::LoadResult {
         for source in &self.sources {
             if source.can_handle(identifier) {
-                tracing::trace!("Loading '{}' with source: {}", identifier, source.name());
+                tracing::debug!(
+                    "SourceManager: Loading '{}' with source: {}",
+                    identifier,
+                    source.name()
+                );
                 return source.load(identifier, routeplanner.clone()).await;
             }
         }
 
-        tracing::debug!("No source could handle identifier: {}", identifier);
+        tracing::debug!(
+            "SourceManager: No source matched identifier: '{}'",
+            identifier
+        );
         crate::api::tracks::LoadResult::Empty {}
     }
     pub async fn load_search(
@@ -315,46 +322,39 @@ impl SourceManager {
                 .collect();
 
             if !provider_queries.is_empty() {
-                use futures::stream::{FuturesUnordered, StreamExt};
-
-                let timeout_dur = std::time::Duration::from_millis(mirrors.timeout_ms);
-
-                let mut futs: FuturesUnordered<_> = provider_queries
-                    .into_iter()
-                    .map(|sq| {
-                        let rp = routeplanner.clone();
-                        async move {
-                            tokio::time::timeout(timeout_dur, async move {
-                                match self.load(&sq, rp.clone()).await {
-                                    crate::api::tracks::LoadResult::Track(t) => {
-                                        let id =
-                                            t.info.uri.as_deref().unwrap_or(&t.info.identifier);
-                                        self.resolve_nested_track(id, rp).await
-                                    }
-                                    crate::api::tracks::LoadResult::Search(tracks) => {
-                                        if let Some(first) = tracks.first() {
-                                            let id = first
-                                                .info
-                                                .uri
-                                                .as_deref()
-                                                .unwrap_or(&first.info.identifier);
-                                            self.resolve_nested_track(id, rp).await
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                    _ => None,
-                                }
-                            })
-                            .await
-                            .unwrap_or(None)
+                for sq in provider_queries {
+                    let rp = routeplanner.clone();
+                    let res = match self.load(&sq, rp.clone()).await {
+                        crate::api::tracks::LoadResult::Track(t) => {
+                            let id = t.info.uri.as_deref().unwrap_or(&t.info.identifier);
+                            self.resolve_nested_track(id, rp).await
                         }
-                    })
-                    .collect();
+                        crate::api::tracks::LoadResult::Search(tracks) => {
+                            if let Some(first) = tracks.first() {
+                                tracing::debug!(
+                                    "Mirror provider '{}' returned search result, using first track: {}",
+                                    sq,
+                                    first.info.identifier
+                                );
+                                let id =
+                                    first.info.uri.as_deref().unwrap_or(&first.info.identifier);
+                                self.resolve_nested_track(id, rp).await
+                            } else {
+                                tracing::debug!(
+                                    "Mirror provider '{}' returned empty search result",
+                                    sq
+                                );
+                                None
+                            }
+                        }
+                        _ => {
+                            tracing::debug!("Mirror provider '{}' returned no result", sq);
+                            None
+                        }
+                    };
 
-                while let Some(res) = futs.next().await {
-                    if res.is_some() {
-                        return res;
+                    if let Some(track) = res {
+                        return Some(track);
                     }
                 }
             }

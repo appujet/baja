@@ -21,7 +21,7 @@ use crate::{
     sources::{SourcePlugin, plugin::PlayableTrack},
 };
 
-const PUBLIC_API_BASE: &str = "https://api.deezer.com/2.0";
+const PUBLIC_API_BASE: &str = "https://api.deezer.com";
 const PRIVATE_API_BASE: &str = "https://www.deezer.com/ajax/gw-light.php";
 
 pub struct DeezerSource {
