@@ -6,6 +6,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::common::Severity;
 
+/// Plugin-specific info.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginInfo {
+    pub album_name: Option<String>,
+    pub album_url: Option<String>,
+    pub artist_url: Option<String>,
+    pub artist_artwork_url: Option<String>,
+    pub preview_url: Option<String>,
+    #[serde(default)]
+    pub is_preview: bool,
+}
+
 /// A single audio track with encoded data and metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,9 +27,9 @@ pub struct Track {
     pub encoded: String,
     /// Track metadata.
     pub info: TrackInfo,
-    /// Plugin-specific info. Always `{}` without plugins.
+    /// Plugin-specific info.
     #[serde(default)]
-    pub plugin_info: serde_json::Value,
+    pub plugin_info: PluginInfo,
     /// User-provided data attached to the track.
     #[serde(default)]
     pub user_data: serde_json::Value,
@@ -28,7 +41,7 @@ impl Track {
         let mut track = Self {
             encoded: String::new(),
             info,
-            plugin_info: serde_json::json!({}),
+            plugin_info: PluginInfo::default(),
             user_data: serde_json::json!({}),
         };
         track.encoded = track.encode();
@@ -37,33 +50,53 @@ impl Track {
 
     /// Encode the track into a base64 string.
     pub fn encode(&self) -> String {
-        let mut buf = Vec::new();
-        // Version 
-        buf.write_u8(3).unwrap();
+        let mut msg_buf = Vec::new();
+        // Version
+        msg_buf.write_u8(3).unwrap();
 
-        write_utf(&mut buf, &self.info.title);
-        write_utf(&mut buf, &self.info.author);
-        buf.write_u64::<BigEndian>(self.info.length).unwrap();
-        write_utf(&mut buf, &self.info.identifier);
-        buf.write_u8(if self.info.is_stream { 1 } else { 0 })
+        write_utf(&mut msg_buf, &self.info.title);
+        write_utf(&mut msg_buf, &self.info.author);
+        msg_buf.write_u64::<BigEndian>(self.info.length).unwrap();
+        write_utf(&mut msg_buf, &self.info.identifier);
+        msg_buf
+            .write_u8(if self.info.is_stream { 1 } else { 0 })
             .unwrap();
 
-        write_opt_utf(&mut buf, self.info.uri.as_deref());
-        write_opt_utf(&mut buf, self.info.artwork_url.as_deref());
-        write_opt_utf(&mut buf, self.info.isrc.as_deref());
-        write_utf(&mut buf, &self.info.source_name);
+        write_opt_utf(&mut msg_buf, self.info.uri.as_deref());
+        write_opt_utf(&mut msg_buf, self.info.artwork_url.as_deref());
+        write_opt_utf(&mut msg_buf, self.info.isrc.as_deref());
+        write_utf(&mut msg_buf, &self.info.source_name);
 
-        buf.write_u64::<BigEndian>(self.info.position).unwrap();
+        msg_buf.write_u64::<BigEndian>(self.info.position).unwrap();
 
-        BASE64_STANDARD.encode(&buf)
+        let mut final_buf = Vec::new();
+        let size = msg_buf.len() as u32;
+        let flags = 1u32; // TRACK_INFO_VERSIONED
+        let header = size | (flags << 30);
+        final_buf.write_u32::<BigEndian>(header).unwrap();
+        final_buf.extend_from_slice(&msg_buf);
+
+        BASE64_STANDARD.encode(&final_buf)
     }
 
     /// Decode a track from a base64 string.
     pub fn decode(encoded: &str) -> Option<Self> {
         let data = BASE64_STANDARD.decode(encoded).ok()?;
-        let mut cursor = Cursor::new(data);
+        if data.len() < 4 {
+            return None;
+        }
 
-        let version = cursor.read_u8().ok()?;
+        let mut cursor = Cursor::new(data);
+        let header = cursor.read_u32::<BigEndian>().ok()?;
+        let flags = (header >> 30) & 0x03;
+        // let size = header & 0x3FFFFFFF;
+
+        let version = if (flags & 1) != 0 {
+            cursor.read_u8().ok()?
+        } else {
+            1
+        };
+
         if version > 3 {
             return None; // Unknown version
         }
@@ -74,7 +107,11 @@ impl Track {
         let identifier = read_utf(&mut cursor)?;
         let is_stream = cursor.read_u8().ok()? != 0;
 
-        let uri = read_opt_utf(&mut cursor);
+        let uri = if version >= 2 {
+            read_opt_utf(&mut cursor)
+        } else {
+            None
+        };
         let artwork_url = if version >= 3 {
             read_opt_utf(&mut cursor)
         } else {
@@ -87,11 +124,7 @@ impl Track {
         };
         let source_name = read_utf(&mut cursor)?;
 
-        let position = if version >= 2 {
-            cursor.read_u64::<BigEndian>().ok().unwrap_or(0)
-        } else {
-            0
-        };
+        let position = cursor.read_u64::<BigEndian>().ok().unwrap_or(0);
 
         Some(Self {
             encoded: encoded.to_string(),
@@ -108,7 +141,7 @@ impl Track {
                 isrc,
                 source_name,
             },
-            plugin_info: serde_json::json!({}),
+            plugin_info: PluginInfo::default(),
             user_data: serde_json::json!({}),
         })
     }

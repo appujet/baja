@@ -223,12 +223,14 @@ impl PandoraSource {
         };
 
         let mut t = Track::new(info);
-        t.plugin_info = json!({
-          "albumName": album_name,
-          "albumUrl": album_url.map(|p| format!("{}{}", BASE_URL, p)),
-          "artistUrl": artist_url.map(|p| format!("{}{}", BASE_URL, p)),
-          "artistArtworkUrl": artist_artwork_url,
-        });
+        t.plugin_info = crate::api::tracks::PluginInfo {
+            album_name: album_name.map(|s| s.to_string()),
+            album_url: album_url.map(|p| format!("{}{}", BASE_URL, p)),
+            artist_url: artist_url.map(|p| format!("{}{}", BASE_URL, p)),
+            artist_artwork_url,
+            preview_url: None,
+            is_preview: false,
+        };
         Some(t)
     }
 

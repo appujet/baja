@@ -141,9 +141,14 @@ impl ShazamSource {
             source_name: "shazam".to_string(),
         });
 
-        track.plugin_info = serde_json::json!({
-          "save_uri": uri,
-        });
+        track.plugin_info = crate::api::tracks::PluginInfo {
+            album_name: None,
+            album_url: None,
+            artist_url: None,
+            artist_artwork_url: None,
+            preview_url: None,
+            is_preview: false,
+        };
 
         Some(track)
     }
@@ -216,10 +221,14 @@ impl ShazamSource {
             source_name: "shazam".to_string(),
         });
 
-        track.plugin_info = serde_json::json!({
-            "save_uri": url,
-            "appleMusicUrl": apple_music_url
-        });
+        track.plugin_info = crate::api::tracks::PluginInfo {
+            album_name: None,
+            album_url: None,
+            artist_url: None,
+            artist_artwork_url: None,
+            preview_url: None,
+            is_preview: false,
+        };
 
         LoadResult::Track(track)
     }

@@ -110,15 +110,36 @@ impl JioSaavnSource {
                         }
 
                         // Enrich pluginInfo
-                        track.plugin_info = serde_json::json!({
-                          "save_uri": track.info.uri,
-                          "albumName": detail.get("album").or_else(|| detail.pointer("/more_info/album")).and_then(|v| v.as_str()),
-                          "albumUrl": detail.get("album_url").or_else(|| detail.pointer("/more_info/album_url")).and_then(|v| v.as_str()),
-                          "artistUrl": detail.pointer("/more_info/artistMap/primary_artists/0/perma_url").and_then(|v| v.as_str()),
-                          "artistArtworkUrl": detail.pointer("/more_info/artistMap/primary_artists/0/image").and_then(|v| v.as_str()).map(|s| s.replace("150x150", "500x500").replace("50x50", "500x500")),
-                          "previewUrl": detail.get("media_preview_url").or_else(|| detail.pointer("/more_info/media_preview_url")).or_else(|| detail.get("vlink")).or_else(|| detail.pointer("/more_info/vlink")).and_then(|v| v.as_str()),
-                          "isPreview": false
-                        });
+                        track.plugin_info = crate::api::tracks::PluginInfo {
+                            album_name: detail
+                                .get("album")
+                                .or_else(|| detail.pointer("/more_info/album"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            album_url: detail
+                                .get("album_url")
+                                .or_else(|| detail.pointer("/more_info/album_url"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            artist_url: detail
+                                .pointer("/more_info/artistMap/primary_artists/0/perma_url")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            artist_artwork_url: detail
+                                .pointer("/more_info/artistMap/primary_artists/0/image")
+                                .and_then(|v| v.as_str())
+                                .map(|s| {
+                                    s.replace("150x150", "500x500").replace("50x50", "500x500")
+                                }),
+                            preview_url: detail
+                                .get("media_preview_url")
+                                .or_else(|| detail.pointer("/more_info/media_preview_url"))
+                                .or_else(|| detail.get("vlink"))
+                                .or_else(|| detail.pointer("/more_info/vlink"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            is_preview: false,
+                        };
 
                         // Update Author
                         if let Some(artists) =

@@ -270,7 +270,7 @@ async fn apply_track_update(
                             track: Track {
                                 encoded,
                                 info: TrackInfo::default(),
-                                plugin_info: serde_json::json!({}),
+                                plugin_info: api::tracks::PluginInfo::default(),
                                 user_data: serde_json::json!({}),
                             },
                             reason: api::TrackEndReason::Stopped,

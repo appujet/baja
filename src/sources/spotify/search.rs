@@ -93,16 +93,33 @@ impl SpotifySearch {
                         {
                             let mut track = Track::new(track_info);
 
-                            track.plugin_info = json!({
-                              "save_uri": track.info.uri,
-                              "albumUrl": track_data.pointer("/albumOfTrack/uri").and_then(|v| v.as_str()).map(|s| format!("https://open.spotify.com/album/{}", s.split(':').last().unwrap_or(""))),
-                              "albumName": track_data.pointer("/albumOfTrack/name").and_then(|v| v.as_str()),
-                              "previewUrl": null,
-                              "isPreview": false,
-                              "artistUrl": track_data.pointer("/artists/items/0/uri").and_then(|v| v.as_str()).map(|s| format!("https://open.spotify.com/artist/{}", s.split(':').last().unwrap_or(""))),
-                              "artistArtworkUrl": null,
-                              "isLocal": false
-                            });
+                            track.plugin_info = crate::api::tracks::PluginInfo {
+                                album_name: track_data
+                                    .pointer("/albumOfTrack/name")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
+                                album_url: track_data
+                                    .pointer("/albumOfTrack/uri")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| {
+                                        format!(
+                                            "https://open.spotify.com/album/{}",
+                                            s.split(':').last().unwrap_or("")
+                                        )
+                                    }),
+                                artist_url: track_data
+                                    .pointer("/artists/items/0/uri")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| {
+                                        format!(
+                                            "https://open.spotify.com/artist/{}",
+                                            s.split(':').last().unwrap_or("")
+                                        )
+                                    }),
+                                artist_artwork_url: None,
+                                preview_url: None,
+                                is_preview: false,
+                            };
 
                             if track.info.isrc.is_none() {
                                 if let Ok(Some(isrc)) = timeout(
