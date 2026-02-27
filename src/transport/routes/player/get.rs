@@ -57,7 +57,7 @@ pub async fn get_player(
             )
                 .into_response(),
             None => {
-                // Return empty player (Lavalink behavior: player exists implicitly)
+                // Return empty player
                 let empty = Player {
                     guild_id: guild_id.clone(),
                     track: None,

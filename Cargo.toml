@@ -4,7 +4,7 @@ version = "0.1.2"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["appujet", "notdeltaxd", "contributors"]
-repository = "https://github.com/bong-devs/Rustalink"
+repository = "https://github.com/bongodevs/Rustalink"
 
 [dependencies]
 base64 = "^0.22.1"

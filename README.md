@@ -1,22 +1,10 @@
 <p align="center">
-  <img src="assets/rastalink.png" alt="Rustalink Logo" width="250" height="250">
+  <img src="https://pub-19903466d24c44f9a9d94c9a3b2f4932.r2.dev/rastalink.png" alt="Rustalink Logo" width="250" height="250">
 </p>
 
 # Rustalink
 
 A high-performance Discord audio sending server written in Rust.
-
-### Key Features
-
-#### 📼 Tape Stop
-Adds a gradual slowdown/speed-up effect when pausing and resuming playback.
-
-```toml
-# Adds a gradual slowdown/speed-up effect (tape stop) when pausing and resuming.
-tape_stop = true
-# Duration of the slowdown/speed-up transition in milliseconds.
-tape_stop_duration_ms = 600
-```
 
 ---
 
@@ -70,14 +58,14 @@ To optimize playback and bypass restrictions, Rustalink supports switching betwe
 
 ---
 
-## 🛠️ Installation
+## Installation
 
 ### Running with Docker (Recommended)
 Docker ensures a consistent environment with all dependencies pre-configured.
 
 #### 1. Pull the latest image
 ```bash
-docker pull ghcr.io/bong-project/rustalink:latest
+docker pull ghcr.io/bongodevs/rustalink:latest
 ```
 
 #### 2. Setup configuration
@@ -96,7 +84,7 @@ docker run -d \
   -v $(pwd)/rustalink/config.toml:/app/config.toml \
   -v $(pwd)/rustalink/logs:/app/logs \
   --restart unless-stopped \
-  ghcr.io/bong-project/rustalink:latest
+  ghcr.io/bongodevs/rustalink:latest
 ```
 
 #### 4. Docker Compose (Alternative)
@@ -104,7 +92,7 @@ Create a `docker-compose.yml`:
 ```yaml
 services:
   rustalink:
-    image: ghcr.io/bong-project/rustalink:latest
+    image: ghcr.io/bongodevs/rustalink:latest
     ports:
       - "2333:2333"
     volumes:
@@ -117,15 +105,15 @@ Run with: `docker compose up -d`
 ---
 
 ### Running Native
-Download the appropriate binary for your system from the [Releases](https://github.com/bong-project/rustalink/releases) page or build from source.
+Download the appropriate binary for your system from the [Releases](https://github.com/bongodevs/rustalink/releases) page or build from source.
 
-#### 🪟 Windows
+#### Windows
 1. Download `rustalink-x86_64-pc-windows-msvc.exe`.
 2. Install the [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 3. Place `config.toml` next to the `.exe`.
 4. Run via Command Prompt or PowerShell: `.\rustalink.exe`
 
-#### 🏔️ Linux (Arch / Ubuntu)
+#### Linux (Arch / Ubuntu)
 1. Download `rustalink-x86_64-unknown-linux-musl`.
 2. Install build dependencies if needed:
    - **Arch**: `sudo pacman -S cmake gcc pkg-config`
@@ -133,14 +121,14 @@ Download the appropriate binary for your system from the [Releases](https://gith
 3. Make executable: `chmod +x rustalink-x86_64-unknown-linux-musl`
 4. Run: `./rustalink-x86_64-unknown-linux-musl`
 
-#### 🍎 macOS
+#### macOS
 1. Download the correct binary (Intel/M1/M2/M3).
 2. Remove quarantine if blocked: `xattr -d com.apple.quarantine rustalink-*-apple-darwin`
 3. Make executable and run: `chmod +x rustalink-*-apple-darwin && ./rustalink-*-apple-darwin`
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 Rustalink uses a `config.toml` file for its settings.
 - **Port**: Default is `2333`.
@@ -151,9 +139,9 @@ Rustalink uses a `config.toml` file for its settings.
 
 ---
 
-## 🛠️ Building from Source
+## Building from Source
 
-### 🛠️ Build Requirements
+### Build Requirements
 - **Rust**: Latest stable.
 - **C-Toolchain**: `gcc`, `g++`, `make`, `cmake`, `pkg-config`.
 - **Clang/LLVM**: Required for `bindgen`.
@@ -165,7 +153,7 @@ Rustalink uses a `config.toml` file for its settings.
 ### Commands
 ```bash
 # Clone the repository
-git clone https://github.com/bong-project/rustalink.git
+git clone https://github.com/bongodevs/rustalink.git
 cd rustalink
 
 # Build the project
@@ -177,7 +165,7 @@ rustup run nightly cargo fmt
 
 ---
 
-## 💖 Credits & Inspiration
+## Credits & Inspiration
 
 Rustalink is inspired by and built upon the ideas of these amazing projects:
 
@@ -186,5 +174,5 @@ Rustalink is inspired by and built upon the ideas of these amazing projects:
 
 ---
 
-## 📝 License
+## License
 Distributed under the Apache-2.0 License. See `LICENSE` for more information.
