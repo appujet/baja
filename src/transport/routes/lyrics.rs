@@ -28,7 +28,7 @@ pub async fn load_lyrics(
     State(state): State<Arc<AppState>>,
     Query(query): Query<LoadLyricsQuery>,
 ) -> Json<LyricsLoadResult> {
-    tracing::debug!(
+    tracing::info!(
         "GET /v4/loadlyrics: encoded_track='{}', lang={:?}",
         query.encoded_track,
         query.lang
@@ -69,7 +69,7 @@ pub async fn subscribe_lyrics(
 ) -> axum::http::StatusCode {
     let session_id = crate::common::types::SessionId(session_id);
     let guild_id = crate::common::types::GuildId(guild_id);
-    tracing::debug!(
+    tracing::info!(
         "POST /v4/sessions/{}/players/{}/lyrics/subscribe",
         session_id,
         guild_id
@@ -144,7 +144,7 @@ pub async fn unsubscribe_lyrics(
 ) -> axum::http::StatusCode {
     let session_id = crate::common::types::SessionId(session_id);
     let guild_id = crate::common::types::GuildId(guild_id);
-    tracing::debug!(
+    tracing::info!(
         "POST /v4/sessions/{}/players/{}/lyrics/unsubscribe",
         session_id,
         guild_id
@@ -164,7 +164,7 @@ pub async fn get_lyrics(
     State(state): State<Arc<AppState>>,
     Query(query): Query<GetLyricsQuery>,
 ) -> impl IntoResponse {
-    tracing::debug!(
+    tracing::info!(
         "GET /v4/lyrics: track='{}', skipTrackSource={}",
         query.track,
         query.skip_track_source
@@ -214,7 +214,7 @@ pub async fn get_player_lyrics(
 ) -> impl IntoResponse {
     let session_id = crate::common::types::SessionId(session_id);
     let guild_id = crate::common::types::GuildId(guild_id);
-    tracing::debug!(
+    tracing::info!(
         "GET /v4/sessions/{}/players/{}/track/lyrics: skipTrackSource={}",
         session_id,
         guild_id,

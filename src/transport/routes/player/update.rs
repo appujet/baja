@@ -23,7 +23,7 @@ pub async fn update_player(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PlayerUpdate>,
 ) -> impl IntoResponse {
-    tracing::debug!(
+    tracing::info!(
         "PATCH /v4/sessions/{}/players/{}\n{:?}",
         session_id,
         guild_id,
@@ -331,7 +331,7 @@ pub async fn update_session(
     State(state): State<Arc<AppState>>,
     Json(body): Json<api::SessionUpdate>,
 ) -> impl IntoResponse {
-    tracing::debug!("Update session: session={} body={:?}", session_id, body);
+    tracing::info!("Update session: session={} body={:?}", session_id, body);
 
     match state.sessions.get(&session_id) {
         Some(session) => {

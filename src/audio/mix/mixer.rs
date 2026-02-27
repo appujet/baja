@@ -237,15 +237,15 @@ impl Mixer {
             // Tape transition triggers.
             if state == PlaybackState::Stopping && !track.flow.tape.is_ramping() {
                 track.flow.tape.tape_to(
-                    track.config.tape_stop_duration_ms as f32,
+                    track.config.tape.tape_stop_duration_ms as f32,
                     "stop",
-                    "sinusoidal",
+                    track.config.tape.curve,
                 );
             } else if state == PlaybackState::Starting && !track.flow.tape.is_ramping() {
                 track.flow.tape.tape_to(
-                    track.config.tape_stop_duration_ms as f32,
+                    track.config.tape.tape_stop_duration_ms as f32,
                     "start",
-                    "sinusoidal",
+                    track.config.tape.curve,
                 );
             }
 

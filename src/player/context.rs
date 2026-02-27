@@ -65,7 +65,7 @@ impl PlayerContext {
             lyrics_subscribed: Arc::new(AtomicBool::new(false)),
             lyrics_data: Arc::new(Mutex::new(None)),
             last_lyric_index: Arc::new(AtomicI64::new(-1)),
-            tape_stop: Arc::new(AtomicBool::new(config.tape_stop)),
+            tape_stop: Arc::new(AtomicBool::new(config.tape.tape_stop)),
         }
     }
 

@@ -16,7 +16,7 @@ pub async fn destroy_player(
     )>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    tracing::debug!("Destroy player: session={} guild={}", session_id, guild_id);
+    tracing::info!("Destroy player: session={} guild={}", session_id, guild_id);
 
     match state.sessions.get(&session_id) {
         Some(session) => {
@@ -24,7 +24,6 @@ pub async fn destroy_player(
                 // Emit TrackEnd(Cleanup) if track existed
                 if player.track.is_some() {
                     if let Some(track_data) = player.to_player_response().track {
-                        tracing::debug!("Emitting TrackEnd(Cleanup) for guild {}", guild_id);
                         let end_event =
                             api::OutgoingMessage::Event(api::RustalinkEvent::TrackEnd {
                                 guild_id: guild_id.clone(),

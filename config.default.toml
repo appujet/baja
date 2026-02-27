@@ -11,10 +11,14 @@ websocket_ping_interval = 30
 
 [player]
 stuck_threshold_ms = 10000
+
+[player.tape]
 # Adds a gradual slowdown/speed-up effect (tape stop) when pausing and resuming.
 tape_stop = true
 # Duration of the slowdown/speed-up transition in milliseconds.
 tape_stop_duration_ms = 600
+# The transition curve. Options: "linear", "exponential", "sinusoidal".
+curve = "sinusoidal"
 
 [route_planner]
 enabled = false

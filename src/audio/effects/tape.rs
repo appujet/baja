@@ -2,22 +2,7 @@
 //!
 //! Uses Cubic Hermite Spline (Catmull-Rom) interpolation for smooth pitch/speed ramps.
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TapeCurve {
-    Linear,
-    Exponential,
-    Sinusoidal,
-}
-
-impl TapeCurve {
-    fn value(self, t: f32) -> f32 {
-        match self {
-            Self::Linear => t,
-            Self::Exponential => t * t,
-            Self::Sinusoidal => 0.5 * (1.0 - (t * std::f32::consts::PI).cos()),
-        }
-    }
-}
+use crate::configs::player::TapeCurve;
 
 struct TapeState {
     start_rate: f32,
@@ -60,13 +45,8 @@ impl TapeEffect {
         self.ramp_completed = false;
     }
 
-    pub fn tape_to(&mut self, duration_ms: f32, variant: &str, curve: &str) {
+    pub fn tape_to(&mut self, duration_ms: f32, variant: &str, curve_type: TapeCurve) {
         let target_rate = if variant == "start" { 1.0 } else { 0.01 };
-        let curve_type = match curve {
-            "linear" => TapeCurve::Linear,
-            "exponential" => TapeCurve::Exponential,
-            _ => TapeCurve::Sinusoidal,
-        };
 
         if duration_ms <= 0.0 {
             self.current_rate = target_rate;
