@@ -212,6 +212,8 @@ jobs:
         with:
           context: .
           file: Dockerfile
+          # Use the 'ci' stage — builder stage is NOT triggered
+          target: ci
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

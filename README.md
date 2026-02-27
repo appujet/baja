@@ -106,6 +106,24 @@ services:
     restart: unless-stopped
 ```
 
+### Build Docker Image from Source
+
+If you'd rather build the Docker image yourself from local source instead of pulling a pre-built image:
+
+```bash
+git clone https://github.com/bongodevs/rustalink.git
+cd rustalink
+
+# Build image from source (compiles Rust inside Docker — no local Rust toolchain needed)
+docker build --target local -t rustalink:dev .
+
+# Run it
+docker run -p 2333:2333 -v ./config.toml:/app/config.toml rustalink:dev
+```
+
+> [!NOTE]
+> The `--target local` flag triggers a full in-container Rust build. This takes longer than pulling the pre-built image but requires no local Rust installation.
+
 For native installation (Windows, Linux, macOS), see the [Releases](https://github.com/bongodevs/rustalink/releases) page.
 
 ---
@@ -139,6 +157,8 @@ git clone https://github.com/bongodevs/rustalink.git
 cd rustalink
 cargo build --release
 ```
+
+The compiled binary will be at `target/release/rustalink`.
 
 ---
 
