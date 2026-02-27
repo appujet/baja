@@ -1,0 +1,242 @@
+name: 🚀 Rustalink Release Pipeline
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  LIBOPUS_STATIC: "1"
+  OPUS_STATIC: "1"
+  AUDIOPUS_STATIC: "1"
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
+jobs:
+  # Build Linux Binaries
+  build-linux:
+    name: 🐧 Build Linux (${{ matrix.arch }})
+    runs-on: ubuntu-22.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            arch: amd64
+          - target: aarch64-unknown-linux-gnu
+            arch: arm64
+
+    steps:
+      - name: 📥 Checkout source
+        uses: actions/checkout@v4
+
+      - name: 🦀 Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: 📦 Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: 🎯 Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: 🔧 Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            pkg-config \
+            libclang-dev \
+            clang \
+            git \
+            build-essential \
+            perl
+
+          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          fi
+
+      - name: 🏗 Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: 📦 Rename binary
+        run: |
+          mv target/${{ matrix.target }}/release/rustalink \
+             target/${{ matrix.target }}/release/rustalink-linux-${{ matrix.arch }}
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustalink-linux-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/release/rustalink-linux-${{ matrix.arch }}
+
+
+  # Build macOS + Windows
+  build-other:
+    name: 💻 Build ${{ matrix.os_name }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            os_name: macOS Intel
+            target: x86_64-apple-darwin
+            output: rustalink-macos-amd64
+
+          - os: macos-latest
+            os_name: macOS ARM
+            target: aarch64-apple-darwin
+            output: rustalink-macos-arm64
+
+          - os: windows-latest
+            os_name: Windows x64
+            target: x86_64-pc-windows-msvc
+            output: rustalink-windows-amd64.exe
+
+          - os: windows-latest
+            os_name: Windows ARM64
+            target: aarch64-pc-windows-msvc
+            output: rustalink-windows-arm64.exe
+
+    steps:
+      - name: 📥 Checkout source
+        uses: actions/checkout@v4
+
+      - name: 🦀 Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: 📦 Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: 🎯 Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: 🔧 Install macOS dependencies
+        if: startsWith(matrix.os, 'macos')
+        run: brew install cmake pkg-config
+
+      - name: 🏗 Build release binary
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: 3.5
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: 📦 Rename binary (Unix)
+        if: "!startsWith(matrix.os, 'windows')"
+        run: |
+          mv target/${{ matrix.target }}/release/rustalink \
+             target/${{ matrix.target }}/release/${{ matrix.output }}
+
+      - name: 📦 Rename binary (Windows)
+        if: startsWith(matrix.os, 'windows')
+        shell: bash
+        run: |
+          mv target/${{ matrix.target }}/release/rustalink.exe \
+             target/${{ matrix.target }}/release/${{ matrix.output }}
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output }}
+          path: target/${{ matrix.target }}/release/${{ matrix.output }}
+
+
+  # Build & Push Multi-Arch Docker Image
+  docker:
+    name: 🐳 Build & Push Docker Image
+    needs: build-linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout source
+        uses: actions/checkout@v4
+
+      - name: 📥 Download Linux binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: bin
+          pattern: rustalink-linux-*
+
+      - name: 📂 Organize binaries
+        run: |
+          mkdir -p bin/linux/amd64 bin/linux/arm64
+          mv bin/rustalink-linux-amd64/rustalink-linux-amd64 bin/linux/amd64/rustalink
+          mv bin/rustalink-linux-arm64/rustalink-linux-arm64 bin/linux/arm64/rustalink
+          chmod +x bin/linux/amd64/rustalink bin/linux/arm64/rustalink
+
+      - name: 🔧 Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷 Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: 🚀 Build & Push Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+
+  # Publish GitHub Release Assets
+  publish:
+    name: 📦 Publish Release Assets
+    needs: [build-linux, build-other]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: rustalink-*
+
+      - name: 🚀 Attach binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          fail_on_unmatched_files: false

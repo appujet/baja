@@ -1,44 +1,73 @@
 [package]
-name = "baja"
-version = "0.1.0"
+name = "rustalink"
+version = "0.1.3"
 edition = "2024"
+license = "Apache-2.0"
+authors = ["appujet", "notdeltaxd", "contributors"]
+repository = "https://github.com/bongodevs/Rustalink"
 
 [dependencies]
 base64 = "^0.22.1"
 flume = "^0.11.1"
 dashmap = "^6.1.0"
-dotenv = "^0.15.0"
 tracing = "^0.1.41"
-tracing-subscriber = "^0.3.20"
 futures = "^0.3.31"
 async-trait = "^0.1.89"
-serde = { version = "^1.0.145", features = ["derive"] }
 serde_json = "^1.0.145"
-tower = "^0.5.2"
 byteorder = "^1.5.0"
-thiserror = "^2.0.17"
-cap = "^0.1.2"
-bytesize = "^2.1.0"
-perf_monitor = "^0.2.1"
 regex = "^1.12.2"
-hex = "^0.4.3"
-md5 = "^0.8.0"
-blowfish = "^0.9.1"
-cbc = "^0.1.2"
-rand_agents = "^1.0.0"
-
-
-symphonia = { version = "0.5.5", features = ["all"] }
+ipnet = "2.11.0"
+rand = "^0.8"
+toml = "1.0.2"
 davey = "0.1.1"
-audiopus = "0.3.0-rc.0"
+audiopus = { version = "0.3.0-rc.0" }
+xsalsa20poly1305 = "0.9.1"
+aes = "0.8"
+des = "0.8.1"
+cipher = "0.5.0"
+block-padding = "0.4.2"
+hex = "0.4.3"
+blowfish = "0.9"
+md-5 = "0.10"
+cbc = "0.1"
+urlencoding = "2.1.3"
+hmac = "0.12"
+sha1 = "0.10"
+sha2 = "0.10"
+parking_lot = "0.12.5"
+
+tracing-subscriber = { version = "^0.3.20", features = ["env-filter", "registry", "time", "local-time"] }
+serde = { version = "^1.0.145", features = ["derive"] }
+time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
+symphonia = { version = "0.5.5", features = ["aac", "mp3", "ogg", "flac", "wav", "isomp4", "mkv", "alac"] }
 tokio-tungstenite = { version = "0.26.2", features = ["rustls-tls-native-roots"] }
 tokio-util = { version = "0.7.13", features = ["codec"] }
-rustypipe = { version = "0.11.4", features = ["rustls-tls-native-roots"] }
-uuid = { version = "1.21.0", features = ["v4", "v7", "serde"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "stream"] }
+uuid = { version = "1.21.0", features = ["v4", "serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "cookies", "gzip"] }
 tokio = { version = "1.49.0", features = ["tracing", "macros", "signal", "rt-multi-thread"] }
-rubato = "0.16.1"
 axum = { version = "0.8.1", features = ["ws"] }
 tower-http = { version = "0.6.2", features = ["trace", "cors"] }
-xsalsa20poly1305 = "0.9.1"
 
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.6.0"
+
+
+
+[profile.dev]
+opt-level = 1
+debug = true
+incremental = true
+overflow-checks = false
+lto = false
+codegen-units = 256
+
+[profile.dev.package."*"]
+opt-level = 3        # fully optimize all dependencies in dev mode
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+opt-level = 3
+strip = true

@@ -1,37 +1,59 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::sync::Mutex;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering},
+};
+
+use crate::audio::processor::DecoderCommand;
+
+use crate::audio::constants::OPUS_SAMPLE_RATE;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u8)]
 pub enum PlaybackState {
-    Playing,
-    Paused,
-    Stopped,
+    Playing = 0,
+    Paused = 1,
+    Stopped = 2,
+    Stopping = 3,
+    Starting = 4,
+}
+
+impl PlaybackState {
+    pub fn from_u8(v: u8) -> Self {
+        match v {
+            0 => Self::Playing,
+            1 => Self::Paused,
+            3 => Self::Stopping,
+            4 => Self::Starting,
+            _ => Self::Stopped,
+        }
+    }
 }
 
 #[derive(Clone)]
 pub struct TrackHandle {
-    state: Arc<Mutex<PlaybackState>>,
-    #[allow(dead_code)]
-    volume: Arc<Mutex<f32>>,
+    state: Arc<AtomicU8>,
+    volume: Arc<AtomicU32>,   // f32 bits
     position: Arc<AtomicU64>, // position in samples
+    command_tx: flume::Sender<DecoderCommand>,
+    tape_stop_enabled: Arc<AtomicBool>,
 }
 
 impl TrackHandle {
-    pub fn new() -> (
-        Self,
-        Arc<Mutex<PlaybackState>>,
-        Arc<Mutex<f32>>,
-        Arc<AtomicU64>,
-    ) {
-        let state = Arc::new(Mutex::new(PlaybackState::Playing));
-        let volume = Arc::new(Mutex::new(1.0));
+    pub fn new(
+        command_tx: flume::Sender<DecoderCommand>,
+        tape_stop_enabled: Arc<AtomicBool>,
+    ) -> (Self, Arc<AtomicU8>, Arc<AtomicU32>, Arc<AtomicU64>) {
+        let state = Arc::new(AtomicU8::new(PlaybackState::Playing as u8));
+        let volume = Arc::new(AtomicU32::new(1.0f32.to_bits()));
         let position = Arc::new(AtomicU64::new(0));
+
         (
             Self {
                 state: state.clone(),
                 volume: volume.clone(),
                 position: position.clone(),
+                command_tx,
+                tape_stop_enabled,
             },
             state,
             volume,
@@ -39,36 +61,54 @@ impl TrackHandle {
         )
     }
 
-    #[allow(dead_code)]
-    pub async fn pause(&self) {
-        let mut state = self.state.lock().await;
-        *state = PlaybackState::Paused;
+    pub fn pause(&self) {
+        let next_state = if self.tape_stop_enabled.load(Ordering::Acquire) {
+            PlaybackState::Stopping
+        } else {
+            PlaybackState::Paused
+        };
+        self.state.store(next_state as u8, Ordering::Release);
     }
 
-    #[allow(dead_code)]
-    pub async fn play(&self) {
-        let mut state = self.state.lock().await;
-        *state = PlaybackState::Playing;
+    pub fn play(&self) {
+        let next_state = if self.tape_stop_enabled.load(Ordering::Acquire) {
+            PlaybackState::Starting
+        } else {
+            PlaybackState::Playing
+        };
+        self.state.store(next_state as u8, Ordering::Release);
     }
 
-    pub async fn stop(&self) {
-        let mut state = self.state.lock().await;
-        *state = PlaybackState::Stopped;
+    pub fn stop(&self) {
+        // SeqCst matches the ordering used by stop_signal in start_playback,
+        // ensuring the stopped state is visible to all threads immediately.
+        self.state
+            .store(PlaybackState::Stopped as u8, Ordering::SeqCst);
     }
 
-    #[allow(dead_code)]
-    pub async fn set_volume(&self, vol: f32) {
-        let mut volume = self.volume.lock().await;
-        *volume = vol;
+    pub fn set_volume(&self, vol: f32) {
+        self.volume.store(vol.to_bits(), Ordering::Release);
     }
 
-    pub async fn get_state(&self) -> PlaybackState {
-        *self.state.lock().await
+    pub fn get_state(&self) -> PlaybackState {
+        let s = self.state.load(Ordering::Acquire);
+        let mut state = PlaybackState::from_u8(s);
+
+        if state != PlaybackState::Stopped && self.command_tx.is_disconnected() {
+            state = PlaybackState::Stopped;
+            self.state.store(state as u8, Ordering::Release);
+        }
+        state
     }
 
     pub fn get_position(&self) -> u64 {
-        // Return position in milliseconds. 48000 samples per second.
-        let samples = self.position.load(Ordering::Relaxed);
-        (samples * 1000) / 48000
+        let samples = self.position.load(Ordering::Acquire);
+        (samples * 1000) / OPUS_SAMPLE_RATE
+    }
+
+    pub fn seek(&self, position_ms: u64) {
+        let samples = (position_ms * OPUS_SAMPLE_RATE) / 1000;
+        self.position.store(samples, Ordering::Release);
+        let _ = self.command_tx.send(DecoderCommand::Seek(position_ms));
     }
 }

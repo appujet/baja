@@ -1,1 +1,17 @@
 /target
+
+# EDITOR
+.vscode
+.idea
+
+# AGENTS
+.agents/
+
+# LOGS
+logs/*
+
+# Extra folder
+extra/*
+
+config.toml
+.env
