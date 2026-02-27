@@ -106,7 +106,7 @@ pub async fn handle_socket(
             state.sessions.insert(sid.clone(), existing.clone());
             (existing, true)
         } else {
-            let session_id = SessionId(uuid::Uuid::new_v4().to_string());
+            let session_id = SessionId::generate();
             let session = Arc::new(Session::new(
                 session_id.clone(),
                 Some(user_id),
@@ -117,7 +117,7 @@ pub async fn handle_socket(
             (session, false)
         }
     } else {
-        let session_id = SessionId(uuid::Uuid::new_v4().to_string());
+        let session_id = SessionId::generate();
         let session = Arc::new(Session::new(
             session_id.clone(),
             Some(user_id),

@@ -1,3 +1,4 @@
+use rand::{Rng, distributions::Alphanumeric};
 use std::sync::Arc;
 
 use tokio::sync::{Mutex, RwLock};
@@ -52,6 +53,20 @@ impl std::ops::Deref for SessionId {
     type Target = str;
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl SessionId {
+    /// Generates a random 10-character alphanumeric session ID (a-z, 0-9).
+    pub fn generate() -> Self {
+        let rng = rand::thread_rng();
+        let s: String = rng
+            .sample_iter(&Alphanumeric)
+            .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            .take(10)
+            .map(char::from)
+            .collect();
+        Self(s)
     }
 }
 
