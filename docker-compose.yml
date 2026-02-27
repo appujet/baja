@@ -1,9 +1,6 @@
 services:
   rustalink:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: rustalink:latest
+    image: ghcr.io/bongodevs/rustalink:latest
     container_name: rustalink
     restart: unless-stopped
     ports:
