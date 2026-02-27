@@ -2,17 +2,17 @@
 host = "0.0.0.0"                # The host to bind the server to
 port = 2333                     # The port to bind the server to
 password = "youshallnotpass"    # The password for authentication
-player_update_interval = 5      # Interval in seconds for player updates
-stats_interval = 60             # Interval in seconds for stats collection
-websocket_ping_interval = 30    # Interval in seconds for websocket pings
-max_event_queue_size = 500      # Max events to queue when session is paused
+max_event_queue_size = 100
+player_update_interval = 5
+stats_interval = 60
+websocket_ping_interval = 30
 
 [logging]
 level = "info"                  # Global log level (trace, debug, info, warn, error)
 filters = "rustalink=debug"     # Module-specific log filters
 
 [logging.file]
-path = "logs/baja.log"          # Path to the log file
+path = "logs/rustalink.log"          # Path to the log file
 max_lines = 10000               # Maximum lines per log file before rotation
 
 [player]
@@ -89,43 +89,158 @@ providers = [
 ] # Mirror providers for fallback searching
 
 [youtube.clients]
-search = ["MUSIC_ANDROID", "MUSIC_WEB", "ANDROID", "WEB"]   # Clients for searching
+search = ["MUSIC_ANDROID", "MUSIC_WEB","ANDROID", "WEB"]   # Clients for searching
 resolve = ["WEB", "MUSIC_WEB", "ANDROID", "TVHTML5_SIMPLY"] # Clients for resolving
 playback = ["ANDROID_VR", "TV_CAST", "WEB_EMBEDDED", "TV", "WEB", "IOS"] # Clients for playback
+# refresh_tokens = [] # Optional: list of refresh tokens for clients
+get_oauth_token = false # Set to true to enable OAuth device flow initialization
 
 [youtube.cipher]
 url = "http://localhost:8080" # URL for the cipher resolution server you have to use this (https://github.com/bongodevs/yt-cipher), else youtube will not work
 #token = ""                   # Token for the cipher resolution server
 
 [spotify]
-search_limit = 10               # Max search results for Spotify
-recommendations_limit = 10      # Max recommendations for Spotify
-playlist_load_limit = 6         # 100 tracks per unit (6 = 600 tracks)
-album_load_limit = 6            # 50 tracks per unit (6 = 300 tracks)
+playlist_load_limit = 6 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
+album_load_limit = 6 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
+search_limit = 10 # Limit number of search results
+recommendations_limit = 10 # Limit number of recommendation results
+playlist_page_load_concurrency = 10 # Number of playlist pages to fetch concurrently
+album_page_load_concurrency = 5 # Number of album pages to fetch concurrently
+track_resolve_concurrency = 50 # Number of tracks to resolve concurrently
 
 [jiosaavn]
-search_limit = 10               # Max search results for JioSaavn
-recommendations_limit = 10      # Max recommendations for JioSaavn
-playlist_load_limit = 50        # Max tracks to load from a playlist
+search_limit = 10 # Limit number of search results
+recommendations_limit = 10 # Limit number of recommendation results
+playlist_load_limit = 50 # Limit tracks for playlists
+album_load_limit = 50 # Limit tracks for albums
+artist_load_limit = 20 # Limit tracks for artist top songs
 
 [jiosaavn.decryption]
-secretKey = "your_key"          # Secret key for JioSaavn track decryption
+secretKey = "your_secret_key" # The required secret key used for decryption
+# algorithm = "DES" # The algorithm used for decryption (Default "DES")
+# transformation = "DES/ECB/PKCS5Padding" # The transformation used for decryption (Default "DES/ECB/PKCS5Padding")
+
+[jiosaavn.proxy]
+# url = "http://proxy.example.com:8080"
+# username = "myuser"
+# password = "mypassword"
 
 [deezer]
-arls = ["your_arl"]             # List of Deezer ARLs for playback
-master_decryption_key = "your_key" # Master decryption key for Deezer
+# REQUIRED: arls -> for playback; without it the source will be disabled.
+arls = ["your_deezer_arl_here"]
+# REQUIRED: master_decryption_key -> for playback; without it the source will be disabled.
+master_decryption_key = "your_master_key_here"
+
+[deezer.proxy]
+# url = "http://proxy.example.com:8080"
+# username = "myuser"
+# password = "mypassword"
 
 [soundcloud]
-search_limit = 10               # Max search results for SoundCloud
-playlist_load_limit = 100       # Max tracks to load from a playlist
+# OPTIONAL: client_id -> auto-extracted from soundcloud.com if not set
+# client_id = "your_client_id_here"
+search_limit = 10
+playlist_load_limit = 100
+
+# Optional proxy for SoundCloud
+[soundcloud.proxy]
+# url = "http://proxy.example.com:8080"
+# username = "myuser"
+# password = "mypassword"
 
 [applemusic]
-country_code = "us"             # ISO 3166-1 alpha-2 country code
-playlist_load_limit = 0         # 100 tracks per unit (0 = unlimited)
+country_code = "us"
+# OPTIONAL: media_api_token -> auto-extracted from music.apple.com if not set.
+# media_api_token = "your_token_here"
+playlist_load_limit = 0 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
+album_load_limit = 0 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
+playlist_page_load_concurrency = 5 # Number of playlist pages to fetch concurrently
+album_page_load_concurrency = 5 # Number of album pages to fetch concurrently
 
 [yandexmusic]
-access_token = "your_token"     # Required access token for Yandex Music
-playlist_load_limit = 6         # 100 tracks per unit (6 = 600 tracks)
+# REQUIRED: access_token -> without it the source will be disabled.
+# access_token = "your access token"
+search_limit = 10
+playlist_load_limit = 6 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
+album_load_limit = 6 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
+artist_load_limit = 6 # 0 = unlimited, 1 = 10 tracks, 2 = 20 tracks, etc.
+
+# [yandexmusic.proxy]
+# url = "http://proxy.example.com:8080"
+# username = "myuser"
+# password = "mypassword"
+
+[gaana]
+# stream_quality = "high" # "low", "medium", "high"
+search_limit = 10
+playlist_load_limit = 50
+album_load_limit = 50
+artist_load_limit = 20
+
+[gaana.proxy]
+# url = "http://proxy.example.com:8080"
+# username = "myuser"
+# password = "mypassword"
+
+[tidal]
+country_code = "US"
+# OPTIONAL: token -> auto-extracted from listen.tidal.com if not set.
+# token = "your_token_here"
+playlist_load_limit = 50
+album_load_limit = 50
+artist_load_limit = 20
+
+[audiomack]
+search_limit = 20
+
+[pandora]
+# OPTIONAL: csrf_token -> auto-extracted from pandora.com if not set.
+# csrf_token = "your_csrf_token_here"
+search_limit = 10
+playlist_load_limit = 100
+
+# Optional proxy for Pandora
+[pandora.proxy]
+#url = "http://proxy.example.com:8080"
+#username = "myuser"
+#password = "mypassword"
+
+[qobuz]
+# OPTIONAL: user_token -> without it all playback falls back to mirrors.
+# Get it from play.qobuz.com → DevTools → Application → Local Storage → localuser → token
+# user_token = "your_user_token_here"
+# OPTIONAL: app_id and app_secret -> auto-extracted from bundle.js if omitted
+# app_id = ""
+# app_secret = ""
+search_limit = 10
+playlist_load_limit = 100
+album_load_limit = 50
+artist_load_limit = 20
+
+# Optional proxy for Qobuz
+[qobuz.proxy]
+#url = "http://proxy.example.com:8080"
+#username = "myuser"
+#password = "mypassword"
+
+[anghami]
+search_limit = 10
+
+[mixcloud]
+search_limit = 10
+
+[shazam]
+search_limit = 10
+
+[bandcamp]
+search_limit = 10
+
+[audius]
+search_limit = 10
+playlist_load_limit = 100
+album_load_limit = 100
+# app_name -> OPTIONAL: used for API requests.
+# app_name = "Rustalink"
 
 [route_planner]
 enabled = false                 # Enable IP rotation using CIDRs

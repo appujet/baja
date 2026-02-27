@@ -84,7 +84,6 @@ jobs:
           name: rustalink-linux-${{ matrix.arch }}
           path: target/${{ matrix.target }}/release/rustalink-linux-${{ matrix.arch }}
 
-
   # Build macOS + Windows
   build-other:
     name: 💻 Build ${{ matrix.os_name }}
@@ -165,7 +164,6 @@ jobs:
           name: ${{ matrix.output }}
           path: target/${{ matrix.target }}/release/${{ matrix.output }}
 
-
   # Build & Push Multi-Arch Docker Image
   docker:
     name: 🐳 Build & Push Docker Image
@@ -221,7 +219,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-
   # Publish GitHub Release Assets
   publish:
     name: 📦 Publish Release Assets
@@ -240,3 +237,6 @@ jobs:
         with:
           files: artifacts/**/*
           fail_on_unmatched_files: false
+          tag_name: ${{ github.event.release.tag_name }}
+          overwrite_files: true
+          token: ${{ secrets.GITHUB_TOKEN }}
