@@ -26,7 +26,7 @@
 ## Key Features
 
 - 🚀 **High Performance**: Built with Rust for minimal overhead and maximum throughput.
-- 🎵 **Extensive Source Support**: Native support for 20+ audio platforms.
+- 🎵 **Extensive Source Support**: Native support for 15+ audio platforms.
 - 🔄 **Smart Mirroring**: Automatically find audio for metadata-only sources (Spotify, Apple Music, etc.).
 - 📺 **Advanced YouTube Support**: Toggle between multiple clients (WEB, ANDROID, IOS, TV) to bypass restrictions.
 - 🐳 **Docker Ready**: One-command deployment with pre-configured environments.
