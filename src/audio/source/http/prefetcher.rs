@@ -1,8 +1,4 @@
-use std::{
-    sync::Arc,
-    thread,
-    time::Duration,
-};
+use std::{sync::Arc, thread, time::Duration};
 
 use parking_lot::{Condvar, Mutex};
 use tracing::{debug, warn};

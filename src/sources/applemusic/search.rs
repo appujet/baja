@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use super::{API_BASE, AppleMusicSource};
-use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo};
+use crate::protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo};
 
 impl AppleMusicSource {
     pub(crate) async fn search(&self, query: &str) -> LoadResult {
@@ -40,7 +40,7 @@ impl AppleMusicSource {
         &self,
         query: &str,
         types: &[String],
-    ) -> Option<crate::api::tracks::SearchResult> {
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         let mut kinds = HashSet::new();
         let mut am_types = Vec::new();
 
@@ -221,7 +221,7 @@ impl AppleMusicSource {
             }
         }
 
-        Some(crate::api::tracks::SearchResult {
+        Some(crate::protocol::tracks::SearchResult {
             tracks,
             albums,
             artists,

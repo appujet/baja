@@ -8,7 +8,7 @@ use std::{
 use async_trait::async_trait;
 use ipnet::IpNet;
 
-use crate::api::{
+use crate::protocol::{
     BalancingIpDetails,
     routeplanner::{FailingAddress, IpBlock, RotatingIpDetails, RoutePlannerStatus},
 };

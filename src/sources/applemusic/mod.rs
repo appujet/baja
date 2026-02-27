@@ -11,7 +11,7 @@ use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use token::AppleMusicTokenTracker;
 
-use crate::{api::tracks::LoadResult, sources::SourcePlugin};
+use crate::{protocol::tracks::LoadResult, sources::SourcePlugin};
 
 const API_BASE: &str = "https://api.music.apple.com/v1";
 
@@ -131,7 +131,7 @@ impl SourcePlugin for AppleMusicSource {
         query: &str,
         types: &[String],
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<crate::api::tracks::SearchResult> {
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         let q = if let Some(prefix) = self.search_prefixes.iter().find(|p| query.starts_with(*p)) {
             &query[prefix.len()..]
         } else {

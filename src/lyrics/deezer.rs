@@ -6,11 +6,11 @@ use tokio::sync::RwLock;
 
 use super::LyricsProvider;
 use crate::{
-    api::{
+    configs::HttpProxyConfig,
+    protocol::{
         models::{LyricsData, LyricsLine},
         tracks::TrackInfo,
     },
-    configs::HttpProxyConfig,
 };
 
 pub struct DeezerProvider {

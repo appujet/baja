@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::{api, server::AppState};
+use crate::{protocol, server::AppState};
 
-pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
+pub fn collect_stats(state: &AppState, uptime: u64) -> protocol::Stats {
     let mut total_players = 0i32;
     let mut playing_players = 0i32;
 
@@ -31,7 +31,7 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
 
     let frame_stats = if player_count != 0 {
         let total_deficit = player_count * 3000 - (total_sent + total_nulled); // 3000 per minute per player
-        Some(api::FrameStats {
+        Some(protocol::FrameStats {
             sent: total_sent / player_count,
             nulled: total_nulled / player_count,
             deficit: total_deficit / player_count,
@@ -46,17 +46,17 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> api::Stats {
     let system_load = read_system_load() / cores as f64;
     let rustalink_load = (read_process_cpu_load() / cores as f64).clamp(0.0, 1.0);
 
-    api::Stats {
+    protocol::Stats {
         players: total_players,
         playing_players,
         uptime,
-        memory: api::Memory {
+        memory: protocol::Memory {
             free: mem_free,
             used: mem_used,
             allocated: mem_used,
             reservable: mem_total,
         },
-        cpu: api::Cpu {
+        cpu: protocol::Cpu {
             cores,
             system_load,
             rustalink_load,

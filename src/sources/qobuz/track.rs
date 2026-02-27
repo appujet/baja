@@ -5,8 +5,8 @@ use md5::{Digest, Md5};
 use tracing::error;
 
 use crate::{
-    api::tracks::TrackInfo,
     audio::processor::DecoderCommand,
+    protocol::tracks::TrackInfo,
     sources::{http::HttpTrack, plugin::PlayableTrack, qobuz::token::QobuzTokenTracker},
 };
 

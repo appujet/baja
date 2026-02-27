@@ -8,15 +8,12 @@ use parking_lot::{Condvar, Mutex};
 use symphonia::core::io::MediaSource;
 use tracing::{debug, info};
 
-use crate::{
-    audio::constants::HTTP_INITIAL_BUF_CAPACITY,
-    common::types::AnyResult,
-};
+use crate::{audio::constants::HTTP_INITIAL_BUF_CAPACITY, common::types::AnyResult};
 
 use super::AudioSource;
 
 pub mod prefetcher;
-use prefetcher::{prefetch_loop, PrefetchCommand, SharedState};
+use prefetcher::{PrefetchCommand, SharedState, prefetch_loop};
 
 /// Streaming HTTP source with a dedicated prefetch thread.
 pub struct HttpSource {

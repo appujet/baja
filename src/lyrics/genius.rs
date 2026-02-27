@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use regex::Regex;
 
 use super::LyricsProvider;
-use crate::api::{
+use crate::protocol::{
     models::{LyricsData, LyricsLine},
     tracks::TrackInfo,
 };

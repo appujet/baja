@@ -1,14 +1,14 @@
 use super::lyrics::sync_lyrics;
 use crate::{
-    api::{
+    audio::playback::{PlaybackState, TrackHandle},
+    common::types::GuildId,
+    player::state::PlayerState,
+    protocol::{
         self,
         events::{RustalinkEvent, TrackEndReason, TrackException},
         models::LyricsData,
         tracks::Track,
     },
-    audio::playback::{PlaybackState, TrackHandle},
-    common::types::GuildId,
-    player::state::PlayerState,
     server::Session,
 };
 use std::sync::{Arc, atomic::Ordering};
@@ -65,7 +65,7 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
             let reason = match err_rx.try_recv() {
                 Ok(err) => {
                     warn!("[{}] mid-playback decoder error: {}", guild_id, err);
-                    session.send_message(&api::OutgoingMessage::Event(
+                    session.send_message(&protocol::OutgoingMessage::Event(
                         RustalinkEvent::TrackException {
                             guild_id: guild_id.clone(),
                             track: track.clone(),
@@ -82,11 +82,13 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                 Err(_) => TrackEndReason::Finished,
             };
 
-            session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackEnd {
-                guild_id,
-                track,
-                reason,
-            }));
+            session.send_message(&protocol::OutgoingMessage::Event(
+                RustalinkEvent::TrackEnd {
+                    guild_id,
+                    track,
+                    reason,
+                },
+            ));
             break;
         }
 
@@ -101,7 +103,7 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                     stuck_threshold_ms
                 };
                 if stuck_ms >= threshold {
-                    session.send_message(&api::OutgoingMessage::Event(
+                    session.send_message(&protocol::OutgoingMessage::Event(
                         RustalinkEvent::TrackStuck {
                             guild_id: guild_id.clone(),
                             track: track.clone(),
@@ -121,7 +123,7 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
 
         // -- PlayerUpdate --------------------------------------------------
         if tick % update_every_n == 0 {
-            session.send_message(&api::OutgoingMessage::PlayerUpdate {
+            session.send_message(&protocol::OutgoingMessage::PlayerUpdate {
                 guild_id: guild_id.clone(),
                 state: PlayerState {
                     time: crate::server::now_ms(),

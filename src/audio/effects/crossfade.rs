@@ -1,6 +1,6 @@
 //! `CrossfadeController` — constant-power track crossfading.
 //!
-//! Buffers the next track's PCM into a `RingBuffer` ahead of time, then 
+//! Buffers the next track's PCM into a `RingBuffer` ahead of time, then
 //! blends it with the main track using cos/sin curves to maintain perceived loudness.
 
 use super::fade::FadeCurve;

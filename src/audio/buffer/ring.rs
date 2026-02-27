@@ -1,6 +1,6 @@
 //! Fixed-size circular byte buffer.
 //!
-//! A power-of-two-sized ring that supports wrap-around writes and reads. 
+//! A power-of-two-sized ring that supports wrap-around writes and reads.
 //! Backed by the global [`BufferPool`] to avoid heap allocations in the hot path.
 
 use crate::audio::buffer::pool::get_byte_pool;

@@ -8,9 +8,9 @@ use dashmap::DashMap;
 use parking_lot::Mutex;
 
 use crate::{
-    api,
     common::types::{GuildId, SessionId, UserId},
     player::PlayerContext,
+    protocol,
 };
 
 /// Alias for the player registry within a session.
@@ -68,7 +68,7 @@ impl Session {
     }
 
     /// Sends a typed outgoing message.
-    pub fn send_message(&self, msg: &api::OutgoingMessage) {
+    pub fn send_message(&self, msg: &protocol::OutgoingMessage) {
         if let Ok(json) = serde_json::to_string(msg) {
             self.send_json(json);
         }

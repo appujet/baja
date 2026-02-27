@@ -5,7 +5,7 @@ use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 
 use crate::{
-    api::tracks::{LoadResult, Track},
+    protocol::tracks::{LoadResult, Track},
     sources::{SourcePlugin, spotify::token::SpotifyTokenTracker},
 };
 
@@ -99,7 +99,7 @@ impl SpotifySource {
         &self,
         query: &str,
         types: &[String],
-    ) -> Option<crate::api::tracks::SearchResult> {
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         search::SpotifySearch::get_autocomplete(
             &self.client,
             &self.token_tracker,
@@ -252,7 +252,7 @@ impl SourcePlugin for SpotifySource {
         query: &str,
         types: &[String],
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<crate::api::tracks::SearchResult> {
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         let mut q = query;
         for prefix in &self.search_prefixes {
             if q.starts_with(prefix) {

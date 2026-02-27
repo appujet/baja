@@ -5,7 +5,7 @@ use serde_json::Value;
 use tokio::sync::Semaphore;
 
 use super::AppleMusicSource;
-use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo};
+use crate::protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo};
 
 impl AppleMusicSource {
     pub(crate) async fn resolve_track(&self, id: &str) -> LoadResult {

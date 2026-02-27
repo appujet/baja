@@ -10,7 +10,7 @@ use super::{
     track::{SoundCloudStreamKind, SoundCloudTrack},
 };
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
     sources::{SourcePlugin, plugin::PlayableTrack},
 };
 

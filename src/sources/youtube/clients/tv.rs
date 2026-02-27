@@ -8,8 +8,8 @@ use super::{
     common::{INNERTUBE_API, make_next_request, resolve_format_url, select_best_audio_format},
 };
 use crate::{
-    api::tracks::Track,
     common::types::AnyResult,
+    protocol::tracks::Track,
     sources::youtube::{
         cipher::YouTubeCipherManager,
         clients::common::ClientConfig,

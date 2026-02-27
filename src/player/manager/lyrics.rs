@@ -1,11 +1,11 @@
 use crate::{
-    api::{
+    common::types::GuildId,
+    protocol::{
         self,
         events::RustalinkEvent,
         models::{LyricsData, RustalinkLyrics, RustalinkLyricsLine},
         tracks::TrackInfo,
     },
-    common::types::GuildId,
     server::Session,
 };
 use std::sync::{Arc, atomic::Ordering};
@@ -28,7 +28,7 @@ pub fn spawn_lyrics_fetch(
             let mut lock = lyrics_data.lock().await;
             *lock = Some(lyrics.clone());
 
-            api::OutgoingMessage::Event(RustalinkEvent::LyricsFound {
+            protocol::OutgoingMessage::Event(RustalinkEvent::LyricsFound {
                 guild_id,
                 lyrics: RustalinkLyrics {
                     source_name: track_info.source_name,
@@ -49,7 +49,7 @@ pub fn spawn_lyrics_fetch(
                 },
             })
         } else {
-            api::OutgoingMessage::Event(RustalinkEvent::LyricsNotFound { guild_id })
+            protocol::OutgoingMessage::Event(RustalinkEvent::LyricsNotFound { guild_id })
         };
 
         session.send_message(&event);
@@ -86,32 +86,36 @@ pub async fn sync_lyrics(
         // Forward: emit any lines we skipped.
         for i in (last + 1)..=target {
             let line = &lines[i as usize];
-            session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::LyricsLine {
+            session.send_message(&protocol::OutgoingMessage::Event(
+                RustalinkEvent::LyricsLine {
+                    guild_id: guild_id.clone(),
+                    line_index: i as i32,
+                    line: RustalinkLyricsLine {
+                        line: line.text.clone(),
+                        timestamp: line.timestamp,
+                        duration: Some(line.duration),
+                        plugin: serde_json::json!({}),
+                    },
+                    skipped: i != target,
+                },
+            ));
+        }
+    } else if target >= 0 {
+        // Backward seek - emit the new current line.
+        let line = &lines[target as usize];
+        session.send_message(&protocol::OutgoingMessage::Event(
+            RustalinkEvent::LyricsLine {
                 guild_id: guild_id.clone(),
-                line_index: i as i32,
+                line_index: target as i32,
                 line: RustalinkLyricsLine {
                     line: line.text.clone(),
                     timestamp: line.timestamp,
                     duration: Some(line.duration),
                     plugin: serde_json::json!({}),
                 },
-                skipped: i != target,
-            }));
-        }
-    } else if target >= 0 {
-        // Backward seek - emit the new current line.
-        let line = &lines[target as usize];
-        session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::LyricsLine {
-            guild_id: guild_id.clone(),
-            line_index: target as i32,
-            line: RustalinkLyricsLine {
-                line: line.text.clone(),
-                timestamp: line.timestamp,
-                duration: Some(line.duration),
-                plugin: serde_json::json!({}),
+                skipped: false,
             },
-            skipped: false,
-        }));
+        ));
     }
 
     last_idx.store(target, Ordering::SeqCst);

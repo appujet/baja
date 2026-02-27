@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{api::tracks::Track, configs::player::PlayerConfig};
+use crate::{configs::player::PlayerConfig, protocol::tracks::Track};
 
 /// Full player state as returned by REST endpoints.
 pub fn deserialize_track_encoded<'de, D>(deserializer: D) -> Result<Option<TrackEncoded>, D::Error>

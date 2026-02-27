@@ -88,7 +88,10 @@ impl SegmentedSource {
             .and_then(|v| v.to_str().ok())
             .map(Arc::from);
 
-        debug!("SegmentedSource opened: len={}, type={:?}", len, content_type);
+        debug!(
+            "SegmentedSource opened: len={}, type={:?}",
+            len, content_type
+        );
 
         let mut chunks = HashMap::new();
         chunks.insert(0, ChunkState::Empty(0));
@@ -284,10 +287,8 @@ fn fetch_worker(
             let claimed = try_claim_chunk(&mut state, current_chunk, total_len);
 
             if claimed.is_none() {
-                let cursor_ready = matches!(
-                    state.chunks.get(&current_chunk),
-                    Some(ChunkState::Ready(_))
-                );
+                let cursor_ready =
+                    matches!(state.chunks.get(&current_chunk), Some(ChunkState::Ready(_)));
                 let window = if cursor_ready { PREFETCH_CHUNKS } else { 2 };
 
                 let mut found = None;
@@ -338,17 +339,26 @@ fn fetch_worker(
                     let arc = Arc::new(bytes.to_vec());
                     let mut state = lock.lock();
                     state.chunks.insert(idx, ChunkState::Ready(arc));
-                    trace!("Worker {}: filled chunk {} ({} bytes)", worker_id, idx, actual);
+                    trace!(
+                        "Worker {}: filled chunk {} ({} bytes)",
+                        worker_id, idx, actual
+                    );
                     cvar.notify_all();
                 }
                 Err(e) => {
-                    warn!("Worker {}: failed to read body for chunk {}: {}", worker_id, idx, e);
+                    warn!(
+                        "Worker {}: failed to read body for chunk {}: {}",
+                        worker_id, idx, e
+                    );
                     requeue_or_fatal(lock, cvar, idx, prior_retries, &e.to_string());
                     thread::sleep(Duration::from_millis(FETCH_WAIT_MS));
                 }
             },
             Err(e) => {
-                warn!("Worker {}: fetch failed for chunk {}: {}", worker_id, idx, e);
+                warn!(
+                    "Worker {}: fetch failed for chunk {}: {}",
+                    worker_id, idx, e
+                );
                 requeue_or_fatal(lock, cvar, idx, prior_retries, &e.to_string());
                 thread::sleep(Duration::from_millis(FETCH_WAIT_MS));
             }
@@ -361,11 +371,7 @@ fn fetch_worker(
 /// Returns `Some((idx, retry_count))` on success, `None` if the chunk is
 /// already `Downloading` or `Ready`.
 #[inline]
-fn try_claim_chunk(
-    state: &mut ReaderState,
-    idx: usize,
-    total_len: u64,
-) -> Option<(usize, usize)> {
+fn try_claim_chunk(state: &mut ReaderState, idx: usize, total_len: u64) -> Option<(usize, usize)> {
     if (idx * CHUNK_SIZE) as u64 >= total_len {
         return None;
     }
@@ -396,7 +402,9 @@ fn requeue_or_fatal(
             idx, prior_retries, error
         ));
     } else {
-        state.chunks.insert(idx, ChunkState::Empty(prior_retries + 1));
+        state
+            .chunks
+            .insert(idx, ChunkState::Empty(prior_retries + 1));
     }
     cvar.notify_all();
 }

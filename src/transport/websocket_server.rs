@@ -12,10 +12,10 @@ use axum::{
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    api,
     common::types::{SessionId, UserId},
     monitoring::collect_stats,
     player::PlayerState,
+    protocol,
     server::{AppState, Session, now_ms},
 };
 
@@ -135,7 +135,7 @@ pub async fn handle_socket(
     );
 
     // Send Ready
-    let ready = api::OutgoingMessage::Ready {
+    let ready = protocol::OutgoingMessage::Ready {
         resumed,
         session_id: session_id.clone(),
     };
@@ -154,7 +154,7 @@ pub async fn handle_socket(
         }
 
         for player in session.players.iter() {
-            let update = api::OutgoingMessage::PlayerUpdate {
+            let update = protocol::OutgoingMessage::PlayerUpdate {
                 guild_id: player.guild_id.clone(),
                 state: PlayerState {
                     time: now_ms(),
@@ -195,7 +195,7 @@ pub async fn handle_socket(
             _ = stats_interval.tick() => {
                 if !session.paused.load(Relaxed) {
                     let stats = collect_stats(&state, start_time.elapsed().as_millis() as u64);
-                    let msg = api::OutgoingMessage::Stats(stats);
+                    let msg = protocol::OutgoingMessage::Stats(stats);
                     if let Ok(json) = serde_json::to_string(&msg) {
                         if let Err(e) = socket.send(Message::Text(json.into())).await {
                             error!("Socket send error (stats): session={} err={}", session_id, e);

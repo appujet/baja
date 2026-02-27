@@ -7,8 +7,8 @@ use axum::{
 };
 
 use crate::{
-    api,
-    api::{
+    protocol,
+    protocol::{
         models::*,
         tracks::{LoadResult, Track},
     },
@@ -98,7 +98,7 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
 }
 
 /// POST /v4/decodetracks
-pub async fn decode_tracks(Json(body): Json<api::EncodedTracks>) -> impl IntoResponse {
+pub async fn decode_tracks(Json(body): Json<protocol::EncodedTracks>) -> impl IntoResponse {
     tracing::info!("POST /v4/decodetracks: count={}", body.tracks.len());
 
     let mut tracks = Vec::with_capacity(body.tracks.len());

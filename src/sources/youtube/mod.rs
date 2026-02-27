@@ -7,9 +7,9 @@ use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 use crate::{
-    api::tracks::*,
     common::types::SharedRw,
     configs::sources::YouTubeConfig,
+    protocol::tracks::*,
     sources::{SourcePlugin, plugin::BoxedTrack},
 };
 

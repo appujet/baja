@@ -7,9 +7,11 @@ use axum::{
 };
 
 use crate::{
-    api,
-    api::tracks::{Track, TrackInfo},
     player::{PlayerContext, PlayerUpdate, VoiceConnectionState},
+    protocol::{
+        self,
+        tracks::{Track, TrackInfo},
+    },
     server::AppState,
 };
 
@@ -72,7 +74,7 @@ pub async fn update_player(
     if let Some(pos) = body.position {
         player.seek(pos);
         if player.track.is_some() {
-            let seek_update = api::OutgoingMessage::PlayerUpdate {
+            let seek_update = protocol::OutgoingMessage::PlayerUpdate {
                 guild_id: guild_id.clone(),
                 state: crate::player::PlayerState {
                     time: crate::server::now_ms(),
@@ -141,7 +143,7 @@ pub async fn update_player(
             let session_clone = session.clone();
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
-                    session_clone.send_message(&api::OutgoingMessage::Event(event));
+                    session_clone.send_message(&protocol::OutgoingMessage::Event(event));
                 }
             });
 
@@ -264,16 +266,16 @@ async fn apply_track_update(
                 player.track = None;
 
                 if let Some(encoded) = track_data {
-                    session.send_message(&api::OutgoingMessage::Event(
-                        api::RustalinkEvent::TrackEnd {
+                    session.send_message(&protocol::OutgoingMessage::Event(
+                        protocol::RustalinkEvent::TrackEnd {
                             guild_id: player.guild_id.clone(),
                             track: Track {
                                 encoded,
                                 info: TrackInfo::default(),
-                                plugin_info: api::tracks::PluginInfo::default(),
+                                plugin_info: protocol::tracks::PluginInfo::default(),
                                 user_data: serde_json::json!({}),
                             },
-                            reason: api::TrackEndReason::Stopped,
+                            reason: protocol::TrackEndReason::Stopped,
                         },
                     ));
                 }
@@ -329,7 +331,7 @@ async fn apply_track_update(
 pub async fn update_session(
     Path(session_id): Path<crate::common::types::SessionId>,
     State(state): State<Arc<AppState>>,
-    Json(body): Json<api::SessionUpdate>,
+    Json(body): Json<protocol::SessionUpdate>,
 ) -> impl IntoResponse {
     tracing::info!("Update session: session={} body={:?}", session_id, body);
 
@@ -346,7 +348,7 @@ pub async fn update_session(
                     .store(timeout, std::sync::atomic::Ordering::Relaxed);
             }
 
-            let info = api::SessionInfo {
+            let info = protocol::SessionInfo {
                 resuming: session.resumable.load(std::sync::atomic::Ordering::Relaxed),
                 timeout: session
                     .resume_timeout

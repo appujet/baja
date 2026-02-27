@@ -5,9 +5,9 @@ use serde_json::{Value, json};
 use tracing::{debug, error};
 
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
     common::types::AnyResult,
     configs::Config,
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
     sources::{
         SourcePlugin,
         plugin::BoxedTrack,

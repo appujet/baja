@@ -9,7 +9,7 @@ use tracing::{error, warn};
 
 use super::{track::AudiomackTrack, utils::build_auth_header};
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
     sources::plugin::{PlayableTrack, SourcePlugin},
 };
 

@@ -5,7 +5,7 @@ use super::{
     helpers::get_json,
     parser::{parse_search_item, parse_search_playlist, parse_track},
 };
-use crate::api::tracks::{LoadError, LoadResult, SearchResult};
+use crate::protocol::tracks::{LoadError, LoadResult, SearchResult};
 
 impl JioSaavnSource {
     pub async fn search(&self, query: &str) -> LoadResult {
@@ -110,7 +110,7 @@ impl JioSaavnSource {
                         }
 
                         // Enrich pluginInfo
-                        track.plugin_info = crate::api::tracks::PluginInfo {
+                        track.plugin_info = crate::protocol::tracks::PluginInfo {
                             album_name: detail
                                 .get("album")
                                 .or_else(|| detail.pointer("/more_info/album"))

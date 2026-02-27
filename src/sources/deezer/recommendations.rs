@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::{DeezerSource, PRIVATE_API_BASE};
-use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track};
+use crate::protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track};
 
 impl DeezerSource {
     pub(crate) async fn get_recommendations(&self, query: &str) -> LoadResult {

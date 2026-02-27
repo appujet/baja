@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use axum::{extract::State, response::Json};
 
-use crate::{api, player::Filters, server::AppState};
+use crate::{player::Filters, protocol, server::AppState};
 
 /// GET /v4/info
-pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<api::Info> {
+pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<protocol::Info> {
     tracing::info!("GET /v4/info");
     let version_str = env!("CARGO_PKG_VERSION");
     let mut parts = version_str.split('.');
@@ -21,8 +21,8 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<api::Info> {
         })
         .unwrap_or(0);
 
-    Json(api::Info {
-        version: api::Version {
+    Json(protocol::Info {
+        version: protocol::Version {
             semver: version_str.to_string(),
             major,
             minor,
@@ -33,7 +33,7 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<api::Info> {
         build_time: option_env!("BUILD_TIME")
             .and_then(|s| s.parse().ok())
             .unwrap_or(0),
-        git: api::GitInfo {
+        git: protocol::GitInfo {
             branch: option_env!("GIT_BRANCH").unwrap_or("unknown").to_string(),
             commit: option_env!("GIT_COMMIT").unwrap_or("unknown").to_string(),
             commit_time: option_env!("GIT_COMMIT_TIME")
@@ -52,7 +52,7 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<api::Info> {
 }
 
 /// GET /v4/stats
-pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<api::Stats> {
+pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<protocol::Stats> {
     tracing::info!("GET /v4/stats");
     let uptime = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

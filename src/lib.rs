@@ -1,4 +1,3 @@
-pub mod api;
 pub mod audio;
 pub mod common;
 pub mod configs;
@@ -6,6 +5,7 @@ pub mod gateway;
 pub mod lyrics;
 pub mod monitoring;
 pub mod player;
+pub mod protocol;
 pub mod routeplanner;
 pub mod server;
 pub mod sources;

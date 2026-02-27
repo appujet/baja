@@ -4,7 +4,7 @@ use serde_json::json;
 use tokio::time::timeout;
 
 use crate::{
-    api::tracks::{PlaylistData, PlaylistInfo, SearchResult, Track},
+    protocol::tracks::{PlaylistData, PlaylistInfo, SearchResult, Track},
     sources::spotify::{
         helpers::SpotifyHelpers, metadata::SpotifyMetadata, parser::SpotifyParser,
         token::SpotifyTokenTracker,
@@ -93,7 +93,7 @@ impl SpotifySearch {
                         {
                             let mut track = Track::new(track_info);
 
-                            track.plugin_info = crate::api::tracks::PluginInfo {
+                            track.plugin_info = crate::protocol::tracks::PluginInfo {
                                 album_name: track_data
                                     .pointer("/albumOfTrack/name")
                                     .and_then(|v| v.as_str())

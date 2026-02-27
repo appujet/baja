@@ -1,7 +1,7 @@
 use regex::Regex;
 
 use super::{JioSaavnSource, helpers::get_json, parser::parse_track};
-use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo};
+use crate::protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo};
 
 impl JioSaavnSource {
     pub async fn get_recommendations(&self, query: &str) -> LoadResult {

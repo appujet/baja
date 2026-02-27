@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use tracing::error;
 
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
     sources::{SourcePlugin, plugin::BoxedTrack},
 };
 

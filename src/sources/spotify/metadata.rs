@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
     sources::spotify::{
         helpers::SpotifyHelpers, parser::SpotifyParser, token::SpotifyTokenTracker,
     },

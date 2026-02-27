@@ -17,7 +17,7 @@ pub struct PlayerContext {
     pub volume: i32,
     pub paused: bool,
     pub track: Option<String>,
-    pub track_info: Option<crate::api::tracks::Track>,
+    pub track_info: Option<crate::protocol::tracks::Track>,
     pub track_handle: Option<TrackHandle>,
     pub position: u64,
     pub voice: VoiceConnectionState,
@@ -34,7 +34,7 @@ pub struct PlayerContext {
     pub frames_nulled: Arc<AtomicU64>,
     pub config: PlayerConfig,
     pub lyrics_subscribed: Arc<AtomicBool>,
-    pub lyrics_data: Arc<Mutex<Option<crate::api::models::LyricsData>>>,
+    pub lyrics_data: Arc<Mutex<Option<crate::protocol::models::LyricsData>>>,
     pub last_lyric_index: Arc<AtomicI64>,
     pub tape_stop: Arc<AtomicBool>,
 }

@@ -1,5 +1,5 @@
 use super::DeezerSource;
-use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track};
+use crate::protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track};
 
 impl DeezerSource {
     pub(crate) async fn get_track_by_isrc(&self, isrc: &str) -> Option<Track> {

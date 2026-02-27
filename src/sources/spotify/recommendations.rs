@@ -4,7 +4,7 @@ use futures::future::join_all;
 use serde_json::{Value, json};
 
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track},
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track},
     sources::spotify::{
         helpers::SpotifyHelpers, parser::SpotifyParser, search::SpotifySearch,
         token::SpotifyTokenTracker,

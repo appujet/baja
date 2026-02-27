@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::helpers::clean_string;
-use crate::api::tracks::{PlaylistData, PlaylistInfo, Track, TrackInfo};
+use crate::protocol::tracks::{PlaylistData, PlaylistInfo, Track, TrackInfo};
 
 pub fn parse_track(json: &Value) -> Option<Track> {
     let id = json.get("id").and_then(|v| {

@@ -6,7 +6,7 @@ use regex::Regex;
 use serde_json::{Value, json};
 
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
     sources::{SourcePlugin, plugin::BoxedTrack},
 };
 
@@ -141,7 +141,7 @@ impl MixcloudSource {
             Some(body) => {
                 if let Some(data) = body["data"]["cloudcastLookup"].as_object() {
                     if let Some(reason) = data.get("restrictedReason").and_then(|v| v.as_str()) {
-                        return LoadResult::Error(crate::api::tracks::LoadError {
+                        return LoadResult::Error(crate::protocol::tracks::LoadError {
                             message: format!("Track restricted: {}", reason),
                             severity: crate::common::Severity::Common,
                             cause: reason.to_string(),

@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use super::{cipher::YouTubeCipherManager, oauth::YouTubeOAuth, sabr::SabrConfig};
-use crate::api::tracks::Track;
+use crate::protocol::tracks::Track;
 
 #[async_trait]
 pub trait YouTubeClient: Send + Sync {

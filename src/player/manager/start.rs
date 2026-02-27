@@ -8,11 +8,11 @@ use super::{
     monitor::{MonitorCtx, monitor_loop},
 };
 use crate::{
-    api::{
+    audio::playback::{PlaybackState, TrackHandle},
+    protocol::{
         self,
         events::{RustalinkEvent, TrackEndReason},
     },
-    audio::playback::{PlaybackState, TrackHandle},
     server::Session,
 };
 
@@ -32,7 +32,7 @@ pub async fn start_playback(
     stop_current_track(player, &session).await;
 
     // -- 2. Set up player state for the new track --------------------------
-    player.track_info = api::tracks::Track::decode(&track);
+    player.track_info = protocol::tracks::Track::decode(&track);
     player.track = Some(track.clone());
     player.position = 0;
     player.paused = false;
@@ -44,7 +44,7 @@ pub async fn start_playback(
         .track_info
         .as_ref()
         .map(|t| t.info.clone())
-        .unwrap_or_else(|| api::tracks::TrackInfo {
+        .unwrap_or_else(|| protocol::tracks::TrackInfo {
             title: "Unknown".to_string(),
             author: "Unknown".to_string(),
             length: 0,
@@ -116,10 +116,12 @@ pub async fn start_playback(
         }
     };
 
-    session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackStart {
-        guild_id: player.guild_id.clone(),
-        track: track_info_response.clone(),
-    }));
+    session.send_message(&protocol::OutgoingMessage::Event(
+        RustalinkEvent::TrackStart {
+            guild_id: player.guild_id.clone(),
+            track: track_info_response.clone(),
+        },
+    ));
 
     // -- 6. Fetch lyrics (async, non-blocking) -----------------------------
     spawn_lyrics_fetch(
@@ -156,11 +158,13 @@ async fn stop_current_track(player: &mut PlayerContext, session: &Session) {
     if let Some(handle) = &player.track_handle {
         if handle.get_state() != PlaybackState::Stopped {
             if let Some(track) = player.to_player_response().track {
-                session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackEnd {
-                    guild_id: player.guild_id.clone(),
-                    track,
-                    reason: TrackEndReason::Replaced,
-                }));
+                session.send_message(&protocol::OutgoingMessage::Event(
+                    RustalinkEvent::TrackEnd {
+                        guild_id: player.guild_id.clone(),
+                        track,
+                        reason: TrackEndReason::Replaced,
+                    },
+                ));
             }
         }
     }

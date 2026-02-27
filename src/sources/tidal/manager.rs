@@ -8,7 +8,7 @@ use tracing::{error, warn};
 
 use super::token::TidalTokenTracker;
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
     sources::SourcePlugin,
 };
 

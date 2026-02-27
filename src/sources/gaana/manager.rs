@@ -8,7 +8,7 @@ use tracing::{debug, warn};
 
 use super::track::GaanaTrack;
 use crate::{
-    api::tracks::{LoadError, LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    protocol::tracks::{LoadError, LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
     sources::{SourcePlugin, plugin::PlayableTrack},
 };
 

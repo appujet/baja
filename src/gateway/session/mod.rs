@@ -37,7 +37,7 @@ pub struct VoiceGateway {
     mixer: Shared<Mixer>,
     filter_chain: Shared<crate::audio::filters::FilterChain>,
     ping: Arc<AtomicI64>,
-    event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::api::RustalinkEvent>>,
+    event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::protocol::RustalinkEvent>>,
     frames_sent: Arc<std::sync::atomic::AtomicU64>,
     frames_nulled: Arc<std::sync::atomic::AtomicU64>,
     cancel_token: CancellationToken,
@@ -60,7 +60,7 @@ impl VoiceGateway {
         mixer: Shared<Mixer>,
         filter_chain: Shared<crate::audio::filters::FilterChain>,
         ping: Arc<AtomicI64>,
-        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::api::RustalinkEvent>>,
+        event_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::protocol::RustalinkEvent>>,
         frames_sent: Arc<std::sync::atomic::AtomicU64>,
         frames_nulled: Arc<std::sync::atomic::AtomicU64>,
     ) -> Self {
@@ -285,7 +285,7 @@ impl VoiceGateway {
 
     fn emit_close_event(&self, code: u16, reason: String) {
         if let Some(tx) = &self.event_tx {
-            let _ = tx.send(crate::api::RustalinkEvent::WebSocketClosed {
+            let _ = tx.send(crate::protocol::RustalinkEvent::WebSocketClosed {
                 guild_id: self.guild_id.clone(),
                 code,
                 reason,

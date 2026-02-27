@@ -8,8 +8,8 @@ use super::{
     common::{INNERTUBE_API, resolve_format_url, select_best_audio_format},
 };
 use crate::{
-    api::tracks::Track,
     common::types::AnyResult,
+    protocol::tracks::Track,
     sources::youtube::{
         cipher::YouTubeCipherManager, clients::common::ClientConfig, extractor::extract_track,
         oauth::YouTubeOAuth,
@@ -245,7 +245,12 @@ impl YouTubeClient for AndroidVrClient {
         let best = selected.unwrap();
         let itag = best.get("itag").and_then(|v| v.as_i64()).unwrap_or(-1);
         let mime = best.get("mimeType").and_then(|v| v.as_str()).unwrap_or("?");
-        tracing::debug!("AndroidVR: selected format itag={} mime={} for {}", itag, mime, track_id);
+        tracing::debug!(
+            "AndroidVR: selected format itag={} mime={} for {}",
+            itag,
+            mime,
+            track_id
+        );
 
         match resolve_format_url(best, &player_page_url, &cipher_manager).await {
             Ok(Some(url)) => {
@@ -253,11 +258,20 @@ impl YouTubeClient for AndroidVrClient {
                 Ok(Some(url))
             }
             Ok(None) => {
-                tracing::warn!("AndroidVR: resolve_format_url returned None for {} (itag={})", track_id, itag);
+                tracing::warn!(
+                    "AndroidVR: resolve_format_url returned None for {} (itag={})",
+                    track_id,
+                    itag
+                );
                 Ok(None)
             }
             Err(e) => {
-                tracing::warn!("AndroidVR: resolve_format_url error for {} (itag={}): {}", track_id, itag, e);
+                tracing::warn!(
+                    "AndroidVR: resolve_format_url error for {} (itag={}): {}",
+                    track_id,
+                    itag,
+                    e
+                );
                 Ok(None)
             }
         }

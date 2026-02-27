@@ -8,7 +8,7 @@ use tracing::{debug, warn};
 
 use super::token::PandoraTokenTracker;
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, SearchResult, Track, TrackInfo},
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, SearchResult, Track, TrackInfo},
     sources::SourcePlugin,
 };
 
@@ -223,7 +223,7 @@ impl PandoraSource {
         };
 
         let mut t = Track::new(info);
-        t.plugin_info = crate::api::tracks::PluginInfo {
+        t.plugin_info = crate::protocol::tracks::PluginInfo {
             album_name: album_name.map(|s| s.to_string()),
             album_url: album_url.map(|p| format!("{}{}", BASE_URL, p)),
             artist_url: artist_url.map(|p| format!("{}{}", BASE_URL, p)),

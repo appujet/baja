@@ -6,11 +6,11 @@ use sha2::Sha256;
 
 use super::LyricsProvider;
 use crate::{
-    api::{
+    configs::{HttpProxyConfig, lyrics::YandexLyricsConfig},
+    protocol::{
         models::{LyricsData, LyricsLine},
         tracks::TrackInfo,
     },
-    configs::{HttpProxyConfig, lyrics::YandexLyricsConfig},
 };
 
 pub struct YandexProvider {

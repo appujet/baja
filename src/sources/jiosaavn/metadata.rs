@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::{JioSaavnSource, helpers::get_json, parser::parse_track};
-use crate::api::tracks::{LoadError, LoadResult};
+use crate::protocol::tracks::{LoadError, LoadResult};
 
 impl JioSaavnSource {
     pub async fn fetch_metadata(&self, id: &str) -> Option<Value> {
@@ -81,8 +81,8 @@ impl JioSaavnSource {
                     name = format!("{}'s Top Tracks", name);
                 }
 
-                LoadResult::Playlist(crate::api::tracks::PlaylistData {
-                    info: crate::api::tracks::PlaylistInfo {
+                LoadResult::Playlist(crate::protocol::tracks::PlaylistData {
+                    info: crate::protocol::tracks::PlaylistInfo {
                         name,
                         selected_track: -1,
                     },

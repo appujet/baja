@@ -8,8 +8,8 @@ use super::{
     common::{extract_thumbnail, is_duration, parse_duration},
 };
 use crate::{
-    api::tracks::{Track, TrackInfo},
     common::types::AnyResult,
+    protocol::tracks::{Track, TrackInfo},
     sources::youtube::{
         cipher::YouTubeCipherManager, clients::common::ClientConfig, oauth::YouTubeOAuth,
     },

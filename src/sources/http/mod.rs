@@ -13,9 +13,9 @@ use symphonia::core::{
 use tracing::{debug, error, warn};
 
 use crate::{
-    api::tracks::{LoadError, LoadResult, Track, TrackInfo},
     audio::processor::{AudioProcessor, DecoderCommand},
     common::types::AnyResult,
+    protocol::tracks::{LoadError, LoadResult, Track, TrackInfo},
     sources::{SourcePlugin, plugin::PlayableTrack},
 };
 

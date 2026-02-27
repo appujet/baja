@@ -6,7 +6,7 @@ use serde_json::Value;
 use tokio::sync::RwLock;
 
 use super::LyricsProvider;
-use crate::api::{
+use crate::protocol::{
     models::{LyricsData, LyricsLine},
     tracks::TrackInfo,
 };

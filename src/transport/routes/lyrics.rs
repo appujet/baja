@@ -7,7 +7,7 @@ use axum::{
 };
 
 use crate::{
-    api::{
+    protocol::{
         models::{
             GetLyricsQuery, GetPlayerLyricsQuery, LyricsLoadResult,
             LyricsResultData as ApiLyricsData, RustalinkLyrics, RustalinkLyricsLine,
@@ -37,7 +37,7 @@ pub async fn load_lyrics(
         Some(t) => t,
         None => {
             return Json(LyricsLoadResult::Error(
-                crate::api::models::LyricsLoadError {
+                crate::protocol::models::LyricsLoadError {
                     message: "Invalid encoded track".to_string(),
                     severity: crate::common::Severity::Common,
                 },
@@ -54,9 +54,9 @@ pub async fn load_lyrics(
                     lines,
                 }))
             } else {
-                Json(LyricsLoadResult::Text(crate::api::models::LyricsTextData {
-                    text: lyrics.text,
-                }))
+                Json(LyricsLoadResult::Text(
+                    crate::protocol::models::LyricsTextData { text: lyrics.text },
+                ))
             }
         }
         None => Json(LyricsLoadResult::Empty {}),
@@ -97,21 +97,23 @@ pub async fn subscribe_lyrics(
                                 let mut lock = lyrics_data_arc.lock().await;
                                 *lock = Some(lyrics.clone());
                             }
-                            let event = crate::api::OutgoingMessage::Event(
-                                crate::api::RustalinkEvent::LyricsFound {
+                            let event = crate::protocol::OutgoingMessage::Event(
+                                crate::protocol::RustalinkEvent::LyricsFound {
                                     guild_id: guild_id_lyrics,
-                                    lyrics: crate::api::models::RustalinkLyrics {
+                                    lyrics: crate::protocol::models::RustalinkLyrics {
                                         source_name: track_info_clone.source_name.clone(),
                                         provider: Some(lyrics.provider),
                                         text: Some(lyrics.text),
                                         lines: lyrics.lines.map(|lines| {
                                             lines
                                                 .into_iter()
-                                                .map(|l| crate::api::models::RustalinkLyricsLine {
-                                                    timestamp: l.timestamp,
-                                                    duration: Some(l.duration),
-                                                    line: l.text,
-                                                    plugin: serde_json::json!({}),
+                                                .map(|l| {
+                                                    crate::protocol::models::RustalinkLyricsLine {
+                                                        timestamp: l.timestamp,
+                                                        duration: Some(l.duration),
+                                                        line: l.text,
+                                                        plugin: serde_json::json!({}),
+                                                    }
                                                 })
                                                 .collect()
                                         }),
@@ -121,8 +123,8 @@ pub async fn subscribe_lyrics(
                             );
                             session_lyrics_clone.send_message(&event);
                         } else {
-                            let event = crate::api::OutgoingMessage::Event(
-                                crate::api::RustalinkEvent::LyricsNotFound {
+                            let event = crate::protocol::OutgoingMessage::Event(
+                                crate::protocol::RustalinkEvent::LyricsNotFound {
                                     guild_id: guild_id_lyrics,
                                 },
                             );
@@ -188,7 +190,7 @@ pub async fn get_lyrics(
                 text: Some(lyrics.text),
                 lines: lyrics
                     .lines
-                    .map(|lines: Vec<crate::api::models::LyricsLine>| {
+                    .map(|lines: Vec<crate::protocol::models::LyricsLine>| {
                         lines
                             .into_iter()
                             .map(|l| RustalinkLyricsLine {
@@ -248,7 +250,7 @@ pub async fn get_player_lyrics(
                 text: Some(lyrics.text),
                 lines: lyrics
                     .lines
-                    .map(|lines: Vec<crate::api::models::LyricsLine>| {
+                    .map(|lines: Vec<crate::protocol::models::LyricsLine>| {
                         lines
                             .into_iter()
                             .map(|l| RustalinkLyricsLine {

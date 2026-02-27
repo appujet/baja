@@ -1,5 +1,5 @@
 use super::DeezerSource;
-use crate::api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track};
+use crate::protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track};
 
 impl DeezerSource {
     pub(crate) async fn search(&self, query: &str) -> LoadResult {
@@ -26,7 +26,7 @@ impl DeezerSource {
         &self,
         query: &str,
         types: &[String],
-    ) -> Option<crate::api::tracks::SearchResult> {
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         let url = format!("search/autocomplete?q={}", urlencoding::encode(query));
         let json = self.get_json_public(&url).await?;
 
@@ -174,7 +174,7 @@ impl DeezerSource {
             }
         }
 
-        Some(crate::api::tracks::SearchResult {
+        Some(crate::protocol::tracks::SearchResult {
             tracks,
             albums,
             artists,

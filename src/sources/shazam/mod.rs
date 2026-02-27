@@ -7,7 +7,7 @@ use serde_json::Value;
 use tracing::error;
 
 use crate::{
-    api::tracks::{LoadResult, Track, TrackInfo},
+    protocol::tracks::{LoadResult, Track, TrackInfo},
     sources::SourcePlugin,
 };
 
@@ -141,7 +141,7 @@ impl ShazamSource {
             source_name: "shazam".to_string(),
         });
 
-        track.plugin_info = crate::api::tracks::PluginInfo {
+        track.plugin_info = crate::protocol::tracks::PluginInfo {
             album_name: None,
             album_url: None,
             artist_url: None,
@@ -221,7 +221,7 @@ impl ShazamSource {
             source_name: "shazam".to_string(),
         });
 
-        track.plugin_info = crate::api::tracks::PluginInfo {
+        track.plugin_info = crate::protocol::tracks::PluginInfo {
             album_name: None,
             album_url: None,
             artist_url: None,

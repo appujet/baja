@@ -44,7 +44,7 @@ pub trait SourcePlugin: Send + Sync {
         &self,
         identifier: &str,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> crate::api::tracks::LoadResult;
+    ) -> crate::protocol::tracks::LoadResult;
 
     /// Get a playable track for the given identifier.
     async fn get_track(
@@ -62,7 +62,7 @@ pub trait SourcePlugin: Send + Sync {
         _query: &str,
         _types: &[String],
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<crate::api::tracks::SearchResult> {
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         None
     }
 

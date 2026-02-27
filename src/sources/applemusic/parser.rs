@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::AppleMusicSource;
-use crate::api::tracks::{Track, TrackInfo};
+use crate::protocol::tracks::{Track, TrackInfo};
 
 impl AppleMusicSource {
     pub(crate) fn build_track(
@@ -67,7 +67,7 @@ impl AppleMusicSource {
             .pointer("/previews/0/url")
             .and_then(|v| v.as_str());
 
-        track.plugin_info = crate::api::tracks::PluginInfo {
+        track.plugin_info = crate::protocol::tracks::PluginInfo {
             album_name: album_name.map(|s| s.to_string()),
             album_url: track
                 .info

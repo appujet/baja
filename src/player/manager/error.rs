@@ -1,6 +1,6 @@
 use super::super::context::PlayerContext;
 use crate::{
-    api::{
+    protocol::{
         self,
         events::{RustalinkEvent, TrackEndReason, TrackException},
     },
@@ -14,7 +14,7 @@ pub async fn send_load_failed(player: &PlayerContext, session: &Session, message
     };
     let guild_id = player.guild_id.clone();
 
-    session.send_message(&api::OutgoingMessage::Event(
+    session.send_message(&protocol::OutgoingMessage::Event(
         RustalinkEvent::TrackException {
             guild_id: guild_id.clone(),
             track: track.clone(),
@@ -27,9 +27,11 @@ pub async fn send_load_failed(player: &PlayerContext, session: &Session, message
         },
     ));
 
-    session.send_message(&api::OutgoingMessage::Event(RustalinkEvent::TrackEnd {
-        guild_id,
-        track,
-        reason: TrackEndReason::LoadFailed,
-    }));
+    session.send_message(&protocol::OutgoingMessage::Event(
+        RustalinkEvent::TrackEnd {
+            guild_id,
+            track,
+            reason: TrackEndReason::LoadFailed,
+        },
+    ));
 }

@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use futures::stream::{FuturesUnordered, StreamExt};
 
 use crate::{
-    api::{models::LyricsData, tracks::TrackInfo},
     configs::Config,
+    protocol::{models::LyricsData, tracks::TrackInfo},
 };
 
 pub mod bilibili;

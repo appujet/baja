@@ -218,7 +218,7 @@ impl SourceManager {
         &self,
         identifier: &str,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> crate::api::tracks::LoadResult {
+    ) -> crate::protocol::tracks::LoadResult {
         for source in &self.sources {
             if source.can_handle(identifier) {
                 tracing::debug!(
@@ -234,14 +234,14 @@ impl SourceManager {
             "SourceManager: No source matched identifier: '{}'",
             identifier
         );
-        crate::api::tracks::LoadResult::Empty {}
+        crate::protocol::tracks::LoadResult::Empty {}
     }
     pub async fn load_search(
         &self,
         query: &str,
         types: &[String],
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<crate::api::tracks::SearchResult> {
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         // Try each source in order
         for source in &self.sources {
             if source.can_handle(query) {
@@ -257,7 +257,7 @@ impl SourceManager {
 
     pub async fn get_track(
         &self,
-        track_info: &crate::api::tracks::TrackInfo,
+        track_info: &crate::protocol::tracks::TrackInfo,
         routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> Option<BoxedTrack> {
         let identifier = track_info.uri.as_deref().unwrap_or(&track_info.identifier);
@@ -325,11 +325,11 @@ impl SourceManager {
                 for sq in provider_queries {
                     let rp = routeplanner.clone();
                     let res = match self.load(&sq, rp.clone()).await {
-                        crate::api::tracks::LoadResult::Track(t) => {
+                        crate::protocol::tracks::LoadResult::Track(t) => {
                             let id = t.info.uri.as_deref().unwrap_or(&t.info.identifier);
                             self.resolve_nested_track(id, rp).await
                         }
-                        crate::api::tracks::LoadResult::Search(tracks) => {
+                        crate::protocol::tracks::LoadResult::Search(tracks) => {
                             if let Some(first) = tracks.first() {
                                 tracing::debug!(
                                     "Mirror provider '{}' returned search result, using first track: {}",

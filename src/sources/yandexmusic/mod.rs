@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use tracing::debug;
 
 use crate::{
-    api::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
     sources::{SourcePlugin, plugin::BoxedTrack},
 };
 
@@ -132,7 +132,10 @@ impl YandexMusicSource {
         LoadResult::Search(tracks)
     }
 
-    async fn load_search_internal(&self, query: &str) -> Option<crate::api::tracks::SearchResult> {
+    async fn load_search_internal(
+        &self,
+        query: &str,
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         let data = self
             .api_request(
                 "/search",
@@ -169,7 +172,7 @@ impl YandexMusicSource {
             }
         }
 
-        Some(crate::api::tracks::SearchResult {
+        Some(crate::protocol::tracks::SearchResult {
             tracks,
             albums,
             artists,
@@ -504,7 +507,7 @@ impl SourcePlugin for YandexMusicSource {
         query: &str,
         _types: &[String],
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<crate::api::tracks::SearchResult> {
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         self.load_search_internal(query).await
     }
 

@@ -1,6 +1,6 @@
 //! Power-of-two aligned byte buffer pool.
 //!
-//! Sizes are rounded up to the next power of two (minimum 1 024 bytes), 
+//! Sizes are rounded up to the next power of two (minimum 1 024 bytes),
 //! pooled in per-size buckets, and evicted after a configurable idle period.
 
 use std::collections::HashMap;

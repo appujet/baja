@@ -6,7 +6,7 @@ use axum::{
     response::{IntoResponse, Json},
 };
 
-use crate::{api, server::AppState};
+use crate::{protocol, server::AppState};
 
 /// DELETE /v4/sessions/{sessionId}/players/{guildId}
 pub async fn destroy_player(
@@ -25,10 +25,10 @@ pub async fn destroy_player(
                 if player.track.is_some() {
                     if let Some(track_data) = player.to_player_response().track {
                         let end_event =
-                            api::OutgoingMessage::Event(api::RustalinkEvent::TrackEnd {
+                            protocol::OutgoingMessage::Event(protocol::RustalinkEvent::TrackEnd {
                                 guild_id: guild_id.clone(),
                                 track: track_data,
-                                reason: api::TrackEndReason::Cleanup,
+                                reason: protocol::TrackEndReason::Cleanup,
                             });
                         session.send_message(&end_event);
                     }

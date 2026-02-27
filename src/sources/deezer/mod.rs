@@ -17,7 +17,7 @@ use tracing::debug;
 use track::DeezerTrack;
 
 use crate::{
-    api::tracks::LoadResult,
+    protocol::tracks::LoadResult,
     sources::{SourcePlugin, plugin::PlayableTrack},
 };
 
@@ -212,7 +212,7 @@ impl SourcePlugin for DeezerSource {
         query: &str,
         types: &[String],
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<crate::api::tracks::SearchResult> {
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         let q = if let Some(prefix) = self.search_prefixes.iter().find(|p| query.starts_with(*p)) {
             query.strip_prefix(prefix).unwrap()
         } else {

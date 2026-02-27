@@ -1,7 +1,7 @@
 use serde_json::Value;
 use tracing::debug;
 
-use crate::api::tracks::TrackInfo;
+use crate::protocol::tracks::TrackInfo;
 
 pub struct SpotifyParser;
 

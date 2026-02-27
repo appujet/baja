@@ -6,7 +6,7 @@ use reqwest::header::HeaderMap;
 use tracing::debug;
 
 use self::track::JioSaavnTrack;
-use crate::{api::tracks::LoadResult, sources::plugin::PlayableTrack};
+use crate::{protocol::tracks::LoadResult, sources::plugin::PlayableTrack};
 
 pub mod helpers;
 pub mod metadata;
@@ -223,7 +223,7 @@ impl crate::sources::plugin::SourcePlugin for JioSaavnSource {
         query: &str,
         types: &[String],
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
-    ) -> Option<crate::api::tracks::SearchResult> {
+    ) -> Option<crate::protocol::tracks::SearchResult> {
         let q = if let Some(prefix) = self.search_prefixes.iter().find(|p| query.starts_with(*p)) {
             query.strip_prefix(prefix).unwrap()
         } else {

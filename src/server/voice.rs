@@ -6,11 +6,11 @@ use std::sync::{
 use tracing::error;
 
 use crate::{
-    api::RustalinkEvent,
     audio::filters::FilterChain,
     common::types::{ChannelId, GuildId, Shared, UserId},
     gateway::{VoiceEngine, VoiceGateway},
     player::VoiceConnectionState,
+    protocol::RustalinkEvent,
 };
 
 /// Spawns the voice gateway task for the given guild.

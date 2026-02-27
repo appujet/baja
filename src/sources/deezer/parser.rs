@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use super::DeezerSource;
-use crate::api::tracks::{Track, TrackInfo};
+use crate::protocol::tracks::{Track, TrackInfo};
 
 impl DeezerSource {
     pub(crate) fn parse_track(&self, json: &Value) -> Option<Track> {
@@ -60,7 +60,7 @@ impl DeezerSource {
         let artist_artwork_url = json.pointer("/artist/picture_xl").and_then(|v| v.as_str());
         let preview_url = json.get("preview").and_then(|v| v.as_str());
 
-        track.plugin_info = crate::api::tracks::PluginInfo {
+        track.plugin_info = crate::protocol::tracks::PluginInfo {
             album_name: album_name.map(|s| s.to_string()),
             album_url,
             artist_url,
@@ -141,7 +141,7 @@ impl DeezerSource {
             });
         let preview_url = json.pointer("/MEDIA/0/HREF").and_then(|v| v.as_str());
 
-        track.plugin_info = crate::api::tracks::PluginInfo {
+        track.plugin_info = crate::protocol::tracks::PluginInfo {
             album_name: album_name.map(|s| s.to_string()),
             album_url,
             artist_url,

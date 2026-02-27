@@ -1,4 +1,4 @@
-use crate::api::tracks::TrackInfo;
+use crate::protocol::tracks::TrackInfo;
 
 pub fn decode_song_batch(buf: &[u8]) -> Vec<(String, TrackInfo)> {
     let mut songs = Vec::new();
