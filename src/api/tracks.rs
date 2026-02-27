@@ -35,10 +35,10 @@ impl Track {
         track
     }
 
-    /// Encode the track into a Lavalink-compatible base64 string.
+    /// Encode the track into a base64 string.
     pub fn encode(&self) -> String {
         let mut buf = Vec::new();
-        // Version 3 (Lavalink v4 standard)
+        // Version 
         buf.write_u8(3).unwrap();
 
         write_utf(&mut buf, &self.info.title);
@@ -58,7 +58,7 @@ impl Track {
         BASE64_STANDARD.encode(&buf)
     }
 
-    /// Decode a Lavalink track from a base64 string.
+    /// Decode a track from a base64 string.
     pub fn decode(encoded: &str) -> Option<Self> {
         let data = BASE64_STANDARD.decode(encoded).ok()?;
         let mut cursor = Cursor::new(data);
@@ -145,7 +145,7 @@ fn read_opt_utf<R: Read>(r: &mut R) -> Option<String> {
 }
 
 /// Metadata for an audio track.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackInfo {
     pub identifier: String,

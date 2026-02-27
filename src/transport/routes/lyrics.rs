@@ -9,8 +9,8 @@ use axum::{
 use crate::{
     api::{
         models::{
-            GetLyricsQuery, GetPlayerLyricsQuery, LavalinkLyrics, LavalinkLyricsLine,
-            LyricsLoadResult, LyricsResultData as ApiLyricsData,
+            GetLyricsQuery, GetPlayerLyricsQuery, LyricsLoadResult,
+            LyricsResultData as ApiLyricsData, RustalinkLyrics, RustalinkLyricsLine,
         },
         tracks::Track,
     },
@@ -28,7 +28,7 @@ pub async fn load_lyrics(
     State(state): State<Arc<AppState>>,
     Query(query): Query<LoadLyricsQuery>,
 ) -> Json<LyricsLoadResult> {
-    tracing::debug!(
+    tracing::info!(
         "GET /v4/loadlyrics: encoded_track='{}', lang={:?}",
         query.encoded_track,
         query.lang
@@ -69,7 +69,7 @@ pub async fn subscribe_lyrics(
 ) -> axum::http::StatusCode {
     let session_id = crate::common::types::SessionId(session_id);
     let guild_id = crate::common::types::GuildId(guild_id);
-    tracing::debug!(
+    tracing::info!(
         "POST /v4/sessions/{}/players/{}/lyrics/subscribe",
         session_id,
         guild_id
@@ -98,16 +98,16 @@ pub async fn subscribe_lyrics(
                                 *lock = Some(lyrics.clone());
                             }
                             let event = crate::api::OutgoingMessage::Event(
-                                crate::api::LavalinkEvent::LyricsFound {
+                                crate::api::RustalinkEvent::LyricsFound {
                                     guild_id: guild_id_lyrics,
-                                    lyrics: crate::api::models::LavalinkLyrics {
+                                    lyrics: crate::api::models::RustalinkLyrics {
                                         source_name: track_info_clone.source_name.clone(),
                                         provider: Some(lyrics.provider),
                                         text: Some(lyrics.text),
                                         lines: lyrics.lines.map(|lines| {
                                             lines
                                                 .into_iter()
-                                                .map(|l| crate::api::models::LavalinkLyricsLine {
+                                                .map(|l| crate::api::models::RustalinkLyricsLine {
                                                     timestamp: l.timestamp,
                                                     duration: Some(l.duration),
                                                     line: l.text,
@@ -119,14 +119,14 @@ pub async fn subscribe_lyrics(
                                     },
                                 },
                             );
-                            session_lyrics_clone.send_message(&event).await;
+                            session_lyrics_clone.send_message(&event);
                         } else {
                             let event = crate::api::OutgoingMessage::Event(
-                                crate::api::LavalinkEvent::LyricsNotFound {
+                                crate::api::RustalinkEvent::LyricsNotFound {
                                     guild_id: guild_id_lyrics,
                                 },
                             );
-                            session_lyrics_clone.send_message(&event).await;
+                            session_lyrics_clone.send_message(&event);
                         }
                     }
                 });
@@ -144,8 +144,8 @@ pub async fn unsubscribe_lyrics(
 ) -> axum::http::StatusCode {
     let session_id = crate::common::types::SessionId(session_id);
     let guild_id = crate::common::types::GuildId(guild_id);
-    tracing::debug!(
-        "DELETE /v4/sessions/{}/players/{}/lyrics/subscribe",
+    tracing::info!(
+        "POST /v4/sessions/{}/players/{}/lyrics/unsubscribe",
         session_id,
         guild_id
     );
@@ -164,7 +164,7 @@ pub async fn get_lyrics(
     State(state): State<Arc<AppState>>,
     Query(query): Query<GetLyricsQuery>,
 ) -> impl IntoResponse {
-    tracing::debug!(
+    tracing::info!(
         "GET /v4/lyrics: track='{}', skipTrackSource={}",
         query.track,
         query.skip_track_source
@@ -182,7 +182,7 @@ pub async fn get_lyrics(
         .await
     {
         Some(lyrics) => {
-            let response = LavalinkLyrics {
+            let response = RustalinkLyrics {
                 source_name: track.info.source_name.clone(),
                 provider: Some(lyrics.provider),
                 text: Some(lyrics.text),
@@ -191,7 +191,7 @@ pub async fn get_lyrics(
                     .map(|lines: Vec<crate::api::models::LyricsLine>| {
                         lines
                             .into_iter()
-                            .map(|l| LavalinkLyricsLine {
+                            .map(|l| RustalinkLyricsLine {
                                 timestamp: l.timestamp,
                                 duration: Some(l.duration),
                                 line: l.text,
@@ -214,7 +214,7 @@ pub async fn get_player_lyrics(
 ) -> impl IntoResponse {
     let session_id = crate::common::types::SessionId(session_id);
     let guild_id = crate::common::types::GuildId(guild_id);
-    tracing::debug!(
+    tracing::info!(
         "GET /v4/sessions/{}/players/{}/track/lyrics: skipTrackSource={}",
         session_id,
         guild_id,
@@ -242,7 +242,7 @@ pub async fn get_player_lyrics(
         .await
     {
         Some(lyrics) => {
-            let response = LavalinkLyrics {
+            let response = RustalinkLyrics {
                 source_name: track.info.source_name.clone(),
                 provider: Some(lyrics.provider),
                 text: Some(lyrics.text),
@@ -251,7 +251,7 @@ pub async fn get_player_lyrics(
                     .map(|lines: Vec<crate::api::models::LyricsLine>| {
                         lines
                             .into_iter()
-                            .map(|l| LavalinkLyricsLine {
+                            .map(|l| RustalinkLyricsLine {
                                 timestamp: l.timestamp,
                                 duration: Some(l.duration),
                                 line: l.text,

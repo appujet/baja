@@ -1,37 +1,42 @@
 <p align="center">
-  <img src="assets/rastalink.png" alt="Rustalink Logo" width="250" height="250">
+  <img src="https://pub-19903466d24c44f9a9d94c9a3b2f4932.r2.dev/rastalink.png" alt="Rustalink Logo" width="200" height="200">
 </p>
+
+<h1 align="center">Rustalink</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Language-Rust-orange?style=flat-square&logo=rust" alt="Language">
-  <img src="https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square" alt="Status">
+  <a href="https://github.com/bongodevs/Rustalink/releases"><img src="https://img.shields.io/github/v/release/bongodevs/Rustalink?style=for-the-badge&color=orange&logo=github" alt="Release"></a>
+  <a href="https://github.com/bongodevs/Rustalink/actions"><img src="https://img.shields.io/github/actions/workflow/status/bongodevs/Rustalink/release.yml?style=for-the-badge&logo=githubactions&logoColor=white" alt="Build Status"></a>
+  <a href="https://github.com/bongodevs/Rustalink/blob/HEAD/LICENSE"><img src="https://img.shields.io/github/license/bongodevs/Rustalink?style=for-the-badge&color=blue" alt="License"></a>
+  <br>
+  <img src="https://img.shields.io/badge/Language-Rust-orange?style=for-the-badge&logo=rust" alt="Language">
+  <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform">
+  <a href="https://github.com/bongodevs/Rustalink/stargazers"><img src="https://img.shields.io/github/stars/bongodevs/Rustalink?style=for-the-badge&color=yellow&logo=github" alt="Stars"></a>
 </p>
 
-# Rustalink
+---
 
-A high-performance Discord audio sending server written in Rust.
+<p align="center">
+  <b>Rustalink</b> is a high-performance, standalone Discord audio sending node written in <b>Rust</b>.<br>
+  Designed for efficiency, reliability, and modern features.
+</p>
 
-### Key Features
+---
 
-#### 📼 Tape Stop
-Adds a gradual slowdown/speed-up effect when pausing and resuming playback.
+## Key Features
 
-```toml
-# Adds a gradual slowdown/speed-up effect (tape stop) when pausing and resuming.
-tape_stop = true
-# Duration of the slowdown/speed-up transition in milliseconds.
-tape_stop_duration_ms = 600
-```
+- 🚀 **High Performance**: Built with Rust for minimal overhead and maximum throughput.
+- 🎵 **Extensive Source Support**: Native support for 20+ audio platforms.
+- 🔄 **Smart Mirroring**: Automatically find audio for metadata-only sources (Spotify, Apple Music, etc.).
+- 📺 **Advanced YouTube Support**: Toggle between multiple clients (WEB, ANDROID, IOS, TV) to bypass restrictions.
+- 🐳 **Docker Ready**: One-command deployment with pre-configured environments.
+- 🛠 **Highly Configurable**: Fine-tune every aspect of the server via `config.toml`.
 
 ---
 
 ## Supported Sources
 
-Rustalink supports direct playback and **Mirroring**. Mirroring allows playback from metadata-only services (like Spotify) by automatically finding the best audio match from your configured mirror providers.
-
-### Source Table
+Rustalink supports direct playback and **Mirroring**. Mirroring allows playback from metadata-only services by automatically finding the best audio match from your configured mirror providers.
 
 | Source | Type | Search Prefix | Features |
 | :--- | :---: | :--- | :--- |
@@ -54,20 +59,22 @@ Rustalink supports direct playback and **Mirroring**. Mirroring allows playback 
 | **Audius** | Direct | `ausearch:`, `audsearch:` | - |
 | **HTTP / Local**| Direct | - | - |
 
-> [!NOTE]
-> **Hybrid** sources support direct playback if credentials/tokens are provided or if a direct playback URL is received. Otherwise, they fall back to mirroring.
+> [!TIP]
+> **Hybrid** sources support direct playback if credentials are provided. Otherwise, they seamlessly fall back to mirroring.
 
 ### YouTube Playback Clients
 
-To optimize playback and bypass restrictions, Rustalink supports switching between multiple YouTube client implementations. You can configure these in `config.toml`.
+Bypass restrictions by switching between specialized clients:
 
-| Client Alias  | Search | Resolve | Playback |
-| :--- | :--- | :---: | :---: |
+| Client Alias | Search | Resolve | Playback |
+| :--- | :---: | :---: | :---: |
 | `WEB` | ✅ | ✅ | ✅ |
-| `MWEB` / `REMIX` | ✅ | ✅ | ✅ |
+| `MWEB` | ✅ | ✅ | ✅ |
+| `REMIX` | ✅ | ✅ | ✅ |
 | `ANDROID` | ✅ | ✅ | ✅ |
 | `IOS` | ✅ | ✅ | ✅ |
-| `TV` / `TVHTML5` | ✅ | ✅ | ✅ |
+| `TV` | ✅ | ✅ | ✅ |
+| `TVHTML5` | ✅ | ✅ | ✅ |
 | `TV_CAST` | ✅ | ✅ | ✅ |
 | `TV_EMBEDDED` | ✅ | ✅ | ✅ |
 | `MUSIC_ANDROID` | ✅ | ✅ | ✅ |
@@ -77,114 +84,72 @@ To optimize playback and bypass restrictions, Rustalink supports switching betwe
 
 ---
 
-## 🛠️ Installation
+## Quick Start (Docker)
 
-### Running with Docker (Recommended)
-Docker ensures a consistent environment with all dependencies pre-configured.
+Docker is the recommended way to run Rustalink.
 
-#### 1. Pull the latest image
 ```bash
+# 1. Pull the image
 docker pull ghcr.io/bongodevs/rustalink:latest
-```
 
-#### 2. Setup configuration
-Create a directory for your configuration and logs:
-```bash
-mkdir rustalink
-cp config.default.toml rustalink/config.toml
-```
-Edit `rustalink/config.toml` to your liking.
+# 2. Setup config
+mkdir rustalink && cd rustalink
+docker run --rm ghcr.io/bongodevs/rustalink:latest cat config.default.toml > config.toml
 
-#### 3. Run the container
-```bash
-docker run -d \
-  --name rustalink \
-  -p 2333:2333 \
-  -v $(pwd)/rustalink/config.toml:/app/config.toml \
-  -v $(pwd)/rustalink/logs:/app/logs \
-  --restart unless-stopped \
-  ghcr.io/bongodevs/rustalink:latest
-```
-
-#### 4. Docker Compose (Alternative)
-Create a `docker-compose.yml`:
-```yaml
+# 3. Running with Docker Compose
+# Create a docker-compose.yml file:
 services:
   rustalink:
     image: ghcr.io/bongodevs/rustalink:latest
-    ports:
-      - "2333:2333"
-    volumes:
-      - ./config.toml:/app/config.toml
-      - ./logs:/app/logs
+    ports: ["2333:2333"]
+    volumes: ["./config.toml:/app/config.toml", "./logs:/app/logs"]
     restart: unless-stopped
 ```
-Run with: `docker compose up -d`
+
+For native installation (Windows, Linux, macOS), see the [Releases](https://github.com/bongodevs/rustalink/releases) page.
 
 ---
 
-### Running Native
-Download the appropriate binary for your system from the [Releases](https://github.com/bongodevs/Rustalink/releases) page or build from source.
+## Building from Source
 
-#### 🪟 Windows
-1. Download `rustalink-x86_64-pc-windows-msvc.exe`.
-2. Install the [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
-3. Place `config.toml` next to the `.exe`.
-4. Run via Command Prompt or PowerShell: `.\rustalink.exe`
+### Requirements
+- **Rust**: Latest stable version is required.
 
-#### 🏔️ Linux (Arch / Ubuntu)
-1. Download `rustalink-x86_64-unknown-linux-musl`.
-2. Install build dependencies if needed:
-   - **Arch**: `sudo pacman -S cmake gcc pkg-config`
-   - **Ubuntu**: `sudo apt install cmake build-essential pkg-config`
-3. Make executable: `chmod +x rustalink-x86_64-unknown-linux-musl`
-4. Run: `./rustalink-x86_64-unknown-linux-musl`
-
-#### 🍎 macOS
-1. Download the correct binary (Intel/M1/M2/M3).
-2. Remove quarantine if blocked: `xattr -d com.apple.quarantine rustalink-*-apple-darwin`
-3. Make executable and run: `chmod +x rustalink-*-apple-darwin && ./rustalink-*-apple-darwin`
-
----
-
-## ⚙️ Configuration
-
-Rustalink uses a `config.toml` file for its settings.
-- **Port**: Default is `2333`.
-- **Password**: Default is `youshallnotpass`.
-- **Sources**: Enable or disable providers (YouTube, Spotify, etc.) in the `[sources]` section.
-- **Logging**: Configure verbosity in the `[logging]` section.
-- **Mirroring**: Configure mirror priority and concurrent fetching.
-
----
-
-## 🛠️ Building from Source
-
-### 🛠️ Build Requirements
-- **Rust**: Latest stable.
-- **C-Toolchain**: `gcc`, `g++`, `make`, `cmake`, `pkg-config`.
-- **Clang/LLVM**: Required for `bindgen`.
-
-#### Install Commands:
-- **Ubuntu/Debian**: `sudo apt install cmake pkg-config libclang-dev clang gcc g++ make perl`
-- **Arch Linux**: `sudo pacman -S cmake pkgconf clang gcc make perl`
-
-### Commands
+#### Linux (Ubuntu/Debian)
 ```bash
-# Clone the repository
-git clone https://github.com/bongodevs/Rustalink.git
+sudo apt-get update
+sudo apt-get install -y build-essential cmake pkg-config libssl-dev clang
+```
+
+#### macOS
+```bash
+brew install cmake pkg-config
+# Ensure Xcode Command Line Tools are installed:
+xcode-select --install
+```
+
+#### Windows
+- Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (select "Desktop development with C++").
+- Install [CMake](https://cmake.org/download/).
+
+---
+
+```bash
+git clone https://github.com/bongodevs/rustalink.git
 cd rustalink
-
-# Build the project
 cargo build --release
-
-# Format code (optional)
-rustup run nightly cargo fmt
 ```
 
 ---
 
-## 📝 License
+## ❤️ Credits & Inspiration
 
-Rustalink is published under the [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/bongodevs/Rustalink/blob/HEAD/LICENSE).  
-Full details on usage and permissions are available in the [LICENSE](https://github.com/bongodevs/Rustalink/blob/HEAD/LICENSE) file.
+- **[Lavalink](https://github.com/lavalink-devs/Lavalink)** - The original standalone audio node.
+- **[NodeLink](https://github.com/PerformanC/NodeLink)** - Lightweight Lavalink alternative.
+
+---
+
+## 📄 License
+
+Rustalink is published under the **Apache License 2.0**.  
+See the [LICENSE](https://github.com/bongodevs/Rustalink/blob/HEAD/LICENSE) file for more details.

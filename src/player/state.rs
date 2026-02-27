@@ -65,6 +65,17 @@ pub struct VoiceConnectionState {
     pub channel_id: Option<String>,
 }
 
+impl From<VoiceState> for VoiceConnectionState {
+    fn from(v: VoiceState) -> Self {
+        Self {
+            token: v.token,
+            endpoint: v.endpoint,
+            session_id: v.session_id,
+            channel_id: v.channel_id,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum EndTime {

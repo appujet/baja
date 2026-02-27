@@ -22,7 +22,7 @@ impl PlayableTrack for MixcloudTrack {
         Receiver<String>,
         Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(4);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -54,7 +54,7 @@ impl PlayableTrack for MixcloudTrack {
                     ) {
                         Ok(r) => (
                             Some(Box::new(r) as Box<dyn symphonia::core::io::MediaSource>),
-                            Some(crate::common::types::AudioKind::Aac),
+                            Some(crate::common::types::AudioFormat::Aac),
                         ),
                         Err(e) => {
                             tracing::error!("Mixcloud HlsReader failed to initialize: {}", e);
@@ -68,8 +68,8 @@ impl PlayableTrack for MixcloudTrack {
                             std::path::Path::new(&url)
                                 .extension()
                                 .and_then(|s| s.to_str())
-                                .and_then(crate::common::types::AudioKind::from_ext)
-                                .or(Some(crate::common::types::AudioKind::Mp4)),
+                                .map(crate::common::types::AudioFormat::from_ext)
+                                .or(Some(crate::common::types::AudioFormat::Mp4)),
                         ),
                         Err(e) => {
                             tracing::error!("MixcloudReader failed to initialize: {}", e);
@@ -81,7 +81,7 @@ impl PlayableTrack for MixcloudTrack {
                 };
 
                 if let Some(r) = reader {
-                    match AudioProcessor::new(r, kind, tx, cmd_rx, Some(err_tx)) {
+                    match AudioProcessor::new(r, kind, tx, cmd_rx, Some(err_tx.clone())) {
                         Ok(mut processor) => {
                             if let Err(e) = processor.run() {
                                 tracing::error!("Mixcloud audio processor error: {}", e);
@@ -89,6 +89,7 @@ impl PlayableTrack for MixcloudTrack {
                         }
                         Err(e) => {
                             tracing::error!("Mixcloud failed to initialize processor: {}", e);
+                            let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
                         }
                     }
                 } else {

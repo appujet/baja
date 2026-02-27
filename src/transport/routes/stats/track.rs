@@ -21,7 +21,7 @@ pub async fn load_tracks(
     State(state): State<Arc<AppState>>,
 ) -> Json<LoadResult> {
     let identifier = params.identifier;
-    tracing::debug!("GET /v4/loadtracks: identifier='{}'", identifier);
+    tracing::info!("GET /v4/loadtracks: identifier='{}'", identifier);
 
     Json(
         state
@@ -39,7 +39,7 @@ pub async fn load_search(
     let query = params.query;
     let types_str = params.types.unwrap_or_default();
 
-    tracing::debug!(
+    tracing::info!(
         "GET /v4/loadsearch: query='{}', types='{}'",
         query,
         types_str
@@ -67,7 +67,7 @@ pub async fn load_search(
 
 /// GET /v4/decodetrack?encodedTrack=...
 pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoResponse {
-    tracing::debug!("GET /v4/decodetrack");
+    tracing::info!("GET /v4/decodetrack");
     let encoded = params.encoded_track.or(params.track);
 
     let encoded = match encoded {
@@ -75,7 +75,7 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
         None => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(crate::common::LavalinkError::bad_request(
+                Json(crate::common::RustalinkError::bad_request(
                     "No track to decode provided",
                     "/v4/decodetrack",
                 )),
@@ -88,7 +88,7 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
         Some(track) => (StatusCode::OK, Json(track)).into_response(),
         None => (
             StatusCode::BAD_REQUEST,
-            Json(crate::common::LavalinkError::bad_request(
+            Json(crate::common::RustalinkError::bad_request(
                 "Invalid track encoding",
                 "/v4/decodetrack",
             )),
@@ -99,7 +99,7 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
 
 /// POST /v4/decodetracks
 pub async fn decode_tracks(Json(body): Json<api::EncodedTracks>) -> impl IntoResponse {
-    tracing::debug!("POST /v4/decodetracks: count={}", body.tracks.len());
+    tracing::info!("POST /v4/decodetracks: count={}", body.tracks.len());
 
     let mut tracks = Vec::with_capacity(body.tracks.len());
     for encoded in &body.tracks {
@@ -109,7 +109,7 @@ pub async fn decode_tracks(Json(body): Json<api::EncodedTracks>) -> impl IntoRes
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(
-                        serde_json::to_value(crate::common::LavalinkError::bad_request(
+                        serde_json::to_value(crate::common::RustalinkError::bad_request(
                             format!("Invalid track encoding: {}", encoded),
                             "/v4/decodetracks",
                         ))

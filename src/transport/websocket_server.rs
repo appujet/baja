@@ -1,4 +1,5 @@
-use std::sync::{Arc, atomic::Ordering::Relaxed};
+use Ordering::Relaxed;
+use std::sync::{Arc, atomic::Ordering};
 
 use axum::{
     extract::{
@@ -8,7 +9,6 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -98,26 +98,32 @@ pub async fn handle_socket(
     let (session, resumed) = if let Some(ref sid) = client_session_id {
         if let Some((_, existing)) = state.resumable_sessions.remove(sid) {
             info!("Resuming session: {}", sid);
-            existing
-                .paused
-                .store(false, std::sync::atomic::Ordering::Relaxed);
+            existing.paused.store(false, Ordering::Relaxed);
             {
-                let mut sender = existing.sender.lock().await;
+                let mut sender = existing.sender.lock();
                 *sender = tx.clone();
             }
             state.sessions.insert(sid.clone(), existing.clone());
             (existing, true)
         } else {
-            // Session ID provided but not found -> New Session
-            let session_id = SessionId(uuid::Uuid::new_v4().to_string());
-            let session = create_session(session_id.clone(), Some(user_id), tx.clone());
+            let session_id = SessionId::generate();
+            let session = Arc::new(Session::new(
+                session_id.clone(),
+                Some(user_id),
+                tx.clone(),
+                state.config.server.max_event_queue_size,
+            ));
             state.sessions.insert(session_id, session.clone());
             (session, false)
         }
     } else {
-        // No Session ID provided -> New Session
-        let session_id = SessionId(uuid::Uuid::new_v4().to_string());
-        let session = create_session(session_id.clone(), Some(user_id), tx.clone());
+        let session_id = SessionId::generate();
+        let session = Arc::new(Session::new(
+            session_id.clone(),
+            Some(user_id),
+            tx.clone(),
+            state.config.server.max_event_queue_size,
+        ));
         state.sessions.insert(session_id, session.clone());
         (session, false)
     };
@@ -140,12 +146,13 @@ pub async fn handle_socket(
     // If resumed, replay queued events
     if resumed {
         let queued = {
-            let mut queue = session.event_queue.lock().await;
+            let mut queue = session.event_queue.lock();
             std::mem::take(&mut *queue)
         };
         for json in queued {
             let _ = socket.send(Message::Text(json.into())).await;
         }
+
         for player in session.players.iter() {
             let update = api::OutgoingMessage::PlayerUpdate {
                 guild_id: player.guild_id.clone(),
@@ -186,16 +193,16 @@ pub async fn handle_socket(
                 }
             }
             _ = stats_interval.tick() => {
-                     if !session.paused.load(Relaxed) {
-                         let stats = collect_stats(&state, start_time.elapsed().as_millis() as u64);
-                         let msg = api::OutgoingMessage::Stats(stats);
-                         if let Ok(json) = serde_json::to_string(&msg) {
-                            if let Err(e) = socket.send(Message::Text(json.into())).await {
-                                 error!("Socket send error (stats): session={} err={}", session_id, e);
-                                 break;
-                            }
-                         }
-                     }
+                if !session.paused.load(Relaxed) {
+                    let stats = collect_stats(&state, start_time.elapsed().as_millis() as u64);
+                    let msg = api::OutgoingMessage::Stats(stats);
+                    if let Ok(json) = serde_json::to_string(&msg) {
+                        if let Err(e) = socket.send(Message::Text(json.into())).await {
+                            error!("Socket send error (stats): session={} err={}", session_id, e);
+                            break;
+                        }
+                    }
+                }
             }
             Ok(msg) = rx.recv_async() => {
                 if let Err(e) = socket.send(msg).await {
@@ -239,7 +246,7 @@ pub async fn handle_socket(
         session.paused.store(true, Relaxed);
 
         {
-            let current_sender = session.sender.lock().await;
+            let current_sender = session.sender.lock();
             if !current_sender.same_channel(&tx) {
                 info!(
                     "Session {} replaced by a new connection; closing the old connection for cleanup.",
@@ -274,7 +281,6 @@ pub async fn handle_socket(
         let sid = session_id.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)).await;
-            // If the session is still in resumable_sessions, it means it wasn't resumed.
             if let Some((_, session)) = state_cleanup.resumable_sessions.remove(&sid) {
                 warn!("Session resume timeout expired: {}", sid);
                 session.shutdown();
@@ -286,21 +292,4 @@ pub async fn handle_socket(
             session.shutdown();
         }
     }
-}
-
-fn create_session(
-    session_id: SessionId,
-    user_id: Option<UserId>,
-    tx: flume::Sender<Message>,
-) -> Arc<Session> {
-    Arc::new(Session {
-        session_id,
-        user_id,
-        players: dashmap::DashMap::new(),
-        sender: Mutex::new(tx),
-        resumable: std::sync::atomic::AtomicBool::new(false),
-        resume_timeout: std::sync::atomic::AtomicU64::new(60),
-        paused: std::sync::atomic::AtomicBool::new(false),
-        event_queue: Mutex::new(Vec::new()),
-    })
 }

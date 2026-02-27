@@ -44,7 +44,7 @@ impl PlayableTrack for SoundCloudTrack {
         flume::Receiver<String>,
         Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(4);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -67,12 +67,13 @@ impl PlayableTrack for SoundCloudTrack {
                         Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
                         Err(e) => {
                             error!("SoundCloud progressive MP3: failed to open stream: {}", e);
+                            let _ = err_tx.send(format!("Failed to open stream: {}", e));
                             return;
                         }
                     };
                     run_processor(
                         reader,
-                        Some(crate::common::types::AudioKind::Mp3),
+                        Some(crate::common::types::AudioFormat::Mp3),
                         tx,
                         cmd_rx,
                         err_tx,
@@ -88,12 +89,13 @@ impl PlayableTrack for SoundCloudTrack {
                         Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
                         Err(e) => {
                             error!("SoundCloud progressive AAC: failed to open stream: {}", e);
+                            let _ = err_tx.send(format!("Failed to open stream: {}", e));
                             return;
                         }
                     };
                     run_processor(
                         reader,
-                        Some(crate::common::types::AudioKind::Mp4),
+                        Some(crate::common::types::AudioFormat::Mp4),
                         tx,
                         cmd_rx,
                         err_tx,
@@ -113,12 +115,13 @@ impl PlayableTrack for SoundCloudTrack {
                                 "SoundCloud HLS Opus: failed to init SoundCloudHlsReader: {}",
                                 e
                             );
+                            let _ = err_tx.send(format!("Failed to init HLS reader: {}", e));
                             return;
                         }
                     };
                     run_processor(
                         reader,
-                        Some(crate::common::types::AudioKind::Opus),
+                        Some(crate::common::types::AudioFormat::Opus),
                         tx,
                         cmd_rx,
                         err_tx,
@@ -138,12 +141,13 @@ impl PlayableTrack for SoundCloudTrack {
                                 "SoundCloud HLS MP3: failed to init SoundCloudHlsReader: {}",
                                 e
                             );
+                            let _ = err_tx.send(format!("Failed to init HLS reader: {}", e));
                             return;
                         }
                     };
                     run_processor(
                         reader,
-                        Some(crate::common::types::AudioKind::Mp3),
+                        Some(crate::common::types::AudioFormat::Mp3),
                         tx,
                         cmd_rx,
                         err_tx,
@@ -163,13 +167,14 @@ impl PlayableTrack for SoundCloudTrack {
                                 "SoundCloud HLS AAC: failed to init SoundCloudHlsReader: {}",
                                 e
                             );
+                            let _ = err_tx.send(format!("Failed to init HLS reader: {}", e));
                             return;
                         }
                     };
                     // Hint as "aac" so symphonia knows what to expect from ADTS stream.
                     run_processor(
                         reader,
-                        Some(crate::common::types::AudioKind::Aac),
+                        Some(crate::common::types::AudioFormat::Aac),
                         tx,
                         cmd_rx,
                         err_tx,
@@ -184,12 +189,12 @@ impl PlayableTrack for SoundCloudTrack {
 
 fn run_processor(
     reader: Box<dyn symphonia::core::io::MediaSource>,
-    kind: Option<crate::common::types::AudioKind>,
+    kind: Option<crate::common::types::AudioFormat>,
     tx: flume::Sender<crate::audio::buffer::PooledBuffer>,
     cmd_rx: flume::Receiver<DecoderCommand>,
     err_tx: flume::Sender<String>,
 ) {
-    match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
+    match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
         Ok(mut p) => {
             if let Err(e) = p.run() {
                 error!("SoundCloud AudioProcessor error: {}", e);
@@ -200,6 +205,7 @@ fn run_processor(
                 "SoundCloud: failed to init AudioProcessor (kind={:?}): {}",
                 kind, e
             );
+            let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
         }
     }
 }

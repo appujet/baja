@@ -1,7 +1,7 @@
 pub mod context;
-pub mod playback;
+pub mod manager;
 pub mod state;
 
 pub use context::PlayerContext;
-pub use playback::start_playback;
+pub use manager::start_playback;
 pub use state::*;

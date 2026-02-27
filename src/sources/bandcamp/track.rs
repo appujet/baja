@@ -25,7 +25,7 @@ impl PlayableTrack for BandcampTrack {
         Receiver<String>,
         Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(4);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -68,7 +68,7 @@ impl PlayableTrack for BandcampTrack {
                         // Proxy errors
                         let err_tx_clone = err_tx.clone();
                         tokio::spawn(async move {
-                            if let Ok(err) = inner_err_rx.recv_async().await {
+                            while let Ok(err) = inner_err_rx.recv_async().await {
                                 let _ = err_tx_clone.send(err);
                             }
                         });

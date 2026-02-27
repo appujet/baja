@@ -16,7 +16,7 @@ pub async fn get_players(
     Path(session_id): Path<crate::common::types::SessionId>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    tracing::debug!("GET /v4/sessions/{}/players", session_id);
+    tracing::info!("GET /v4/sessions/{}/players", session_id);
     match state.sessions.get(&session_id) {
         Some(session) => {
             let players: Vec<Player> = session
@@ -29,7 +29,7 @@ pub async fn get_players(
         None => (
             StatusCode::NOT_FOUND,
             Json(
-                serde_json::to_value(crate::common::LavalinkError::not_found(
+                serde_json::to_value(crate::common::RustalinkError::not_found(
                     format!("Session not found: {}", session_id),
                     format!("/v4/sessions/{}/players", session_id),
                 ))
@@ -48,7 +48,7 @@ pub async fn get_player(
     )>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    tracing::debug!("GET /v4/sessions/{}/players/{}", session_id, guild_id);
+    tracing::info!("GET /v4/sessions/{}/players/{}", session_id, guild_id);
     match state.sessions.get(&session_id) {
         Some(session) => match session.players.get(&guild_id) {
             Some(player) => (
@@ -57,7 +57,7 @@ pub async fn get_player(
             )
                 .into_response(),
             None => {
-                // Return empty player (Lavalink behavior: player exists implicitly)
+                // Return empty player
                 let empty = Player {
                     guild_id: guild_id.clone(),
                     track: None,
@@ -78,7 +78,7 @@ pub async fn get_player(
         None => (
             StatusCode::NOT_FOUND,
             Json(
-                serde_json::to_value(crate::common::LavalinkError::not_found(
+                serde_json::to_value(crate::common::RustalinkError::not_found(
                     format!("Session not found: {}", session_id),
                     format!("/v4/sessions/{}/players/{}", session_id, guild_id),
                 ))

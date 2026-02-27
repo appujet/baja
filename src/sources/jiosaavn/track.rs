@@ -38,7 +38,7 @@ impl PlayableTrack for JioSaavnTrack {
             playback_url = playback_url.replace("_96.mp4", "_320.mp4");
         }
 
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(4);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -61,9 +61,9 @@ impl PlayableTrack for JioSaavnTrack {
             let kind = std::path::Path::new(&url)
                 .extension()
                 .and_then(|s| s.to_str())
-                .and_then(crate::common::types::AudioKind::from_ext);
+                .map(crate::common::types::AudioFormat::from_ext);
 
-            match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
+            match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
                 Ok(mut processor) => {
                     if let Err(e) = processor.run() {
                         tracing::error!("JioSaavn audio processor error: {}", e);
@@ -71,6 +71,7 @@ impl PlayableTrack for JioSaavnTrack {
                 }
                 Err(e) => {
                     tracing::error!("JioSaavn failed to initialize processor: {}", e);
+                    let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
                 }
             }
         });

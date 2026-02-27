@@ -5,7 +5,7 @@ use std::sync::{
 
 use crate::audio::processor::DecoderCommand;
 
-const OPUS_SAMPLE_RATE: u64 = 48_000;
+use crate::audio::constants::OPUS_SAMPLE_RATE;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]

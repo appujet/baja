@@ -1,25 +1,27 @@
-use std::sync::Arc;
+//! `AudioProcessor` — ties source → demux → decode → resample → engine.
+//!
+//! The processor owns the decode loop and delegates all downstream routing to
+//! whichever [`Engine`] implementation was injected at construction time:
+//!
+//! - [`TranscodeEngine`] — PCM → `FlowController` → Mixer
+//! - [`PassthroughEngine`] — raw Opus → Mixer passthrough lane
 
-use flume::{Receiver, Sender};
-use symphonia::core::{
-    audio::SampleBuffer,
-    codecs::{CODEC_TYPE_NULL, CODEC_TYPE_OPUS, Decoder, DecoderOptions},
-    errors::Error,
-    formats::{FormatOptions, FormatReader},
-    io::{MediaSource, MediaSourceStream},
-    meta::MetadataOptions,
-    probe::Hint,
-};
+use flume::Receiver;
+use symphonia::core::{audio::SampleBuffer, codecs::Decoder, errors::Error, formats::FormatReader};
 use tracing::{Level, debug, info, span, warn};
 
 use crate::audio::{
-    buffer::{PooledBuffer, get_pool},
-    pipeline::resampler::Resampler,
+    buffer::PooledBuffer,
+    constants::TARGET_SAMPLE_RATE,
+    demux::{DemuxResult, open_format},
+    engine::{BoxedEngine, TranscodeEngine},
+    resample::Resampler,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecoderCommand {
-    Seek(u64), // Position in milliseconds
+    /// Seek to the given position in milliseconds.
+    Seek(u64),
     Stop,
 }
 
@@ -31,162 +33,95 @@ pub enum CommandOutcome {
     None,
 }
 
-/// Audio processor that handles decoding and resampling.
-///
-/// ## Modes
-///
-/// **Passthrough** (`CODEC_TYPE_OPUS`): Reads raw Opus packet bytes from the
-/// container and forwards them directly via `opus_tx`.  No decode, no resample,
-/// no encode — the bytes go straight to Discord.
-///
-/// **Transcode** (all other codecs): Decodes to PCM i16, resamples to 48 kHz,
-/// and sends `PooledBuffer` chunks via `pcm_tx`.
+/// Decodes any supported container to 48 kHz stereo PCM i16 and drives the
+/// injected [`Engine`] with the resulting samples.
 pub struct AudioProcessor {
     format: Box<dyn FormatReader>,
-    decoder: Option<Box<dyn Decoder>>,
+    decoder: Box<dyn Decoder>,
     resampler: Resampler,
     track_id: u32,
-    /// PCM output channel — used in transcode mode.
-    pcm_tx: Sender<PooledBuffer>,
-    /// Raw Opus output channel — used in passthrough mode.
-    opus_tx: Option<Sender<Arc<Vec<u8>>>>,
+    engine: BoxedEngine,
     cmd_rx: Receiver<DecoderCommand>,
     error_tx: Option<flume::Sender<String>>,
     sample_buf: Option<SampleBuffer<i16>>,
-    passthrough: bool,
-
-    // Audio specs
     source_rate: u32,
-    target_rate: u32,
     channels: usize,
 }
 
 impl AudioProcessor {
-    /// Create a new processor.
-    ///
-    /// - `pcm_tx`  — channel for decoded PCM samples (transcode path)
-    /// - `opus_tx` — if `Some`, enables Opus passthrough for WebM/Opus streams
+    /// Open `source`, detect its format/codec, initialise the resampler and
+    /// wire up a [`TranscodeEngine`] that pushes PCM onto `pcm_tx`.
     pub fn new(
-        source: Box<dyn MediaSource>,
-        kind: Option<crate::common::types::AudioKind>,
-        pcm_tx: Sender<PooledBuffer>,
+        source: Box<dyn symphonia::core::io::MediaSource>,
+        kind: Option<crate::common::types::AudioFormat>,
+        pcm_tx: flume::Sender<PooledBuffer>,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
     ) -> Result<Self, Error> {
-        Self::new_with_passthrough(source, kind, pcm_tx, None, cmd_rx, error_tx)
+        let engine: BoxedEngine = Box::new(TranscodeEngine::new(pcm_tx));
+        Self::build(source, kind, engine, cmd_rx, error_tx)
     }
 
-    /// Like `new`, but with an optional passthrough sender for raw Opus frames.
-    pub fn new_with_passthrough(
-        source: Box<dyn MediaSource>,
-        kind: Option<crate::common::types::AudioKind>,
-        pcm_tx: Sender<PooledBuffer>,
-        opus_tx: Option<Sender<Arc<Vec<u8>>>>,
+    /// Same as [`new`] but accepts a pre-built engine (e.g. `PassthroughEngine`).
+    pub fn with_engine(
+        source: Box<dyn symphonia::core::io::MediaSource>,
+        kind: Option<crate::common::types::AudioFormat>,
+        engine: BoxedEngine,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
     ) -> Result<Self, Error> {
-        let mss = MediaSourceStream::new(source, Default::default());
-        let mut hint = Hint::new();
+        Self::build(source, kind, engine, cmd_rx, error_tx)
+    }
 
-        if let Some(k) = kind {
-            hint.with_extension(k.as_ext());
-        }
+    fn build(
+        source: Box<dyn symphonia::core::io::MediaSource>,
+        kind: Option<crate::common::types::AudioFormat>,
+        engine: BoxedEngine,
+        cmd_rx: Receiver<DecoderCommand>,
+        error_tx: Option<flume::Sender<String>>,
+    ) -> Result<Self, Error> {
+        let DemuxResult::Transcode {
+            format,
+            track_id,
+            decoder,
+            sample_rate,
+            channels,
+        } = open_format(source, kind)?;
 
-        let probed = symphonia::default::get_probe().format(
-            &hint,
-            mss,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
-        )?;
+        info!(
+            "AudioProcessor: opened format — {}Hz {}ch",
+            sample_rate, channels
+        );
 
-        let format = probed.format;
-        let track = format
-            .tracks()
-            .iter()
-            .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-            .ok_or_else(|| {
-                Error::IoError(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "no audio track found",
-                ))
-            })?;
-
-        let track_id = track.id;
-        let codec = track.codec_params.codec;
-
-        // Enable passthrough when:
-        //  1. The stream is Opus (already encoded to what Discord needs), AND
-        //  2. A passthrough sender was provided (i.e. no active filters requiring PCM).
-        let passthrough = codec == CODEC_TYPE_OPUS && opus_tx.is_some();
-
-        let decoder: Option<Box<dyn Decoder>> = if passthrough {
-            // Passthrough: we only read packets, never decode. No decoder needed.
-            info!("AudioProcessor: OpusPassthrough mode — raw frames, zero transcode");
-            None
-        } else if codec == CODEC_TYPE_OPUS {
-            // Opus codec but no passthrough tx (filters active) — use audiopus decoder.
-            info!("AudioProcessor: Transcode mode (Opus → PCM, filters active)");
-            Some(Box::new(
-                crate::audio::codecs::opus::OpusCodecDecoder::try_new(
-                    &track.codec_params,
-                    &DecoderOptions::default(),
-                )?,
-            ))
+        let resampler = if sample_rate == TARGET_SAMPLE_RATE {
+            Resampler::linear(sample_rate, TARGET_SAMPLE_RATE, channels)
         } else {
-            info!("AudioProcessor: Transcode mode ({})", codec);
-            Some(
-                symphonia::default::get_codecs()
-                    .make(&track.codec_params, &DecoderOptions::default())?,
-            )
+            Resampler::hermite(sample_rate, TARGET_SAMPLE_RATE, channels)
         };
-
-        let source_rate = track.codec_params.sample_rate.unwrap_or(48000);
-        let target_rate = 48000;
-        let channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
 
         Ok(Self {
             format,
             decoder,
-            resampler: Resampler::new(source_rate, target_rate, channels),
+            resampler,
             track_id,
-            pcm_tx,
-            opus_tx,
+            engine,
             cmd_rx,
             error_tx,
             sample_buf: None,
-            passthrough,
-            source_rate,
-            target_rate,
+            source_rate: sample_rate,
             channels,
         })
     }
 
-    /// The main execution loop.
+    /// Run the decode loop until the stream ends naturally or a `Stop` command
+    /// arrives.
     pub fn run(&mut self) -> Result<(), Error> {
         let _span = span!(Level::DEBUG, "audio_processor").entered();
 
-        if self.passthrough {
-            info!(
-                "OpusPassthrough loop: {}Hz {}ch (raw Opus → Discord)",
-                self.source_rate, self.channels
-            );
-            return self.run_passthrough();
-        }
-
         info!(
             "Starting transcode loop: {}Hz {}ch -> {}Hz",
-            self.source_rate, self.channels, self.target_rate
+            self.source_rate, self.channels, TARGET_SAMPLE_RATE
         );
-        self.run_transcode()
-    }
-
-    /// Passthrough mode: read raw Opus packets from the container and forward
-    /// them directly.  Zero decode, zero resample, zero encode.
-    fn run_passthrough(&mut self) -> Result<(), Error> {
-        let opus_tx = match &self.opus_tx {
-            Some(tx) => tx.clone(),
-            None => return Ok(()),
-        };
 
         loop {
             if self.check_commands() == CommandOutcome::Stop {
@@ -198,7 +133,7 @@ impl AudioProcessor {
                 Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(e) => {
                     if let Some(tx) = &self.error_tx {
-                        let _ = tx.send(format!("Packet read error: {}", e));
+                        let _ = tx.send(format!("Packet read error: {e}"));
                     }
                     return Err(e);
                 }
@@ -208,81 +143,39 @@ impl AudioProcessor {
                 continue;
             }
 
-            // Forward raw Opus bytes — no decoding whatsoever.
-            let frame = Arc::new(packet.data.to_vec());
-            if opus_tx.send(frame).is_err() {
-                break; // Mixer disconnected
-            }
-        }
-
-        debug!("Passthrough loop finished");
-        Ok(())
-    }
-
-    /// Transcode mode: decode packets to PCM, resample, and send PooledBuffers.
-    fn run_transcode(&mut self) -> Result<(), Error> {
-        let pool = get_pool();
-
-        loop {
-            if self.check_commands() == CommandOutcome::Stop {
-                break;
-            }
-
-            let packet = match self.format.next_packet() {
-                Ok(p) => p,
-                Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-                Err(e) => {
-                    if let Some(tx) = &self.error_tx {
-                        let _ = tx.send(format!("Packet read error: {}", e));
-                    }
-                    return Err(e);
-                }
-            };
-
-            if packet.track_id() != self.track_id {
-                continue;
-            }
-
-            let decoder = match &mut self.decoder {
-                Some(d) => d,
-                None => break,
-            };
-
-            match decoder.decode(&packet) {
+            match self.decoder.decode(&packet) {
                 Ok(decoded) => {
                     let spec = *decoded.spec();
-                    let mut buf = match self.sample_buf.take() {
-                        Some(b) => b,
-                        None => SampleBuffer::<i16>::new(decoded.capacity() as u64, spec),
-                    };
+                    let mut buf = self.sample_buf.take().unwrap_or_else(|| {
+                        SampleBuffer::<i16>::new(decoded.capacity() as u64, spec)
+                    });
 
                     buf.copy_interleaved_ref(decoded);
                     let samples = buf.samples();
 
                     if !samples.is_empty() {
-                        let mut pooled = pool.acquire();
-                        if self.source_rate != self.target_rate {
-                            self.resampler.process(samples, &mut pooled);
-                        } else {
+                        let mut pooled: PooledBuffer = Vec::with_capacity(samples.len());
+                        if self.resampler.is_passthrough() {
                             pooled.extend_from_slice(samples);
+                        } else {
+                            self.resampler.process(samples, &mut pooled);
                         }
 
-                        if !pooled.is_empty() {
-                            if self.pcm_tx.send(pooled).is_err() {
-                                return Ok(()); // Mixer disconnected
-                            }
+                        if !pooled.is_empty() && !self.engine.push_pcm(pooled) {
+                            return Ok(()); // Engine/Mixer disconnected — clean exit
                         }
                     }
+
                     self.sample_buf = Some(buf);
                 }
                 Err(Error::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(Error::DecodeError(e)) => {
-                    warn!("Decode error (recoverable): {}", e);
+                    warn!("Decode error (recoverable): {e}");
                     continue;
                 }
                 Err(e) => {
                     if let Some(tx) = &self.error_tx {
-                        let _ = tx.send(format!("Decode error: {}", e));
+                        let _ = tx.send(format!("Decode error: {e}"));
                     }
                     return Err(e);
                 }
@@ -297,18 +190,23 @@ impl AudioProcessor {
         match self.cmd_rx.try_recv() {
             Ok(DecoderCommand::Seek(ms)) => {
                 let time = symphonia::core::units::Time::from(ms as f64 / 1000.0);
-                if let Ok(_) = self.format.seek(
-                    symphonia::core::formats::SeekMode::Coarse,
-                    symphonia::core::formats::SeekTo::Time {
-                        time,
-                        track_id: Some(self.track_id),
-                    },
-                ) {
+                if self
+                    .format
+                    .seek(
+                        symphonia::core::formats::SeekMode::Coarse,
+                        symphonia::core::formats::SeekTo::Time {
+                            time,
+                            track_id: Some(self.track_id),
+                        },
+                    )
+                    .is_ok()
+                {
                     self.resampler.reset();
-                    if let Some(ref mut dec) = self.decoder {
-                        dec.reset();
-                    }
+                    self.decoder.reset();
                     self.sample_buf = None;
+                    // Send a flush sentinel so the FlowController drops stale
+                    // pre-seek audio from pending_pcm immediately.
+                    let _ = self.engine.push_pcm(Vec::new());
                     CommandOutcome::Seeked
                 } else {
                     warn!("AudioProcessor: seek to {}ms failed", ms);

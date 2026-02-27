@@ -1,253 +1,133 @@
 [server]
-host = "0.0.0.0"
-port = 2333
-password = "youshallnotpass"
-player_update_interval = 5
-stats_interval = 60
-websocket_ping_interval = 30
+host = "0.0.0.0"                # The host to bind the server to
+port = 2333                     # The port to bind the server to
+password = "youshallnotpass"    # The password for authentication
+player_update_interval = 5      # Interval in seconds for player updates
+stats_interval = 60             # Interval in seconds for stats collection
+websocket_ping_interval = 30    # Interval in seconds for websocket pings
+max_event_queue_size = 500      # Max events to queue when session is paused
 
+[logging]
+level = "info"                  # Global log level (trace, debug, info, warn, error)
+filters = "rustalink=debug"     # Module-specific log filters
+
+[logging.file]
+path = "logs/baja.log"          # Path to the log file
+max_lines = 10000               # Maximum lines per log file before rotation
 
 [player]
-stuck_threshold_ms = 10000
-# Adds a gradual slowdown/speed-up effect (tape stop) when pausing and resuming.
-tape_stop = true
-# Duration of the slowdown/speed-up transition in milliseconds.
-tape_stop_duration_ms = 600
+stuck_threshold_ms = 10000      # Time in ms before a track is considered stuck
 
-[route_planner]
-enabled = false
-cidrs = []
-excluded_ips = []
+[player.tape]
+tape_stop = true                # Enable gradual slowdown/speed-up on pause/resume
+tape_stop_duration_ms = 600     # Duration of the tape effect in milliseconds
+curve = "sinusoidal"            # Transition curve: linear, exponential, sinusoidal
 
 [sources]
-youtube = true
-soundcloud = true
-spotify = true
-http = true
-local = false
-jiosaavn = true
-deezer = true
-applemusic = true
-gaana = true
-tidal = true
-audiomack = true
-pandora = true
-qobuz = true
-anghami = true
-shazam = true
-mixcloud = true
-bandcamp = true
-audius = true
-yandexmusic = true
+youtube = true                  # Enable YouTube source
+soundcloud = true               # Enable SoundCloud source
+spotify = true                  # Enable Spotify source
+jiosaavn = true                 # Enable JioSaavn source
+deezer = true                   # Enable Deezer source
+applemusic = true               # Enable Apple Music source
+gaana = true                    # Enable Gaana source
+tidal = true                    # Enable Tidal source
+http = true                     # Enable HTTP source
+local = false                   # Enable local file source
+audiomack = true                # Enable Audiomack source
+pandora = true                  # Enable Pandora source
+qobuz = true                    # Enable Qobuz source
+anghami = true                  # Enable Anghami source
+shazam = true                   # Enable Shazam source
+mixcloud = true                 # Enable Mixcloud source
+bandcamp = true                 # Enable Bandcamp source
+audius = true                   # Enable Audius source
+yandexmusic = false             # Enable Yandex Music source
 
 [lyrics]
-youtubemusic = true
-lrclib = true
-genius = true
-deezer = true
-bilibili = true
-musixmatch = true
-letrasmus = true
-yandex = false
-netease = true
+youtubemusic = true             # Enable YouTube Music lyrics
+lrclib = true                   # Enable LRCLIB lyrics
+genius = true                   # Enable Genius lyrics
+deezer = true                   # Enable Deezer lyrics
+musixmatch = true               # Enable Musixmatch lyrics
+letrasmus = true                # Enable Letras.mus.br lyrics
+netease = true                  # Enable NetEase lyrics
+bilibili = true                 # Enable Bilibili lyrics
+yandex = false                  # Enable Yandex lyrics (requires yandex access token)
 
-[yandex.lyrics]
-# access_token = "your access token"
+[yandex.lyrics]                 # Yandex lyrics configuration
+# access_token = "your access token" 
+
+[filters]
+volume = true                   # Enable volume filter
+equalizer = true                # Enable equalizer filter
+karaoke = true                  # Enable karaoke filter
+timescale = true                # Enable timescale (pitch/speed/rate) filter
+tremolo = true                  # Enable tremolo filter
+vibrato = true                  # Enable vibrato filter
+distortion = true               # Enable distortion filter
+rotation = true                 # Enable rotation filter
+channel_mix = true              # Enable channel mix filter
+low_pass = true                 # Enable low pass filter
+high_pass = true                # Enable high pass filter
+echo = true                     # Enable echo filter
+reverb = true                   # Enable reverb filter
+normalization = true            # Enable normalization filter
+chorus = true                   # Enable chorus filter
+compressor = true               # Enable compressor filter
+flanger = true                  # Enable flanger filter
+phaser = true                   # Enable phaser filter
+phonograph = true               # Enable phonograph filter
+spatial = true                  # Enable spatial/8d filter
 
 [mirrors]
 providers = [
-  #"ytsearch:\"%ISRC%\"",
-  #"ytsearch:%QUERY%",
   #"dzisrc:%ISRC%",
-  "jssearch:%QUERY%"
-]
+  "ytsearch:\"%ISRC%\"",
+  "ytsearch:%QUERY%",
+  "jssearch:%QUERY%",
+] # Mirror providers for fallback searching
 
-[youtube]
-# YouTube Clients configuration
 [youtube.clients]
-search = ["MUSIC_ANDROID", "MUSIC_WEB","ANDROID", "WEB"]
-resolve = ["WEB", "MUSIC_WEB", "ANDROID", "TVHTML5_SIMPLY"]
-playback = ["ANDROID_VR", "TV", "TV_CAST", "WEB_EMBEDDED", "WEB", "IOS"]
-# refresh_tokens = [] # Optional: list of refresh tokens for clients
-get_oauth_token = false # Set to true to enable OAuth device flow initialization
+search = ["MUSIC_ANDROID", "MUSIC_WEB", "ANDROID", "WEB"]   # Clients for searching
+resolve = ["WEB", "MUSIC_WEB", "ANDROID", "TVHTML5_SIMPLY"] # Clients for resolving
+playback = ["ANDROID_VR", "TV_CAST", "WEB_EMBEDDED", "TV", "WEB", "IOS"] # Clients for playback
 
-# YouTube Cipher configuration
 [youtube.cipher]
-url = "https://cipher.kikkia.dev/api" # The URL for the cipher resolution server
-# token = "your_token_here" 
-
-[soundcloud]
-# OPTIONAL: client_id -> auto-extracted from soundcloud.com if not set
-# client_id = "your_client_id_here"
-search_limit = 10
-playlist_load_limit = 100
-
-# Optional proxy for SoundCloud
-[soundcloud.proxy]
-# url = "http://proxy.example.com:8080"
-# username = "myuser"
-# password = "mypassword"
-
-# The decryption configuration for the JioSaavn tracks
-[jiosaavn]
-search_limit = 10 # Limit number of search results
-recommendations_limit = 10 # Limit number of recommendation results
-playlist_load_limit = 50 # Limit tracks for playlists
-album_load_limit = 50 # Limit tracks for albums
-artist_load_limit = 20 # Limit tracks for artist top songs
-
-[jiosaavn.decryption]
-secretKey = "your_secret_key" # The required secret key used for decryption
-# algorithm = "DES" # The algorithm used for decryption (Default "DES")
-# transformation = "DES/ECB/PKCS5Padding" # The transformation used for decryption (Default "DES/ECB/PKCS5Padding")
-
-[jiosaavn.proxy]
-# url = "http://proxy.example.com:8080"
-# username = "myuser"
-# password = "mypassword"
-
-[deezer]
-# REQUIRED: arls -> for playback; without it the source will be disabled.
-arls = ["your_deezer_arl_here"]
-# REQUIRED: master_decryption_key -> for playback; without it the source will be disabled.
-master_decryption_key = "your_master_key_here"
-
-[deezer.proxy]
-# url = "http://proxy.example.com:8080"
-# username = "myuser"
-# password = "mypassword"
+url = "http://localhost:8080" # URL for the cipher resolution server you have to use this (https://github.com/bongodevs/yt-cipher), else youtube will not work
+#token = ""                   # Token for the cipher resolution server
 
 [spotify]
-playlist_load_limit = 6 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
-album_load_limit = 6 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
-search_limit = 10 # Limit number of search results
-recommendations_limit = 10 # Limit number of recommendation results
-playlist_page_load_concurrency = 10 # Number of playlist pages to fetch concurrently
-album_page_load_concurrency = 5 # Number of album pages to fetch concurrently
-track_resolve_concurrency = 50 # Number of tracks to resolve concurrently
+search_limit = 10               # Max search results for Spotify
+recommendations_limit = 10      # Max recommendations for Spotify
+playlist_load_limit = 6         # 100 tracks per unit (6 = 600 tracks)
+album_load_limit = 6            # 50 tracks per unit (6 = 300 tracks)
+
+[jiosaavn]
+search_limit = 10               # Max search results for JioSaavn
+recommendations_limit = 10      # Max recommendations for JioSaavn
+playlist_load_limit = 50        # Max tracks to load from a playlist
+
+[jiosaavn.decryption]
+secretKey = "your_key"          # Secret key for JioSaavn track decryption
+
+[deezer]
+arls = ["your_arl"]             # List of Deezer ARLs for playback
+master_decryption_key = "your_key" # Master decryption key for Deezer
+
+[soundcloud]
+search_limit = 10               # Max search results for SoundCloud
+playlist_load_limit = 100       # Max tracks to load from a playlist
 
 [applemusic]
-country_code = "us"
-# OPTIONAL: media_api_token -> auto-extracted from music.apple.com if not set.
-# media_api_token = "your_token_here"
-playlist_load_limit = 0 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
-album_load_limit = 0 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
-playlist_page_load_concurrency = 5 # Number of playlist pages to fetch concurrently
-album_page_load_concurrency = 5 # Number of album pages to fetch concurrently
-
-[gaana]
-# stream_quality = "high" # "low", "medium", "high"
-search_limit = 10
-playlist_load_limit = 50
-album_load_limit = 50
-artist_load_limit = 20
-
-[gaana.proxy]
-# url = "http://proxy.example.com:8080"
-# username = "myuser"
-# password = "mypassword"
-
-[tidal]
-country_code = "US"
-# OPTIONAL: token -> auto-extracted from listen.tidal.com if not set.
-# token = "your_token_here"
-playlist_load_limit = 50
-album_load_limit = 50
-artist_load_limit = 20
-
-[audiomack]
-search_limit = 20
-
-[pandora]
-# OPTIONAL: csrf_token -> auto-extracted from pandora.com if not set.
-# csrf_token = "your_csrf_token_here"
-search_limit = 10
-playlist_load_limit = 100
-
-# Optional proxy for Pandora
-[pandora.proxy]
-#url = "http://proxy.example.com:8080"
-#username = "myuser"
-#password = "mypassword"
-
-[qobuz]
-# OPTIONAL: user_token -> without it all playback falls back to mirrors.
-# Get it from play.qobuz.com → DevTools → Application → Local Storage → localuser → token
-# user_token = "your_user_token_here"
-# OPTIONAL: app_id and app_secret -> auto-extracted from bundle.js if omitted
-# app_id = ""
-# app_secret = ""
-search_limit = 10
-playlist_load_limit = 100
-album_load_limit = 50
-artist_load_limit = 20
-
-# Optional proxy for Qobuz
-[qobuz.proxy]
-#url = "http://proxy.example.com:8080"
-#username = "myuser"
-#password = "mypassword"
-
-[anghami]
-search_limit = 10
-
-[mixcloud]
-search_limit = 10
-
-[shazam]
-search_limit = 10
-
-[bandcamp]
-search_limit = 10
-
-[audius]
-search_limit = 10
-playlist_load_limit = 100
-album_load_limit = 100
-# app_name -> OPTIONAL: used for API requests.
-# app_name = "Rustalink"
+country_code = "us"             # ISO 3166-1 alpha-2 country code
+playlist_load_limit = 0         # 100 tracks per unit (0 = unlimited)
 
 [yandexmusic]
-# REQUIRED: access_token -> without it the source will be disabled.
-# access_token = "your access token"
-search_limit = 10
-playlist_load_limit = 6 # 0 = unlimited, 1 = 100 tracks, 2 = 200 tracks, etc.
-album_load_limit = 6 # 0 = unlimited, 1 = 50 tracks, 2 = 100 tracks, etc.
-artist_load_limit = 6 # 0 = unlimited, 1 = 10 tracks, 2 = 20 tracks, etc.
+access_token = "your_token"     # Required access token for Yandex Music
+playlist_load_limit = 6         # 100 tracks per unit (6 = 600 tracks)
 
-# [yandexmusic.proxy]
-# url = "http://proxy.example.com:8080"
-# username = "myuser"
-# password = "mypassword"
-
-[filters]
-volume = true
-equalizer = true
-karaoke = true
-timescale = true
-tremolo = true
-vibrato = true
-distortion = true
-rotation = true
-channel_mix = true
-low_pass = true
-echo = true
-high_pass = true
-normalization = true
-chorus = true
-compressor = true
-flanger = true
-phaser = true
-phonograph = true
-reverb = true
-spatial = true
-
-[logging]
-level = "info"
-# Optional: detailed module overrides. Example: "rustalink=debug,tokio=warn"
-filters = "rustalink=debug"
-
-# Optional: Log to file with line-based rotation
-[logging.file]
-path = "logs/rustalink.log"
-max_lines = 10000
+[route_planner]
+enabled = false                 # Enable IP rotation using CIDRs
+cidrs = []                      # List of CIDR blocks (e.g., ["1.2.3.4/24"])
+excluded_ips = []               # List of IPs to exclude from rotation

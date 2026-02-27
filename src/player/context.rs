@@ -65,7 +65,7 @@ impl PlayerContext {
             lyrics_subscribed: Arc::new(AtomicBool::new(false)),
             lyrics_data: Arc::new(Mutex::new(None)),
             last_lyric_index: Arc::new(AtomicI64::new(-1)),
-            tape_stop: Arc::new(AtomicBool::new(config.tape_stop)),
+            tape_stop: Arc::new(AtomicBool::new(config.tape.tape_stop)),
         }
     }
 
@@ -76,6 +76,32 @@ impl PlayerContext {
 
     pub async fn unsubscribe_lyrics(&self) {
         self.lyrics_subscribed.store(false, Ordering::SeqCst);
+    }
+
+    pub fn set_volume(&mut self, vol: i32) {
+        let vol = vol.clamp(0, 1000);
+        self.volume = vol;
+        if let Some(handle) = &self.track_handle {
+            handle.set_volume(vol as f32 / 100.0);
+        }
+    }
+
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+        if let Some(handle) = &self.track_handle {
+            if paused {
+                handle.pause();
+            } else {
+                handle.play();
+            }
+        }
+    }
+
+    pub fn seek(&mut self, pos: u64) {
+        self.position = pos;
+        if let Some(handle) = &self.track_handle {
+            handle.seek(pos);
+        }
     }
 
     pub fn to_player_response(&self) -> Player {

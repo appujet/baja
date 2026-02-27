@@ -3,12 +3,12 @@ use std::io::{Read, Seek, SeekFrom};
 use symphonia::core::io::MediaSource;
 
 use crate::{
-    audio::remote_reader::{BaseRemoteReader, create_client},
+    audio::source::{HttpSource, create_client},
     common::types::AnyResult,
 };
 
 pub struct GaanaReader {
-    inner: BaseRemoteReader,
+    inner: HttpSource,
 }
 
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
@@ -20,7 +20,7 @@ impl GaanaReader {
         proxy: Option<crate::configs::HttpProxyConfig>,
     ) -> AnyResult<Self> {
         let client = create_client(USER_AGENT.to_string(), local_addr, proxy, None)?;
-        let inner = BaseRemoteReader::new(client, url)?;
+        let inner = HttpSource::new(client, url)?;
 
         Ok(Self { inner })
     }

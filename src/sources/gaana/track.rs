@@ -26,7 +26,7 @@ impl PlayableTrack for GaanaTrack {
         flume::Receiver<String>,
         Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(4);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -62,16 +62,16 @@ impl PlayableTrack for GaanaTrack {
                 };
 
                 let kind = if url.contains(".m3u8") || url.contains("/api/manifest/hls_") {
-                    Some(crate::common::types::AudioKind::Aac)
+                    Some(crate::common::types::AudioFormat::Aac)
                 } else {
                     std::path::Path::new(&url)
                         .extension()
                         .and_then(|s| s.to_str())
-                        .and_then(crate::common::types::AudioKind::from_ext)
+                        .map(crate::common::types::AudioFormat::from_ext)
                 };
 
                 if let Some(reader) = reader {
-                    match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
+                    match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
                         Ok(mut processor) => {
                             if let Err(e) = processor.run() {
                                 tracing::error!("GaanaTrack audio processor error: {}", e);
@@ -79,6 +79,7 @@ impl PlayableTrack for GaanaTrack {
                         }
                         Err(e) => {
                             tracing::error!("GaanaTrack failed to initialize processor: {}", e);
+                            let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
                         }
                     }
                 } else {

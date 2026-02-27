@@ -28,7 +28,7 @@ impl PlayableTrack for DeezerTrack {
         flume::Receiver<String>,
         Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(64);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(4);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -190,9 +190,9 @@ impl PlayableTrack for DeezerTrack {
                 let kind = std::path::Path::new(&url)
                     .extension()
                     .and_then(|s| s.to_str())
-                    .and_then(crate::common::types::AudioKind::from_ext);
+                    .map(crate::common::types::AudioFormat::from_ext);
 
-                match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx)) {
+                match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
                     Ok(mut processor) => {
                         if let Err(e) = processor.run() {
                             error!("DeezerTrack audio processor error: {}", e);
@@ -200,6 +200,7 @@ impl PlayableTrack for DeezerTrack {
                     }
                     Err(e) => {
                         error!("DeezerTrack failed to initialize processor: {}", e);
+                        let _ = err_tx.send(format!("Failed to initialize processor: {}", e));
                     }
                 }
             } else {

@@ -3,12 +3,12 @@ use std::io::{Read, Seek, SeekFrom};
 use symphonia::core::io::MediaSource;
 
 use crate::{
-    audio::remote_reader::{BaseRemoteReader, create_client},
+    audio::source::{HttpSource, create_client},
     common::types::AnyResult,
 };
 
 pub struct MixcloudReader {
-    inner: BaseRemoteReader,
+    inner: HttpSource,
 }
 
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -16,7 +16,7 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 impl MixcloudReader {
     pub fn new(url: &str, local_addr: Option<std::net::IpAddr>) -> AnyResult<Self> {
         let client = create_client(USER_AGENT.to_string(), local_addr, None, None)?;
-        let inner = BaseRemoteReader::new(client, url)?;
+        let inner = HttpSource::new(client, url)?;
 
         Ok(Self { inner })
     }

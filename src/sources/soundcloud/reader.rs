@@ -9,7 +9,7 @@ use symphonia::core::io::MediaSource;
 use tracing::debug;
 
 use crate::{
-    audio::remote_reader::{BaseRemoteReader, create_client},
+    audio::source::{HttpSource, create_client},
     common::types::AnyResult,
     configs::HttpProxyConfig,
     sources::youtube::hls::{
@@ -24,7 +24,7 @@ const LOW_WATER_BYTES: usize = 128 * 1024;
 
 /// Reader for progressive SoundCloud streams (MP3/AAC).
 pub struct SoundCloudReader {
-    inner: BaseRemoteReader,
+    inner: HttpSource,
 }
 
 impl SoundCloudReader {
@@ -34,7 +34,7 @@ impl SoundCloudReader {
         proxy: Option<HttpProxyConfig>,
     ) -> AnyResult<Self> {
         let client = create_client(USER_AGENT.to_string(), local_addr, proxy, None)?;
-        let inner = BaseRemoteReader::new(client, url)?;
+        let inner = HttpSource::new(client, url)?;
         Ok(Self { inner })
     }
 }
