@@ -57,13 +57,13 @@ impl std::ops::Deref for SessionId {
 }
 
 impl SessionId {
-    /// Generates a random 10-character alphanumeric session ID (a-z, 0-9).
+    /// Generates a random 20-character alphanumeric session ID (a-z, 0-9).
     pub fn generate() -> Self {
         let rng = rand::thread_rng();
         let s: String = rng
             .sample_iter(&Alphanumeric)
             .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
-            .take(10)
+            .take(20)
             .map(char::from)
             .collect();
         Self(s)
