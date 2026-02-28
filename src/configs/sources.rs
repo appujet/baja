@@ -1,6 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct HttpProxyConfig {
+    pub url: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[serde(default)]
 pub struct SourcesConfig {
     pub youtube: bool,
@@ -174,13 +181,6 @@ impl Default for JioSaavnConfig {
 pub struct JioSaavnDecryptionConfig {
     #[serde(rename = "secretKey")]
     pub secret_key: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-pub struct HttpProxyConfig {
-    pub url: Option<String>,
-    pub username: Option<String>,
-    pub password: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

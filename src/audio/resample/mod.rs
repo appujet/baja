@@ -7,9 +7,11 @@
 
 pub mod hermite;
 pub mod linear;
+pub mod sinc;
 
 pub use hermite::HermiteResampler;
 pub use linear::LinearResampler;
+pub use sinc::SincResampler;
 
 use crate::audio::buffer::PooledBuffer;
 
@@ -17,6 +19,7 @@ use crate::audio::buffer::PooledBuffer;
 pub enum Resampler {
     Linear(LinearResampler),
     Hermite(HermiteResampler),
+    Sinc(SincResampler),
 }
 
 impl Resampler {
@@ -30,11 +33,17 @@ impl Resampler {
         Self::Linear(LinearResampler::new(source_rate, target_rate, channels))
     }
 
+    /// Professional-grade Blackman-windowed sinc resampler.
+    pub fn sinc(source_rate: u32, target_rate: u32, channels: usize) -> Self {
+        Self::Sinc(SincResampler::new(source_rate, target_rate, channels))
+    }
+
     /// Returns `true` if no conversion is needed (source == target rate).
     pub fn is_passthrough(&self) -> bool {
         match self {
             Self::Linear(r) => r.is_passthrough(),
             Self::Hermite(r) => r.is_passthrough(),
+            Self::Sinc(r) => r.is_passthrough(),
         }
     }
 
@@ -43,6 +52,7 @@ impl Resampler {
         match self {
             Self::Linear(r) => r.process(input, output),
             Self::Hermite(r) => r.process(input, output),
+            Self::Sinc(r) => r.process(input, output),
         }
     }
 
@@ -50,6 +60,7 @@ impl Resampler {
         match self {
             Self::Linear(r) => r.reset(),
             Self::Hermite(r) => r.reset(),
+            Self::Sinc(r) => r.reset(),
         }
     }
 }

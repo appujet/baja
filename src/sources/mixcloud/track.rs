@@ -16,13 +16,16 @@ pub struct MixcloudTrack {
 impl PlayableTrack for MixcloudTrack {
     fn start_decoding(
         &self,
+        config: crate::configs::player::PlayerConfig,
     ) -> (
         Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         Receiver<String>,
         Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(4);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(
+            (config.buffer_duration_ms / 20) as usize,
+        );
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -81,7 +84,14 @@ impl PlayableTrack for MixcloudTrack {
                 };
 
                 if let Some(r) = reader {
-                    match AudioProcessor::new(r, kind, tx, cmd_rx, Some(err_tx.clone())) {
+                    match AudioProcessor::new(
+                        r,
+                        kind,
+                        tx,
+                        cmd_rx,
+                        Some(err_tx.clone()),
+                        config.clone(),
+                    ) {
                         Ok(mut processor) => {
                             if let Err(e) = processor.run() {
                                 tracing::error!("Mixcloud audio processor error: {}", e);

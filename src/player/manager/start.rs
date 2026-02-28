@@ -79,7 +79,7 @@ pub async fn start_playback(
     );
 
     // -- 4. Start decoding + hand off to mixer -----------------------------
-    let (pcm_rx, cmd_tx, err_rx, opus_rx) = playable.start_decoding();
+    let (pcm_rx, cmd_tx, err_rx, opus_rx) = playable.start_decoding(player.config.clone());
     let (handle, audio_state, vol, pos) = TrackHandle::new(cmd_tx, player.tape_stop.clone());
 
     {

@@ -57,9 +57,10 @@ impl AudioProcessor {
         pcm_tx: flume::Sender<PooledBuffer>,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
+        config: crate::configs::player::PlayerConfig,
     ) -> Result<Self, Error> {
         let engine: BoxedEngine = Box::new(TranscodeEngine::new(pcm_tx));
-        Self::build(source, kind, engine, cmd_rx, error_tx)
+        Self::build(source, kind, engine, cmd_rx, error_tx, config)
     }
 
     /// Same as [`new`] but accepts a pre-built engine (e.g. `PassthroughEngine`).
@@ -69,8 +70,9 @@ impl AudioProcessor {
         engine: BoxedEngine,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
+        config: crate::configs::player::PlayerConfig,
     ) -> Result<Self, Error> {
-        Self::build(source, kind, engine, cmd_rx, error_tx)
+        Self::build(source, kind, engine, cmd_rx, error_tx, config)
     }
 
     fn build(
@@ -79,6 +81,7 @@ impl AudioProcessor {
         engine: BoxedEngine,
         cmd_rx: Receiver<DecoderCommand>,
         error_tx: Option<flume::Sender<String>>,
+        config: crate::configs::player::PlayerConfig,
     ) -> Result<Self, Error> {
         let DemuxResult::Transcode {
             format,
@@ -96,7 +99,18 @@ impl AudioProcessor {
         let resampler = if sample_rate == TARGET_SAMPLE_RATE {
             Resampler::linear(sample_rate, TARGET_SAMPLE_RATE, channels)
         } else {
-            Resampler::hermite(sample_rate, TARGET_SAMPLE_RATE, channels)
+            use crate::configs::player::ResamplingQuality;
+            match config.resampling_quality {
+                ResamplingQuality::Low => {
+                    Resampler::linear(sample_rate, TARGET_SAMPLE_RATE, channels)
+                }
+                ResamplingQuality::Medium => {
+                    Resampler::hermite(sample_rate, TARGET_SAMPLE_RATE, channels)
+                }
+                ResamplingQuality::High => {
+                    Resampler::sinc(sample_rate, TARGET_SAMPLE_RATE, channels)
+                }
+            }
         };
 
         Ok(Self {

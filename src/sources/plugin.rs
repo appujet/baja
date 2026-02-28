@@ -16,6 +16,7 @@ use crate::audio::{buffer::PooledBuffer, processor::DecoderCommand};
 pub trait PlayableTrack: Send + Sync {
     fn start_decoding(
         &self,
+        config: crate::configs::player::PlayerConfig,
     ) -> (
         Receiver<PooledBuffer>,
         Sender<DecoderCommand>,

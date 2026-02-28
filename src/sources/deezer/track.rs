@@ -22,13 +22,16 @@ pub struct DeezerTrack {
 impl PlayableTrack for DeezerTrack {
     fn start_decoding(
         &self,
+        config: crate::configs::player::PlayerConfig,
     ) -> (
         Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
         Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(4);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(
+            (config.buffer_duration_ms / 20) as usize,
+        );
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -194,7 +197,14 @@ impl PlayableTrack for DeezerTrack {
                     .and_then(|s| s.to_str())
                     .map(crate::common::types::AudioFormat::from_ext);
 
-                match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
+                match AudioProcessor::new(
+                    reader,
+                    kind,
+                    tx,
+                    cmd_rx,
+                    Some(err_tx.clone()),
+                    config.clone(),
+                ) {
                     Ok(mut processor) => {
                         if let Err(e) = processor.run() {
                             error!("DeezerTrack audio processor error: {}", e);

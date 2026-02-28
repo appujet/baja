@@ -36,13 +36,14 @@ enum ResolvedStream {
 impl PlayableTrack for YoutubeTrack {
     fn start_decoding(
         &self,
+        config: crate::configs::player::PlayerConfig,
     ) -> (
         Receiver<crate::audio::PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
         Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
-        let (tx, rx) = flume::bounded(32);
+        let (tx, rx) = flume::bounded((config.buffer_duration_ms / 20) as usize);
         let (cmd_tx, cmd_rx) = flume::bounded(8);
         let (err_tx, err_rx) = flume::bounded(1);
 
@@ -221,6 +222,7 @@ impl PlayableTrack for YoutubeTrack {
                 let tx_clone = tx.clone();
                 let err_tx_clone = err_tx.clone();
 
+                let config_for_processor = config.clone();
                 let mut process_task = tokio::task::spawn_blocking(move || {
                     match crate::audio::processor::AudioProcessor::new(
                         reader,
@@ -228,6 +230,7 @@ impl PlayableTrack for YoutubeTrack {
                         tx_clone,
                         inner_cmd_rx,
                         Some(err_tx_clone.clone()),
+                        config_for_processor,
                     ) {
                         Ok(mut processor) => {
                             if let Err(e) = processor.run() {

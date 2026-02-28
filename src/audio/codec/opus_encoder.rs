@@ -8,8 +8,11 @@ pub struct OpusCodecEncoder {
 
 impl OpusCodecEncoder {
     /// Create a new encoder at 48 kHz stereo with the AUDIO application profile.
-    pub fn new() -> Result<Self, audiopus::Error> {
-        let encoder = OpusEncoder::new(SampleRate::Hz48000, Channels::Stereo, Application::Audio)?;
+    pub fn new(quality: u8) -> Result<Self, audiopus::Error> {
+        let mut encoder =
+            OpusEncoder::new(SampleRate::Hz48000, Channels::Stereo, Application::Audio)?;
+        // quality is 0-10, audiopus set_complexity expects u8 in range 0-10.
+        encoder.set_complexity(quality)?;
         Ok(Self { encoder })
     }
 

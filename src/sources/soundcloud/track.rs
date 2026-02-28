@@ -38,13 +38,16 @@ pub struct SoundCloudTrack {
 impl PlayableTrack for SoundCloudTrack {
     fn start_decoding(
         &self,
+        config: crate::configs::player::PlayerConfig,
     ) -> (
         Receiver<crate::audio::buffer::PooledBuffer>,
         Sender<DecoderCommand>,
         flume::Receiver<String>,
         Option<Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(4);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(
+            (config.buffer_duration_ms / 20) as usize,
+        );
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -77,6 +80,7 @@ impl PlayableTrack for SoundCloudTrack {
                         tx,
                         cmd_rx,
                         err_tx,
+                        config.clone(),
                     );
                 }
 
@@ -99,6 +103,7 @@ impl PlayableTrack for SoundCloudTrack {
                         tx,
                         cmd_rx,
                         err_tx,
+                        config.clone(),
                     );
                 }
 
@@ -125,6 +130,7 @@ impl PlayableTrack for SoundCloudTrack {
                         tx,
                         cmd_rx,
                         err_tx,
+                        config.clone(),
                     );
                 }
 
@@ -151,6 +157,7 @@ impl PlayableTrack for SoundCloudTrack {
                         tx,
                         cmd_rx,
                         err_tx,
+                        config.clone(),
                     );
                 }
 
@@ -178,6 +185,7 @@ impl PlayableTrack for SoundCloudTrack {
                         tx,
                         cmd_rx,
                         err_tx,
+                        config.clone(),
                     );
                 }
             }
@@ -193,8 +201,9 @@ fn run_processor(
     tx: flume::Sender<crate::audio::buffer::PooledBuffer>,
     cmd_rx: flume::Receiver<DecoderCommand>,
     err_tx: flume::Sender<String>,
+    config: crate::configs::player::PlayerConfig,
 ) {
-    match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
+    match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone()), config) {
         Ok(mut p) => {
             if let Err(e) = p.run() {
                 error!("SoundCloud AudioProcessor error: {}", e);

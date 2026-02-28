@@ -200,13 +200,16 @@ pub struct HttpTrack {
 impl PlayableTrack for HttpTrack {
     fn start_decoding(
         &self,
+        config: crate::configs::player::PlayerConfig,
     ) -> (
         flume::Receiver<crate::audio::buffer::PooledBuffer>,
         flume::Sender<DecoderCommand>,
         flume::Receiver<String>,
         Option<flume::Receiver<std::sync::Arc<Vec<u8>>>>,
     ) {
-        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(4);
+        let (tx, rx) = flume::bounded::<crate::audio::buffer::PooledBuffer>(
+            (config.buffer_duration_ms / 20) as usize,
+        );
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
         let (err_tx, err_rx) = flume::bounded::<String>(1);
 
@@ -231,7 +234,14 @@ impl PlayableTrack for HttpTrack {
                 .and_then(|s| s.to_str())
                 .map(crate::common::types::AudioFormat::from_ext);
 
-            match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone())) {
+            match AudioProcessor::new(
+                reader,
+                kind,
+                tx,
+                cmd_rx,
+                Some(err_tx.clone()),
+                config.clone(),
+            ) {
                 Ok(mut processor) => {
                     if let Err(e) = processor.run() {
                         error!("HTTP track audio processor error: {}", e);
