@@ -28,28 +28,32 @@ pub fn spawn_lyrics_fetch(
             let mut lock = lyrics_data.lock().await;
             *lock = Some(lyrics.clone());
 
-            protocol::OutgoingMessage::Event(RustalinkEvent::LyricsFound {
-                guild_id,
-                lyrics: RustalinkLyrics {
-                    source_name: track_info.source_name,
-                    provider: Some(lyrics.provider),
-                    text: Some(lyrics.text),
-                    lines: lyrics.lines.map(|lines| {
-                        lines
-                            .into_iter()
-                            .map(|l| RustalinkLyricsLine {
-                                timestamp: l.timestamp,
-                                duration: Some(l.duration),
-                                line: l.text,
-                                plugin: serde_json::json!({}),
-                            })
-                            .collect()
-                    }),
-                    plugin: serde_json::json!({}),
+            protocol::OutgoingMessage::Event {
+                event: RustalinkEvent::LyricsFound {
+                    guild_id,
+                    lyrics: RustalinkLyrics {
+                        source_name: track_info.source_name,
+                        provider: Some(lyrics.provider),
+                        text: Some(lyrics.text),
+                        lines: lyrics.lines.map(|lines| {
+                            lines
+                                .into_iter()
+                                .map(|l| RustalinkLyricsLine {
+                                    timestamp: l.timestamp,
+                                    duration: Some(l.duration),
+                                    line: l.text,
+                                    plugin: serde_json::json!({}),
+                                })
+                                .collect()
+                        }),
+                        plugin: serde_json::json!({}),
+                    },
                 },
-            })
+            }
         } else {
-            protocol::OutgoingMessage::Event(RustalinkEvent::LyricsNotFound { guild_id })
+            protocol::OutgoingMessage::Event {
+                event: RustalinkEvent::LyricsNotFound { guild_id },
+            }
         };
 
         session.send_message(&event);
@@ -86,8 +90,8 @@ pub async fn sync_lyrics(
         // Forward: emit any lines we skipped.
         for i in (last + 1)..=target {
             let line = &lines[i as usize];
-            session.send_message(&protocol::OutgoingMessage::Event(
-                RustalinkEvent::LyricsLine {
+            session.send_message(&protocol::OutgoingMessage::Event {
+                event: RustalinkEvent::LyricsLine {
                     guild_id: guild_id.clone(),
                     line_index: i as i32,
                     line: RustalinkLyricsLine {
@@ -98,13 +102,13 @@ pub async fn sync_lyrics(
                     },
                     skipped: i != target,
                 },
-            ));
+            });
         }
     } else if target >= 0 {
         // Backward seek - emit the new current line.
         let line = &lines[target as usize];
-        session.send_message(&protocol::OutgoingMessage::Event(
-            RustalinkEvent::LyricsLine {
+        session.send_message(&protocol::OutgoingMessage::Event {
+            event: RustalinkEvent::LyricsLine {
                 guild_id: guild_id.clone(),
                 line_index: target as i32,
                 line: RustalinkLyricsLine {
@@ -115,7 +119,7 @@ pub async fn sync_lyrics(
                 },
                 skipped: false,
             },
-        ));
+        });
     }
 
     last_idx.store(target, Ordering::SeqCst);

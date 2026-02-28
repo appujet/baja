@@ -195,7 +195,7 @@ pub async fn handle_socket(
             _ = stats_interval.tick() => {
                 if !session.paused.load(Relaxed) {
                     let stats = collect_stats(&state, start_time.elapsed().as_millis() as u64);
-                    let msg = protocol::OutgoingMessage::Stats(stats);
+                    let msg = protocol::OutgoingMessage::Stats { stats };
                     if let Ok(json) = serde_json::to_string(&msg) {
                         if let Err(e) = socket.send(Message::Text(json.into())).await {
                             error!("Socket send error (stats): session={} err={}", session_id, e);

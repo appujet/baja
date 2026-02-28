@@ -24,12 +24,13 @@ pub async fn destroy_player(
                 // Emit TrackEnd(Cleanup) if track existed
                 if player.track.is_some() {
                     if let Some(track_data) = player.to_player_response().track {
-                        let end_event =
-                            protocol::OutgoingMessage::Event(protocol::RustalinkEvent::TrackEnd {
+                        let end_event = protocol::OutgoingMessage::Event {
+                            event: protocol::RustalinkEvent::TrackEnd {
                                 guild_id: guild_id.clone(),
                                 track: track_data,
                                 reason: protocol::TrackEndReason::Cleanup,
-                            });
+                            },
+                        };
                         session.send_message(&end_event);
                     }
                 }

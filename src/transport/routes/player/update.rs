@@ -8,10 +8,7 @@ use axum::{
 
 use crate::{
     player::{PlayerContext, PlayerUpdate, VoiceConnectionState},
-    protocol::{
-        self,
-        tracks::{Track, TrackInfo},
-    },
+    protocol::{self},
     server::AppState,
 };
 
@@ -143,7 +140,7 @@ pub async fn update_player(
             let session_clone = session.clone();
             tokio::spawn(async move {
                 while let Some(event) = event_rx.recv().await {
-                    session_clone.send_message(&protocol::OutgoingMessage::Event(event));
+                    session_clone.send_message(&protocol::OutgoingMessage::Event { event });
                 }
             });
 
@@ -266,18 +263,18 @@ async fn apply_track_update(
                 player.track = None;
 
                 if let Some(encoded) = track_data {
-                    session.send_message(&protocol::OutgoingMessage::Event(
-                        protocol::RustalinkEvent::TrackEnd {
+                    session.send_message(&protocol::OutgoingMessage::Event {
+                        event: protocol::RustalinkEvent::TrackEnd {
                             guild_id: player.guild_id.clone(),
-                            track: Track {
+                            track: protocol::tracks::Track {
                                 encoded,
-                                info: TrackInfo::default(),
+                                info: protocol::tracks::TrackInfo::default(),
                                 plugin_info: protocol::tracks::PluginInfo::default(),
                                 user_data: serde_json::json!({}),
                             },
                             reason: protocol::TrackEndReason::Stopped,
                         },
-                    ));
+                    });
                 }
             }
             crate::player::state::TrackEncoded::Set(track_data) => {

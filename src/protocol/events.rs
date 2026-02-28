@@ -11,13 +11,21 @@ pub enum OutgoingMessage {
         #[serde(rename = "sessionId")]
         session_id: crate::common::types::SessionId,
     },
-    #[serde(rename_all = "camelCase")]
+    #[serde(rename = "playerUpdate")]
     PlayerUpdate {
         guild_id: crate::common::types::GuildId,
         state: PlayerState,
     },
-    Stats(super::stats::Stats),
-    Event(RustalinkEvent),
+    #[serde(rename = "stats")]
+    Stats {
+        #[serde(flatten)]
+        stats: super::stats::Stats,
+    },
+    #[serde(rename = "event")]
+    Event {
+        #[serde(flatten)]
+        event: RustalinkEvent,
+    },
 }
 
 /// Events emitted by the player.
@@ -25,30 +33,29 @@ pub enum OutgoingMessage {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum RustalinkEvent {
     #[serde(rename = "TrackStartEvent")]
-    #[serde(rename_all = "camelCase")]
     TrackStart {
+        #[serde(rename = "guildId")]
         guild_id: crate::common::types::GuildId,
         track: Track,
     },
 
     #[serde(rename = "TrackEndEvent")]
-    #[serde(rename_all = "camelCase")]
     TrackEnd {
+        #[serde(rename = "guildId")]
         guild_id: crate::common::types::GuildId,
         track: Track,
         reason: TrackEndReason,
     },
 
     #[serde(rename = "TrackExceptionEvent")]
-    #[serde(rename_all = "camelCase")]
     TrackException {
+        #[serde(rename = "guildId")]
         guild_id: crate::common::types::GuildId,
         track: Track,
         exception: TrackException,
     },
 
     #[serde(rename = "TrackStuckEvent")]
-    #[serde(rename_all = "camelCase")]
     TrackStuck {
         #[serde(rename = "guildId")]
         guild_id: crate::common::types::GuildId,
@@ -58,21 +65,21 @@ pub enum RustalinkEvent {
     },
 
     #[serde(rename = "LyricsFoundEvent")]
-    #[serde(rename_all = "camelCase")]
     LyricsFound {
+        #[serde(rename = "guildId")]
         guild_id: crate::common::types::GuildId,
         lyrics: super::models::RustalinkLyrics,
     },
 
     #[serde(rename = "LyricsNotFoundEvent")]
-    #[serde(rename_all = "camelCase")]
     LyricsNotFound {
+        #[serde(rename = "guildId")]
         guild_id: crate::common::types::GuildId,
     },
 
     #[serde(rename = "LyricsLineEvent")]
-    #[serde(rename_all = "camelCase")]
     LyricsLine {
+        #[serde(rename = "guildId")]
         guild_id: crate::common::types::GuildId,
         line_index: i32,
         line: super::models::RustalinkLyricsLine,
@@ -80,8 +87,8 @@ pub enum RustalinkEvent {
     },
 
     #[serde(rename = "WebSocketClosedEvent")]
-    #[serde(rename_all = "camelCase")]
     WebSocketClosed {
+        #[serde(rename = "guildId")]
         guild_id: crate::common::types::GuildId,
         code: u16,
         reason: String,

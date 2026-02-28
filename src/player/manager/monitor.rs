@@ -65,8 +65,8 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
             let reason = match err_rx.try_recv() {
                 Ok(err) => {
                     warn!("[{}] mid-playback decoder error: {}", guild_id, err);
-                    session.send_message(&protocol::OutgoingMessage::Event(
-                        RustalinkEvent::TrackException {
+                    session.send_message(&protocol::OutgoingMessage::Event {
+                        event: RustalinkEvent::TrackException {
                             guild_id: guild_id.clone(),
                             track: track.clone(),
                             exception: TrackException {
@@ -76,19 +76,19 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                                 cause_stack_trace: Some(err),
                             },
                         },
-                    ));
+                    });
                     TrackEndReason::LoadFailed
                 }
                 Err(_) => TrackEndReason::Finished,
             };
 
-            session.send_message(&protocol::OutgoingMessage::Event(
-                RustalinkEvent::TrackEnd {
+            session.send_message(&protocol::OutgoingMessage::Event {
+                event: RustalinkEvent::TrackEnd {
                     guild_id,
                     track,
                     reason,
                 },
-            ));
+            });
             break;
         }
 
@@ -103,13 +103,13 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                     stuck_threshold_ms
                 };
                 if stuck_ms >= threshold {
-                    session.send_message(&protocol::OutgoingMessage::Event(
-                        RustalinkEvent::TrackStuck {
+                    session.send_message(&protocol::OutgoingMessage::Event {
+                        event: RustalinkEvent::TrackStuck {
                             guild_id: guild_id.clone(),
                             track: track.clone(),
                             threshold_ms: stuck_threshold_ms,
                         },
-                    ));
+                    });
                     warn!("Track {} got stuck", track.info.title);
                     handle.stop();
                 }

@@ -110,7 +110,7 @@ pub async fn handle_op(
                     let session_clone = session.clone();
                     tokio::spawn(async move {
                         while let Some(event) = event_rx.recv().await {
-                            let msg = crate::protocol::OutgoingMessage::Event(event);
+                            let msg = crate::protocol::OutgoingMessage::Event { event: event };
                             session_clone.send_message(&msg);
                         }
                     });

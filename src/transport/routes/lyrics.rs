@@ -97,8 +97,8 @@ pub async fn subscribe_lyrics(
                                 let mut lock = lyrics_data_arc.lock().await;
                                 *lock = Some(lyrics.clone());
                             }
-                            let event = crate::protocol::OutgoingMessage::Event(
-                                crate::protocol::RustalinkEvent::LyricsFound {
+                            let event = crate::protocol::OutgoingMessage::Event {
+                                event: crate::protocol::RustalinkEvent::LyricsFound {
                                     guild_id: guild_id_lyrics,
                                     lyrics: crate::protocol::models::RustalinkLyrics {
                                         source_name: track_info_clone.source_name.clone(),
@@ -120,14 +120,14 @@ pub async fn subscribe_lyrics(
                                         plugin: serde_json::json!({}),
                                     },
                                 },
-                            );
+                            };
                             session_lyrics_clone.send_message(&event);
                         } else {
-                            let event = crate::protocol::OutgoingMessage::Event(
-                                crate::protocol::RustalinkEvent::LyricsNotFound {
+                            let event = crate::protocol::OutgoingMessage::Event {
+                                event: crate::protocol::RustalinkEvent::LyricsNotFound {
                                     guild_id: guild_id_lyrics,
                                 },
-                            );
+                            };
                             session_lyrics_clone.send_message(&event);
                         }
                     }
