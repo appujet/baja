@@ -29,6 +29,11 @@ pub struct EncodedTracks {
 }
 
 #[derive(Serialize)]
+pub struct Tracks {
+    pub tracks: Vec<crate::protocol::tracks::Track>,
+}
+
+#[derive(Serialize)]
 pub struct Exception {
     pub message: String,
     pub severity: String,
