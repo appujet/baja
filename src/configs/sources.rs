@@ -29,6 +29,9 @@ pub struct SourcesConfig {
     pub mixcloud: bool,
     pub bandcamp: bool,
     pub yandexmusic: bool,
+    pub google_tts: bool,
+    pub flowery: bool,
+    pub lazypytts: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -408,4 +411,60 @@ fn default_yandex_album_load_limit() -> usize {
 
 fn default_yandex_artist_load_limit() -> usize {
     6
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct GoogleTtsConfig {
+    pub language: String,
+}
+
+impl Default for GoogleTtsConfig {
+    fn default() -> Self {
+        Self {
+            language: "en-US".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct FloweryConfig {
+    pub voice: String,
+    pub translate: bool,
+    pub silence: usize,
+    pub speed: f32,
+    pub enforce_config: bool,
+}
+
+impl Default for FloweryConfig {
+    fn default() -> Self {
+        Self {
+            voice: "Salli".to_string(),
+            translate: false,
+            silence: 0,
+            speed: 1.0,
+            enforce_config: false,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct LazyPyTtsConfig {
+    pub service: String,
+    pub voice: String,
+    pub enforce_config: bool,
+    pub max_text_length: usize,
+}
+
+impl Default for LazyPyTtsConfig {
+    fn default() -> Self {
+        Self {
+            service: "Cerence".to_string(),
+            voice: "Luciana".to_string(),
+            enforce_config: false,
+            max_text_length: 3000,
+        }
+    }
 }

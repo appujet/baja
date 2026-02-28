@@ -58,9 +58,28 @@ Rustalink supports direct playback and **Mirroring**. Mirroring allows playback 
 | **Pandora** | Mirror | `pdsearch:` | `pdrec:` |
 | **Audius** | Direct | `ausearch:`, `audsearch:` | - |
 | **HTTP / Local**| Direct | - | - |
+| **Google TTS**| Direct | `gtts:`, `speak:` | - |
+| **Flowery TTS**| Direct | `ftts:` | Override parameters via query `?voice=...` |
+| **LazyPy TTS**| Direct | `lazypytts:`, `lazytts:` | Override via format `lazypytts:Service:Voice:Text` |
 
 > [!TIP]
 > **Hybrid** sources support direct playback if credentials are provided. Otherwise, they seamlessly fall back to mirroring.
+
+### Text-to-Speech (TTS) Sources
+
+Rustalink features three distinct TTS sources with unique routing parameters you can use via search prefixes directly:
+
+1. **Google TTS** (`gtts:` or `speak:`)
+   - Uses standard Google Translate voices based on the `config.toml` language code.
+   - Example: `gtts:Hello World`
+
+2. **Flowery TTS** (`ftts:`)
+   - Capable of overriding your `config.toml` voice and speed settings on the fly utilizing URL query variables. 
+   - Example: `ftts:Hello World?voice=Bria&speed=1.5`
+
+3. **LazyPy TTS** (`lazypytts:` or `lazytts:`)
+   - Connects to various web TTS APIs. You can define the custom service and voice utilizing colon separators.
+   - Example: `lazypytts:Amazon:Matthew:Hello World`
 
 ### YouTube Playback Clients
 

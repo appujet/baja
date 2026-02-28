@@ -55,6 +55,12 @@ pub struct Config {
     #[serde(default)]
     pub yandex: Option<YandexConfig>,
     #[serde(default)]
+    pub google_tts: Option<GoogleTtsConfig>,
+    #[serde(default)]
+    pub flowery: Option<FloweryConfig>,
+    #[serde(default)]
+    pub lazypytts: Option<LazyPyTtsConfig>,
+    #[serde(default)]
     pub config_server: Option<ConfigServerConfig>,
 }
 
@@ -94,6 +100,9 @@ impl Default for Config {
             audius: None,
             yandexmusic: None,
             yandex: None,
+            google_tts: None,
+            flowery: None,
+            lazypytts: None,
             config_server: None,
         }
     }

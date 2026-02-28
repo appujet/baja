@@ -47,6 +47,9 @@ mixcloud = true                 # Enable Mixcloud source
 bandcamp = true                 # Enable Bandcamp source
 audius = true                   # Enable Audius source
 yandexmusic = false             # Enable Yandex Music source
+google_tts = true               # Enable Google TTS source
+flowery = true                  # Enable Flowery TTS source
+lazypytts = true                # Enable LazyPy TTS source
 
 [lyrics]
 youtubemusic = true             # Enable YouTube Music lyrics
@@ -246,6 +249,21 @@ playlist_load_limit = 100
 album_load_limit = 100
 # app_name -> OPTIONAL: used for API requests.
 # app_name = "Rustalink"
+
+[google_tts]
+language = "en-US" # The default language for Google TTS
+
+[flowery]
+voice = "Bria" # Default voice for Flowery TTS
+translate = false # Try to translate text to match voice language
+silence = 0 # Milliseconds of silence to append to audio
+speed = 1.0 # The speed of speech
+enforce_config = false # If true, query variables won't be able to override config defaults
+
+[lazypytts]
+service = "Cerence" # Default service to use in LazyPyTTS
+voice = "Luciana" # Default voice to use in LazyPyTTS
+max_text_length = 500 # Maximum allowed character length for incoming texts
 
 [route_planner]
 enabled = false                 # Enable IP rotation using CIDRs

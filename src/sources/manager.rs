@@ -8,6 +8,9 @@ use super::{
     bandcamp::BandcampSource,
     deezer::DeezerSource,
     gaana::GaanaSource,
+    google_tts::GoogleTtsSource,
+    flowery::FlowerySource,
+    lazypytts::LazyPyTtsSource,
     http::HttpSource,
     jiosaavn::JioSaavnSource,
     local::LocalSource,
@@ -277,6 +280,27 @@ impl SourceManager {
             tracing::info!("Loaded source: http");
             sources.push(Box::new(HttpSource::new()));
         }
+
+        register_source!(
+            config.sources.google_tts,
+            "Google TTS",
+            None::<crate::configs::HttpProxyConfig>,
+            Ok::<_, String>(GoogleTtsSource::new(config.google_tts.clone().unwrap_or_default()))
+        );
+
+        register_source!(
+            config.sources.flowery,
+            "Flowery",
+            None::<crate::configs::HttpProxyConfig>,
+            Ok::<_, String>(FlowerySource::new(config.flowery.clone().unwrap_or_default()))
+        );
+
+        register_source!(
+            config.sources.lazypytts,
+            "LazyPyTTS",
+            None::<crate::configs::HttpProxyConfig>,
+            Ok::<_, String>(LazyPyTtsSource::new(config.lazypytts.clone().unwrap_or_default()))
+        );
 
         if config.sources.local {
             tracing::info!("Loaded source: local");
