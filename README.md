@@ -69,18 +69,16 @@ Bypass restrictions by switching between specialized clients:
 | Client Alias | Search | Resolve | Playback |
 | :--- | :---: | :---: | :---: |
 | `WEB` | ✅ | ✅ | ✅ |
-| `MWEB` | ✅ | ✅ | ✅ |
-| `REMIX` | ✅ | ✅ | ✅ |
+| `MWEB` / `REMIX` / `MUSIC_WEB` / `WEB_REMIX` | ✅ | ✅ | ✅ |
 | `ANDROID` | ✅ | ✅ | ✅ |
 | `IOS` | ✅ | ✅ | ✅ |
-| `TV` | ✅ | ✅ | ✅ |
-| `TVHTML5` | ✅ | ✅ | ✅ |
-| `TV_CAST` | ✅ | ✅ | ✅ |
-| `TV_EMBEDDED` | ✅ | ✅ | ✅ |
-| `MUSIC_ANDROID` | ✅ | ✅ | ✅ |
-| `ANDROID_VR` | ✅ | ❌ | ✅ |
-| `WEB_EMBEDDED` | ✅ | ❌ | ✅ |
-| `WEB_PARENT_TOOLS` | ✅ | ✅ | ❌ |
+| `TV` / `TVHTML5` | ✅ | ✅ | ✅ |
+| `TV_CAST` / `TVHTML5_CAST` | ✅ | ✅ | ✅ |
+| `TV_EMBEDDED` / `TVHTML5_EMBEDDED` / `TVHTML5_SIMPLY_EMBEDDED_PLAYER` | ✅ | ✅ | ✅ |
+| `MUSIC_ANDROID` / `MUSIC` / `ANDROID_MUSIC` | ✅ | ✅ | ✅ |
+| `ANDROID_VR` / `ANDROIDVR` | ✅ | ❌ | ✅ |
+| `WEB_EMBEDDED` / `WEBEMBEDDED` | ✅ | ❌ | ✅ |
+| `WEB_PARENT_TOOLS` / `WEBPARENTTOOLS` | ✅ | ✅ | ❌ |
 
 ---
 
