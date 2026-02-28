@@ -20,6 +20,7 @@ pub struct SharedState {
     pub done: bool,
     pub need_data: bool,
     pub command: PrefetchCommand,
+    pub error: Option<String>,
 }
 
 pub fn prefetch_loop(
@@ -137,6 +138,10 @@ pub fn prefetch_loop(
                     }
 
                     warn!("HttpSource prefetch fetch failed: {}", e);
+                    let (lock, cvar) = &*shared;
+                    let mut state = lock.lock();
+                    state.error = Some(e.to_string());
+                    cvar.notify_all();
                     thread::sleep(Duration::from_millis(500));
                     continue;
                 }
@@ -177,6 +182,10 @@ pub fn prefetch_loop(
                 }
                 Err(e) => {
                     warn!("HttpSource prefetch read failed: {}", e);
+                    let (lock, cvar) = &*shared;
+                    let mut state = lock.lock();
+                    state.error = Some(e.to_string());
+                    cvar.notify_all();
                     current_response = None;
                     thread::sleep(Duration::from_millis(100));
                     continue;

@@ -63,12 +63,14 @@ impl PlayableTrack for YoutubeTrack {
                 .map(str::to_string);
 
             let mut current_seek_ms = 0u64;
+            let mut current_client_index = 0;
 
             'playback_loop: loop {
                 let signature_timestamp = cipher_manager_async.get_signature_timestamp().await.ok();
                 let mut resolved = None;
 
-                for client in &clients_async {
+                for (idx, client) in clients_async.iter().enumerate().skip(current_client_index) {
+                    current_client_index = idx;
                     let client_name = client.name().to_string();
 
                     if client_name == "Web" {
@@ -233,17 +235,18 @@ impl PlayableTrack for YoutubeTrack {
                         config_for_processor,
                     ) {
                         Ok(mut processor) => {
-                            if let Err(e) = processor.run() {
-                                error!("YoutubeTrack: Decoding session finished with error: {}", e);
-                            }
+                            processor.run().map_err(|e| e.to_string())
                         }
                         Err(e) => {
                             error!("YoutubeTrack: AudioProcessor initialization failed: {}", e);
-                            let _ =
-                                err_tx_clone.send(format!("Failed to initialize processor: {}", e));
+                            Err(format!("Failed to initialize processor: {}", e))
                         }
                     }
                 });
+
+                if current_seek_ms > 0 {
+                    let _ = inner_cmd_tx.send(DecoderCommand::Seek(current_seek_ms));
+                }
 
                 let sabr_cmd_tx_clone = opt_sabr_cmd_tx.clone();
                 let sabr_abort_tx = if let (Some(sabr_event_rx), Some(sabr_cmd_tx)) =
@@ -332,7 +335,25 @@ impl PlayableTrack for YoutubeTrack {
                                 }
                             }
                         }
-                        _ = &mut process_task => {
+                        res = &mut process_task => {
+                            match res {
+                                Ok(Err(e)) => {
+                                    warn!("YoutubeTrack: Playback failed for '{}' with client {}: {}. Attempting fallback...", identifier_async, clients_async[current_client_index].name(), e);
+                                    current_client_index += 1;
+                                    if current_client_index < clients_async.len() {
+                                        continue 'playback_loop;
+                                    } else {
+                                        error!("YoutubeTrack: All clients failed for '{}'", identifier_async);
+                                        let _ = err_tx.send(format!("All clients failed: {}", e));
+                                    }
+                                }
+                                Ok(Ok(())) => {
+                                    debug!("YoutubeTrack: Playback finished for '{}'", identifier_async);
+                                }
+                                Err(e) => {
+                                    error!("YoutubeTrack: Join error for '{}': {}", identifier_async, e);
+                                }
+                            }
                             return;
                         }
                     }

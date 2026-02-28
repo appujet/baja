@@ -53,6 +53,7 @@ impl HttpSource {
                 done: false,
                 need_data: true,
                 command: PrefetchCommand::Continue,
+                error: None,
             }),
             Condvar::new(),
         ));
@@ -133,8 +134,12 @@ impl Read for HttpSource {
         state.need_data = true;
         cvar.notify_one();
 
-        while state.next_buf.is_empty() && !state.done {
+        while state.next_buf.is_empty() && !state.done && state.error.is_none() {
             cvar.wait(&mut state);
+        }
+
+        if let Some(err) = state.error.take() {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, err));
         }
 
         if state.next_buf.is_empty() && state.done {
