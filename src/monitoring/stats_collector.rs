@@ -13,30 +13,55 @@ pub fn collect_stats(
     for s in state.sessions.iter() {
         total_players += s.players.len() as i32;
         for player in s.players.iter() {
-            if player.track.is_some() {
+            if player.track.is_some() && !player.paused {
+                playing_players += 1;
+            }
+        }
+    }
+    for s in state.resumable_sessions.iter() {
+        total_players += s.players.len() as i32;
+        for player in s.players.iter() {
+            if player.track.is_some() && !player.paused {
                 playing_players += 1;
             }
         }
     }
 
-    let mut total_sent = 0;
-    let mut total_nulled = 0;
+    let mut current_total_sent: u64;
+    let mut current_total_nulled: u64;
     let mut player_count = 0;
+    let total_sent: i32;
+    let total_nulled: i32;
 
     if let Some(s) = session {
+        // Accumulate current totals from all active players + history.
+        current_total_sent = s.total_sent_historical.load(Ordering::Relaxed);
+        current_total_nulled = s.total_nulled_historical.load(Ordering::Relaxed);
+
         for player in s.players.iter() {
             if player.track.is_some() && !player.paused {
                 player_count += 1;
-                total_sent += player
-                    .frames_sent
-                    .swap(0, std::sync::atomic::Ordering::Relaxed)
-                    as i32;
-                total_nulled += player
-                    .frames_nulled
-                    .swap(0, std::sync::atomic::Ordering::Relaxed)
-                    as i32;
+                current_total_sent += player.frames_sent.load(Ordering::Relaxed);
+                current_total_nulled += player.frames_nulled.load(Ordering::Relaxed);
             }
         }
+
+        // Calculate delta since the last time this session requested stats.
+        let last_sent = s.last_stats_sent.swap(current_total_sent, Ordering::Relaxed);
+        let last_nulled = s.last_stats_nulled.swap(current_total_nulled, Ordering::Relaxed);
+
+        // If it's the first time, we don't have a delta yet.
+        if last_sent != 0 || last_nulled != 0 {
+            total_sent = current_total_sent.saturating_sub(last_sent) as i32;
+            total_nulled = current_total_nulled.saturating_sub(last_nulled) as i32;
+        } else {
+            // First tick or zero frames.
+            total_sent = 0;
+            total_nulled = 0;
+        }
+    } else {
+        total_sent = 0;
+        total_nulled = 0;
     }
 
     let frame_stats = if session.is_some() && player_count != 0 {
@@ -52,10 +77,10 @@ pub fn collect_stats(
         None
     };
 
-    let (mem_used, mem_free, mem_total) = read_memory_stats();
+    let (mem_used, _mem_free, mem_total) = read_memory_stats();
 
     let cores = num_cpus();
-    let system_load = read_system_load() / cores as f64;
+    let system_load = read_system_load();
     let lavalink_load = (read_process_cpu_load() / cores as f64).clamp(0.0, 1.0);
 
     protocol::Stats {
@@ -63,7 +88,7 @@ pub fn collect_stats(
         playing_players,
         uptime,
         memory: protocol::Memory {
-            free: mem_free,
+            free: mem_total.saturating_sub(mem_used),
             used: mem_used,
             allocated: mem_used,
             reservable: mem_total,
@@ -78,14 +103,42 @@ pub fn collect_stats(
 }
 
 fn read_system_load() -> f64 {
-    std::fs::read_to_string("/proc/loadavg")
-        .ok()
-        .and_then(|s| {
-            s.split_whitespace()
-                .next()
-                .and_then(|v| v.parse::<f64>().ok())
-        })
-        .unwrap_or(0.0)
+    static PREV_IDLE: AtomicU64 = AtomicU64::new(0);
+    static PREV_TOTAL: AtomicU64 = AtomicU64::new(0);
+
+    let stat = match std::fs::read_to_string("/proc/stat") {
+        Ok(s) => s,
+        Err(_) => return 0.0,
+    };
+
+    let first_line = stat.lines().next().unwrap_or("");
+    let parts: Vec<&str> = first_line.split_whitespace().collect();
+    if parts.len() < 5 || parts[0] != "cpu" {
+        return 0.0;
+    }
+
+    let mut total: u64 = 0;
+    for part in &parts[1..] {
+        total += part.parse::<u64>().unwrap_or(0);
+    }
+    // Idle is field 4 (0-indexed)
+    let idle = parts[4].parse::<u64>().unwrap_or(0);
+
+    let prev_idle = PREV_IDLE.swap(idle, Ordering::Relaxed);
+    let prev_total = PREV_TOTAL.swap(total, Ordering::Relaxed);
+
+    if prev_total == 0 {
+        return 0.0;
+    }
+
+    let d_idle = idle.saturating_sub(prev_idle);
+    let d_total = total.saturating_sub(prev_total);
+
+    if d_total == 0 {
+        return 0.0;
+    }
+
+    (d_total.saturating_sub(d_idle)) as f64 / d_total as f64
 }
 
 fn num_cpus() -> i32 {

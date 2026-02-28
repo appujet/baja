@@ -178,6 +178,13 @@ async fn stop_current_track(player: &mut PlayerContext, session: &Session) {
         handle.stop();
     }
 
+    // Accumulate final frame counts into the session history before discard.
+    session.total_sent_historical.fetch_add(player.frames_sent.load(Ordering::Relaxed), Ordering::Relaxed);
+    session.total_nulled_historical.fetch_add(player.frames_nulled.load(Ordering::Relaxed), Ordering::Relaxed);
+    // Reset player counters so they don't get double-counted if the context is reused (though usually it's not).
+    player.frames_sent.store(0, Ordering::Relaxed);
+    player.frames_nulled.store(0, Ordering::Relaxed);
+
     let engine = player.engine.lock().await;
     engine.mixer.lock().await.stop_all();
 }

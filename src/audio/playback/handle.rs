@@ -109,4 +109,8 @@ impl TrackHandle {
         self.position.store(samples, Ordering::Release);
         let _ = self.command_tx.send(DecoderCommand::Seek(position_ms));
     }
+
+    pub fn is_same(&self, other: &Self) -> bool {
+        self.command_tx.same_channel(&other.command_tx)
+    }
 }

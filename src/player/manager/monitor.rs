@@ -86,11 +86,20 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
 
             session.send_message(&protocol::OutgoingMessage::Event {
                 event: RustalinkEvent::TrackEnd {
-                    guild_id,
+                    guild_id: guild_id.clone(),
                     track,
                     reason,
                 },
             });
+
+            // Clear track state in PlayerContext if it hasn't been replaced.
+            if let Some(mut p) = session.players.get_mut(&guild_id) {
+                if p.track_handle.as_ref().map(|h| h.is_same(&handle)).unwrap_or(false) {
+                    p.track = None;
+                    p.track_info = None;
+                    p.track_handle = None;
+                }
+            }
             break;
         }
 

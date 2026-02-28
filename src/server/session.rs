@@ -30,6 +30,16 @@ pub struct Session {
     /// Events queued while session is paused.
     pub event_queue: Mutex<VecDeque<String>>,
     pub max_queue_size: usize,
+
+    /// Last recorded frames sent for stats calculation.
+    pub last_stats_sent: AtomicU64,
+    /// Last recorded frames nulled for stats calculation.
+    pub last_stats_nulled: AtomicU64,
+
+    /// Historical total frames sent (from closed players).
+    pub total_sent_historical: AtomicU64,
+    /// Historical total frames nulled (from closed players).
+    pub total_nulled_historical: AtomicU64,
 }
 
 impl Session {
@@ -49,6 +59,10 @@ impl Session {
             paused: AtomicBool::new(false),
             event_queue: Mutex::new(VecDeque::new()),
             max_queue_size,
+            last_stats_sent: AtomicU64::new(0),
+            last_stats_nulled: AtomicU64::new(0),
+            total_sent_historical: AtomicU64::new(0),
+            total_nulled_historical: AtomicU64::new(0),
         }
     }
 
