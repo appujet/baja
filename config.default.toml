@@ -87,7 +87,7 @@ spatial = true                  # Enable spatial/8d filter
 [mirrors]
 providers = [
   #"dzisrc:%ISRC%",
-  "ytsearch:\"%ISRC%\"",
+  "ytsearch:%ISRC%",
   "ytsearch:%QUERY%",
   "jssearch:%QUERY%",
 ] # Mirror providers for fallback searching
