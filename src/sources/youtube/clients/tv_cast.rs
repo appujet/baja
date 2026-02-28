@@ -23,17 +23,11 @@ const CLIENT_VERSION: &str = "7.20190924";
 const USER_AGENT: &str = "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 CrKey/1.54.248666";
 
 pub struct TvCastClient {
-    http: reqwest::Client,
+    http: Arc<reqwest::Client>,
 }
 
 impl TvCastClient {
-    pub fn new() -> Self {
-        let http = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("Failed to build TV Cast HTTP client");
-
+    pub fn new(http: Arc<reqwest::Client>) -> Self {
         Self { http }
     }
 
@@ -123,6 +117,7 @@ impl YouTubeClient for TvCastClient {
         let mut req = self
             .http
             .post(&url)
+            .header("User-Agent", USER_AGENT)
             .header("X-YouTube-Client-Name", "7")
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
             .header("X-Goog-Api-Format-Version", "2");

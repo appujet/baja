@@ -1,8 +1,9 @@
-use futures::{SinkExt, StreamExt};
 use std::sync::{
     Arc,
     atomic::{AtomicI64, Ordering},
 };
+
+use futures::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};

@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, sync::Arc};
 
 use flume::{Receiver, Sender};
 use tracing::{debug, error};
@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub struct AudiusTrack {
-    pub client: reqwest::Client,
+    pub client: Arc<reqwest::Client>,
     pub track_id: String,
     pub stream_url: Option<String>,
     pub app_name: String,
@@ -102,7 +102,7 @@ impl PlayableTrack for AudiusTrack {
 }
 
 pub async fn fetch_stream_url(
-    client: &reqwest::Client,
+    client: &Arc<reqwest::Client>,
     track_id: &str,
     app_name: &str,
 ) -> Option<String> {

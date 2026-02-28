@@ -1,3 +1,5 @@
+use std::sync::{Arc, atomic::Ordering};
+
 use crate::{
     common::types::GuildId,
     protocol::{
@@ -8,7 +10,6 @@ use crate::{
     },
     server::Session,
 };
-use std::sync::{Arc, atomic::Ordering};
 
 /// Spawn a non-blocking task that fetches lyrics and sends the result.
 pub fn spawn_lyrics_fetch(

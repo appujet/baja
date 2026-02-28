@@ -3,7 +3,6 @@ use std::{collections::BTreeMap, sync::Arc};
 use async_trait::async_trait;
 use rand::{Rng, distributions::Alphanumeric, thread_rng};
 use regex::Regex;
-use reqwest::header::HeaderMap;
 use serde_json::Value;
 use tracing::{error, warn};
 
@@ -16,7 +15,7 @@ use crate::{
 const API_BASE: &str = "https://api.audiomack.com/v1";
 
 pub struct AudiomackSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     song_regex: Regex,
     album_regex: Regex,
     playlist_regex: Regex,
@@ -27,30 +26,11 @@ pub struct AudiomackSource {
 }
 
 impl AudiomackSource {
-    pub fn new(config: Option<crate::configs::AudiomackConfig>) -> Result<Self, String> {
-        let mut headers = HeaderMap::new();
-
-        headers.insert(
-            "User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
-                .parse()
-                .unwrap(),
-        );
-        headers.insert("Accept", "application/json".parse().unwrap());
-        headers.insert("Accept-Language", "en-US,en;q=0.9".parse().unwrap());
-        headers.insert("Origin", "https://audiomack.com".parse().unwrap());
-        headers.insert("Referer", "https://audiomack.com/".parse().unwrap());
-        headers.insert("Sec-Fetch-Site", "same-site".parse().unwrap());
-        headers.insert("Sec-Fetch-Mode", "cors".parse().unwrap());
-        headers.insert("Sec-Fetch-Dest", "empty".parse().unwrap());
-        headers.insert("Priority", "u=1, i".parse().unwrap());
-        headers.insert("DNT", "1".parse().unwrap());
-        headers.insert("sec-ch-ua-platform", "\"Windows\"".parse().unwrap());
-
+    pub fn new(
+        config: Option<crate::configs::AudiomackConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let search_limit = config.map(|c| c.search_limit).unwrap_or(20);
-
-        let client_builder = reqwest::Client::builder().default_headers(headers);
-        let client = client_builder.build().map_err(|e| e.to_string())?;
 
         Ok(Self {
             client,
@@ -99,7 +79,7 @@ impl AudiomackSource {
             query_params
         );
 
-        let mut request_builder = self.client.request(method.clone(), &url);
+        let mut request_builder = self.base_request(self.client.request(method.clone(), &url));
 
         let nonce = self.generate_nonce();
         let timestamp = (std::time::SystemTime::now()
@@ -153,6 +133,21 @@ impl AudiomackSource {
                 None
             }
         }
+    }
+
+    fn base_request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
+            .header("Accept", "application/json")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Origin", "https://audiomack.com")
+            .header("Referer", "https://audiomack.com/")
+            .header("Sec-Fetch-Site", "same-site")
+            .header("Sec-Fetch-Mode", "cors")
+            .header("Sec-Fetch-Dest", "empty")
+            .header("Priority", "u=1, i")
+            .header("DNT", "1")
+            .header("sec-ch-ua-platform", "\"Windows\"")
     }
 
     fn parse_track(&self, json: &Value) -> Option<Track> {

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, net::IpAddr};
+use std::{collections::BTreeMap, net::IpAddr, sync::Arc};
 
 use flume::{Receiver, Sender};
 
@@ -8,7 +8,7 @@ use crate::{
 };
 
 pub struct AudiomackTrack {
-    pub client: reqwest::Client,
+    pub client: Arc<reqwest::Client>,
     pub identifier: String,
     pub local_addr: Option<IpAddr>,
 }
@@ -76,7 +76,7 @@ impl PlayableTrack for AudiomackTrack {
     }
 }
 
-async fn fetch_stream_url(client: &reqwest::Client, identifier: &str) -> Option<String> {
+async fn fetch_stream_url(client: &Arc<reqwest::Client>, identifier: &str) -> Option<String> {
     let nonce = thread_rng_nonce();
     let timestamp = (std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

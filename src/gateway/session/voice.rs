@@ -1,3 +1,11 @@
+use std::{
+    net::SocketAddr,
+    sync::{Arc, atomic::Ordering},
+};
+
+use tokio_util::sync::CancellationToken;
+use tracing::error;
+
 use super::types::map_boxed_err;
 use crate::{
     audio::{Mixer, engine::Encoder},
@@ -10,12 +18,6 @@ use crate::{
         },
     },
 };
-use std::{
-    net::SocketAddr,
-    sync::{Arc, atomic::Ordering},
-};
-use tokio_util::sync::CancellationToken;
-use tracing::error;
 
 const PCM_FRAME_SIZE: usize = PCM_FRAME_SAMPLES * 2; // Stereo
 

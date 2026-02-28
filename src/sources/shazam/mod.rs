@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+use reqwest::header::USER_AGENT;
 use serde_json::Value;
 use tracing::error;
 
@@ -14,28 +14,17 @@ use crate::{
 const SEARCH_URL: &str = "https://www.shazam.com/services/amapi/v1/catalog/US/search";
 
 pub struct ShazamSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     search_prefixes: Vec<String>,
     url_regex: Regex,
     search_limit: usize,
 }
 
 impl ShazamSource {
-    pub fn new(config: &crate::configs::Config) -> Result<Self, String> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-      USER_AGENT,
-      HeaderValue::from_static(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-      ),
-    );
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .gzip(true)
-            .build()
-            .map_err(|e| e.to_string())?;
-
+    pub fn new(
+        config: &crate::configs::Config,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         Ok(Self {
             client,
             search_prefixes: vec!["shsearch:".to_string(), "szsearch:".to_string()],
@@ -52,7 +41,7 @@ impl ShazamSource {
             self.search_limit
         );
 
-        let resp = match self.client.get(&url).send().await {
+        let resp = match self.base_request(self.client.get(&url)).send().await {
             Ok(r) => r,
             Err(e) => {
                 error!("Shazam search request failed: {}", e);
@@ -154,7 +143,7 @@ impl ShazamSource {
     }
 
     async fn resolve_url(&self, url: &str) -> LoadResult {
-        let resp = match self.client.get(url).send().await {
+        let resp = match self.base_request(self.client.get(url)).send().await {
             Ok(r) => r,
             Err(e) => {
                 error!("Shazam resolve request failed: {}", e);
@@ -408,6 +397,10 @@ impl ShazamSource {
             }
         }
         None
+    }
+
+    pub fn base_request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder.header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
     }
 }
 

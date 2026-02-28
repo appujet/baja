@@ -3,9 +3,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering},
 };
 
-use crate::audio::processor::DecoderCommand;
-
-use crate::audio::constants::OPUS_SAMPLE_RATE;
+use crate::audio::{constants::OPUS_SAMPLE_RATE, processor::DecoderCommand};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]

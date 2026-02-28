@@ -3,11 +3,10 @@ use std::{sync::Arc, thread, time::Duration};
 use parking_lot::{Condvar, Mutex};
 use tracing::{debug, warn};
 
+use super::HttpSource;
 use crate::audio::constants::{
     HTTP_FETCH_CHUNK_LIMIT, HTTP_PREFETCH_BUFFER_SIZE, HTTP_SOCKET_SKIP_LIMIT,
 };
-
-use super::HttpSource;
 
 #[derive(Debug)]
 pub enum PrefetchCommand {

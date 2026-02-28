@@ -25,17 +25,11 @@ const USER_AGENT: &str = "Mozilla/5.0 (Fuchsia) AppleWebKit/537.36 (KHTML, like 
      Chrome/140.0.0.0 Safari/537.36 CrKey/1.56.500000";
 
 pub struct TvClient {
-    http: reqwest::Client,
+    http: Arc<reqwest::Client>,
 }
 
 impl TvClient {
-    pub fn new() -> Self {
-        let http = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("Failed to build TV HTTP client");
-
+    pub fn new(http: Arc<reqwest::Client>) -> Self {
         Self { http }
     }
 
@@ -127,6 +121,7 @@ impl YouTubeClient for TvClient {
         let mut req = self
             .http
             .post(&url)
+            .header("User-Agent", USER_AGENT)
             .header("X-YouTube-Client-Name", CLIENT_ID)
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
             .header("X-Goog-Api-Format-Version", "2");

@@ -2,9 +2,9 @@
 //!
 //! Layers are blended into the main PCM stream by `AudioMixer`.
 
-use crate::audio::constants::LAYER_BUFFER_SIZE;
-use crate::audio::{RingBuffer, buffer::PooledBuffer};
 use flume::Receiver;
+
+use crate::audio::{RingBuffer, buffer::PooledBuffer, constants::LAYER_BUFFER_SIZE};
 
 /// A single overlay layer: feeds PCM from a channel into a `RingBuffer` and
 /// blends it into the main stream at a configurable volume.

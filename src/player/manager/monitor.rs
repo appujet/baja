@@ -1,3 +1,7 @@
+use std::sync::{Arc, atomic::Ordering};
+
+use tracing::warn;
+
 use super::lyrics::sync_lyrics;
 use crate::{
     audio::playback::{PlaybackState, TrackHandle},
@@ -11,8 +15,6 @@ use crate::{
     },
     server::Session,
 };
-use std::sync::{Arc, atomic::Ordering};
-use tracing::warn;
 
 pub struct MonitorCtx {
     pub guild_id: GuildId,

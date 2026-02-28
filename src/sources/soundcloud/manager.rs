@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use regex::Regex;
@@ -18,7 +18,7 @@ const BASE_URL: &str = "https://api-v2.soundcloud.com";
 
 /// SoundCloud audio source.
 pub struct SoundCloudSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     config: crate::configs::SoundCloudConfig,
     token_tracker: Arc<SoundCloudTokenTracker>,
     /// Regex patterns
@@ -34,34 +34,10 @@ pub struct SoundCloudSource {
 }
 
 impl SoundCloudSource {
-    pub fn new(config: crate::configs::SoundCloudConfig) -> Result<Self, String> {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-      "User-Agent",
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        .parse()
-        .unwrap(),
-    );
-
-        let mut client_builder = reqwest::Client::builder()
-            .default_headers(headers)
-            .gzip(true)
-            .timeout(Duration::from_secs(15));
-
-        if let Some(proxy_cfg) = &config.proxy {
-            if let Some(url) = &proxy_cfg.url {
-                debug!("Configuring proxy for SoundCloudSource: {}", url);
-                if let Ok(mut proxy) = reqwest::Proxy::all(url) {
-                    if let (Some(u), Some(p)) = (&proxy_cfg.username, &proxy_cfg.password) {
-                        proxy = proxy.basic_auth(u, p);
-                    }
-                    client_builder = client_builder.proxy(proxy);
-                }
-            }
-        }
-
-        let client = client_builder.build().map_err(|e| e.to_string())?;
-
+    pub fn new(
+        config: crate::configs::SoundCloudConfig,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let token_tracker = Arc::new(SoundCloudTokenTracker::new(client.clone(), &config));
         token_tracker.clone().init();
 

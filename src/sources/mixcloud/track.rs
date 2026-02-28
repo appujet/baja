@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use flume::{Receiver, Sender};
 
 use crate::{
@@ -6,7 +8,7 @@ use crate::{
 };
 
 pub struct MixcloudTrack {
-    pub client: reqwest::Client,
+    pub client: Arc<reqwest::Client>,
     pub hls_url: Option<String>,
     pub stream_url: Option<String>,
     pub uri: String,

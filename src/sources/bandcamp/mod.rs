@@ -13,7 +13,7 @@ use crate::{
 pub mod track;
 
 pub struct BandcampSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     pattern: Regex,
     identifier_pattern: Regex,
     search_prefixes: Vec<String>,
@@ -21,18 +21,10 @@ pub struct BandcampSource {
 }
 
 impl BandcampSource {
-    pub fn new(config: Option<crate::configs::BandcampConfig>) -> Result<Self, String> {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::USER_AGENT,
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36".parse().unwrap()
-        );
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .map_err(|e| e.to_string())?;
-
+    pub fn new(
+        config: Option<crate::configs::BandcampConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         Ok(Self {
             client,
             pattern: Regex::new(r"(?i)^https?://(?P<subdomain>[^/]+)\.bandcamp\.com/(?P<type>track|album)/(?P<slug>[^/?]+)").unwrap(),
@@ -48,7 +40,7 @@ impl BandcampSource {
             urlencoding::encode(query)
         );
 
-        let resp = match self.client.get(url).send().await {
+        let resp = match self.base_request(self.client.get(url)).send().await {
             Ok(r) => r,
             Err(e) => {
                 error!("Bandcamp search request failed: {}", e);
@@ -222,7 +214,7 @@ impl BandcampSource {
     }
 
     async fn fetch_track_data(&self, url: &str) -> Option<(Value, Option<String>)> {
-        let resp = self.client.get(url).send().await.ok()?;
+        let resp = self.base_request(self.client.get(url)).send().await.ok()?;
         if !resp.status().is_success() {
             return None;
         }
@@ -250,6 +242,10 @@ impl BandcampSource {
             return format!("{}:{}", &caps["subdomain"], &caps["slug"]);
         }
         url.to_string()
+    }
+
+    pub fn base_request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder.header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     }
 }
 

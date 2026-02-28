@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::Value;
 use tracing::{error, warn};
 
@@ -15,7 +14,7 @@ use crate::{
 const API_BASE: &str = "https://api.tidal.com/v1";
 
 pub struct TidalSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     token_tracker: Arc<TidalTokenTracker>,
     country_code: String,
 
@@ -32,19 +31,10 @@ pub struct TidalSource {
 }
 
 impl TidalSource {
-    pub fn new(config: Option<crate::configs::TidalConfig>) -> Result<Self, String> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            USER_AGENT,
-            HeaderValue::from_static("TIDAL/3704 CFNetwork/1220.1 Darwin/20.3.0"),
-        );
-        headers.insert("Accept-Language", HeaderValue::from_static("en-US"));
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .map_err(|e| e.to_string())?;
-
+    pub fn new(
+        config: Option<crate::configs::TidalConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let (country, p_limit, a_limit, art_limit, token) = if let Some(c) = config {
             (
                 c.country_code,
@@ -89,7 +79,9 @@ impl TidalSource {
             format!("{}?countryCode={}", url, self.country_code)
         };
 
-        let req = self.client.get(&url).header("x-tidal-token", token);
+        let req = self
+            .base_request(self.client.get(&url))
+            .header("x-tidal-token", token);
 
         let resp = match req.send().await {
             Ok(r) => r,
@@ -104,7 +96,16 @@ impl TidalSource {
             return None;
         }
 
-        resp.json().await.ok()
+        resp.json::<Value>().await.ok()
+    }
+
+    pub fn base_request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder
+            .header(
+                reqwest::header::USER_AGENT,
+                "TIDAL/3704 CFNetwork/1220.1 Darwin/20.3.0",
+            )
+            .header("Accept-Language", "en-US")
     }
 
     fn parse_track(&self, item: &Value) -> Option<TrackInfo> {

@@ -24,17 +24,11 @@ const USER_AGENT: &str =
     "com.google.ios.youtube/21.02.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)";
 
 pub struct IosClient {
-    http: reqwest::Client,
+    http: Arc<reqwest::Client>,
 }
 
 impl IosClient {
-    pub fn new() -> Self {
-        let http = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("Failed to build IOS HTTP client");
-
+    pub fn new(http: Arc<reqwest::Client>) -> Self {
         Self { http }
     }
 
@@ -115,6 +109,7 @@ impl YouTubeClient for IosClient {
         let mut req = self
             .http
             .post(&url)
+            .header("User-Agent", USER_AGENT)
             .header("X-YouTube-Client-Name", "5")
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
             .header("X-Goog-Api-Format-Version", "2");

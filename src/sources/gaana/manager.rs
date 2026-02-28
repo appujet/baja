@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use regex::Regex;
-use reqwest::header::HeaderMap;
 use serde_json::Value;
-use tracing::{debug, warn};
+use tracing::warn;
 
 use super::track::GaanaTrack;
 use crate::{
@@ -16,7 +15,7 @@ const API_URL: &str = "https://gaana.com/apiv2";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 
 pub struct GaanaSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     url_regex: Regex,
     search_prefixes: Vec<String>,
     stream_quality: String,
@@ -29,30 +28,10 @@ pub struct GaanaSource {
 }
 
 impl GaanaSource {
-    pub fn new(config: Option<crate::configs::GaanaConfig>) -> Result<Self, String> {
-        let mut headers = HeaderMap::new();
-        headers.insert("User-Agent", USER_AGENT.parse().unwrap());
-        headers.insert(
-            "Accept",
-            "application/json, text/plain, */*".parse().unwrap(),
-        );
-        headers.insert("Accept-Language", "en-US,en;q=0.9".parse().unwrap());
-        headers.insert("Accept-Encoding", "gzip, deflate, br".parse().unwrap());
-        headers.insert("Origin", "https://gaana.com".parse().unwrap());
-        headers.insert("Referer", "https://gaana.com/".parse().unwrap());
-        headers.insert("Connection", "keep-alive".parse().unwrap());
-        headers.insert("Sec-Fetch-Dest", "empty".parse().unwrap());
-        headers.insert("Sec-Fetch-Mode", "cors".parse().unwrap());
-        headers.insert("Sec-Fetch-Site", "same-origin".parse().unwrap());
-        headers.insert(
-            "sec-ch-ua",
-            "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\""
-                .parse()
-                .unwrap(),
-        );
-        headers.insert("sec-ch-ua-mobile", "?0".parse().unwrap());
-        headers.insert("sec-ch-ua-platform", "\"Windows\"".parse().unwrap());
-
+    pub fn new(
+        config: Option<crate::configs::GaanaConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let (
             stream_quality,
             search_limit,
@@ -72,25 +51,6 @@ impl GaanaSource {
         } else {
             ("high".to_string(), 10, 50, 50, 20, None)
         };
-
-        let mut client_builder = reqwest::Client::builder().default_headers(headers);
-
-        if let Some(proxy_config) = &proxy {
-            if let Some(url) = &proxy_config.url {
-                debug!("Configuring proxy for GaanaSource: {}", url);
-                if let Ok(proxy_obj) = reqwest::Proxy::all(url) {
-                    let mut proxy_obj = proxy_obj;
-                    if let (Some(username), Some(password)) =
-                        (&proxy_config.username, &proxy_config.password)
-                    {
-                        proxy_obj = proxy_obj.basic_auth(username, password);
-                    }
-                    client_builder = client_builder.proxy(proxy_obj);
-                }
-            }
-        }
-
-        let client = client_builder.build().map_err(|e| e.to_string())?;
 
         Ok(Self {
       client,
@@ -120,8 +80,7 @@ impl GaanaSource {
         );
 
         let resp = match self
-            .client
-            .post(&url)
+            .base_request(self.client.post(&url))
             .header("Referer", format!("https://gaana.com/{}", referer_path))
             .header("Content-Length", "0")
             .send()
@@ -139,7 +98,26 @@ impl GaanaSource {
         }
 
         let text = resp.text().await.ok()?;
-        serde_json::from_str(&text).ok()
+        serde_json::from_str::<Value>(&text).ok()
+    }
+
+    fn base_request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/json, text/plain, */*")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Accept-Encoding", "gzip, deflate, br")
+            .header("Origin", "https://gaana.com")
+            .header("Connection", "keep-alive")
+            .header("Sec-Fetch-Dest", "empty")
+            .header("Sec-Fetch-Mode", "cors")
+            .header("Sec-Fetch-Site", "same-origin")
+            .header(
+                "sec-ch-ua",
+                "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+            )
+            .header("sec-ch-ua-mobile", "?0")
+            .header("sec-ch-ua-platform", "\"Windows\"")
     }
 
     async fn load_song(&self, seokey: &str) -> LoadResult {

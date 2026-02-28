@@ -315,8 +315,10 @@ pub async fn make_player_request(
 
     let mut req = http
         .post(&url)
+        .header("User-Agent", config.user_agent)
         .header("X-YouTube-Client-Name", config.client_id)
-        .header("X-YouTube-Client-Version", config.client_version);
+        .header("X-YouTube-Client-Version", config.client_version)
+        .header("X-Goog-Api-Format-Version", "2");
 
     if let Some(vd) = visitor_data {
         req = req.header("X-Goog-Visitor-Id", vd);
@@ -375,6 +377,7 @@ pub async fn make_next_request(
 
     let mut req = http
         .post(&url)
+        .header("User-Agent", config.user_agent)
         .header("X-YouTube-Client-Name", config.client_id)
         .header("X-YouTube-Client-Version", config.client_version);
 

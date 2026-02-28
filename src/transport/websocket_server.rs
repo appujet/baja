@@ -1,6 +1,6 @@
-use Ordering::Relaxed;
 use std::sync::{Arc, atomic::Ordering};
 
+use Ordering::Relaxed;
 use axum::{
     extract::{
         State,
@@ -12,8 +12,10 @@ use axum::{
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    common::types::{SessionId, UserId},
-    common::utils::now_ms,
+    common::{
+        types::{SessionId, UserId},
+        utils::now_ms,
+    },
     monitoring::collect_stats,
     player::PlayerState,
     protocol,

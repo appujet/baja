@@ -14,7 +14,7 @@ pub struct QobuzTokens {
 }
 
 pub struct QobuzTokenTracker {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     tokens: Arc<RwLock<Option<QobuzTokens>>>,
     config_user_token: Option<String>,
     config_app_id: Option<String>,
@@ -23,7 +23,7 @@ pub struct QobuzTokenTracker {
 
 impl QobuzTokenTracker {
     pub fn new(
-        client: reqwest::Client,
+        client: Arc<reqwest::Client>,
         user_token: Option<String>,
         app_id: Option<String>,
         app_secret: Option<String>,

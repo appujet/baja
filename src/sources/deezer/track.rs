@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub struct DeezerTrack {
-    pub client: reqwest::Client,
+    pub client: Arc<reqwest::Client>,
     pub track_id: String,
     pub arl_index: usize,
     pub token_tracker: Arc<crate::sources::deezer::token::DeezerTokenTracker>,

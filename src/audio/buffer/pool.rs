@@ -3,9 +3,11 @@
 //! Sizes are rounded up to the next power of two (minimum 1 024 bytes),
 //! pooled in per-size buckets, and evicted after a configurable idle period.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 
 /// Maximum total bytes held in the pool (50 MB).
 use crate::audio::constants::{MAX_BUCKET_ENTRIES, MAX_POOL_BYTES, POOL_IDLE_CLEAR_SECS};

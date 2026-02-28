@@ -23,17 +23,11 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
      AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 
 pub struct WebEmbeddedClient {
-    http: reqwest::Client,
+    http: Arc<reqwest::Client>,
 }
 
 impl WebEmbeddedClient {
-    pub fn new() -> Self {
-        let http = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("Failed to build WebEmbedded HTTP client");
-
+    pub fn new(http: Arc<reqwest::Client>) -> Self {
         Self { http }
     }
 
@@ -110,6 +104,7 @@ impl YouTubeClient for WebEmbeddedClient {
         let mut req = self
             .http
             .post(&url)
+            .header("User-Agent", USER_AGENT)
             .header("X-YouTube-Client-Name", CLIENT_ID)
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
             .header("X-Goog-Api-Format-Version", "2");

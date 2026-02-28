@@ -3,15 +3,16 @@
 //! Reassembles arbitrary PCM chunks into fixed 3840-byte (960 sample) frames
 //! and pipes them through the effects chain: Filters → Tape → Volume → Fade.
 
-use crate::audio::buffer::PooledBuffer;
-use crate::audio::effects::{
-    crossfade::CrossfadeController, fade::FadeEffect, tape::TapeEffect, volume::VolumeEffect,
-};
-use crate::audio::filters::FilterChain;
-
 use flume::{Receiver, Sender};
 
-use crate::audio::constants::FRAME_SIZE_SAMPLES;
+use crate::audio::{
+    buffer::PooledBuffer,
+    constants::FRAME_SIZE_SAMPLES,
+    effects::{
+        crossfade::CrossfadeController, fade::FadeEffect, tape::TapeEffect, volume::VolumeEffect,
+    },
+    filters::FilterChain,
+};
 
 pub struct FlowController {
     // Effects chain

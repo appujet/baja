@@ -24,17 +24,11 @@ const CLIENT_VERSION: &str = "20.01.35";
 const USER_AGENT: &str = "com.google.android.youtube/20.01.35 (Linux; U; Android 14) identity";
 
 pub struct AndroidClient {
-    http: reqwest::Client,
+    http: Arc<reqwest::Client>,
 }
 
 impl AndroidClient {
-    pub fn new() -> Self {
-        let http = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("Failed to build Android HTTP client");
-
+    pub fn new(http: Arc<reqwest::Client>) -> Self {
         Self { http }
     }
 
@@ -114,6 +108,7 @@ impl YouTubeClient for AndroidClient {
         let req = self
             .http
             .post(&url)
+            .header("User-Agent", USER_AGENT)
             .header("X-Goog-Api-Format-Version", "2")
             .header("X-Goog-Visitor-Id", visitor_data.unwrap_or(""))
             .header("X-YouTube-Client-Name", CLIENT_ID)
@@ -229,6 +224,7 @@ impl YouTubeClient for AndroidClient {
         let mut req = self
             .http
             .post(&url)
+            .header("User-Agent", USER_AGENT)
             .header("X-YouTube-Client-Name", CLIENT_ID)
             .header("X-YouTube-Client-Version", CLIENT_VERSION);
 

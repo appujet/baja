@@ -14,7 +14,7 @@ pub mod track;
 pub mod utils;
 
 pub struct YandexMusicSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     #[allow(dead_code)]
     access_token: String,
     url_pattern: Regex,
@@ -32,44 +32,15 @@ pub struct YandexMusicSource {
 const API_BASE: &str = "https://api.music.yandex.net";
 
 impl YandexMusicSource {
-    pub fn new(config: Option<crate::configs::YandexMusicConfig>) -> Result<Self, String> {
+    pub fn new(
+        config: Option<crate::configs::YandexMusicConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let config = config.ok_or("Yandex Music configuration is missing")?;
         let access_token = config
             .access_token
+            .clone()
             .ok_or("Yandex Music access token is missing")?;
-
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::USER_AGENT,
-            "Yandex-Music-API".parse().unwrap(),
-        );
-        headers.insert(
-            "X-Yandex-Music-Client",
-            "YandexMusicAndroid/24023621".parse().unwrap(),
-        );
-        headers.insert(
-            reqwest::header::AUTHORIZATION,
-            format!("OAuth {}", access_token).parse().unwrap(),
-        );
-
-        let mut client_builder = reqwest::Client::builder().default_headers(headers);
-
-        if let Some(proxy_config) = &config.proxy {
-            if let Some(url) = &proxy_config.url {
-                debug!("Configuring proxy for YandexMusicSource: {}", url);
-                if let Ok(proxy_obj) = reqwest::Proxy::all(url) {
-                    let mut proxy_obj = proxy_obj;
-                    if let (Some(username), Some(password)) =
-                        (&proxy_config.username, &proxy_config.password)
-                    {
-                        proxy_obj = proxy_obj.basic_auth(username, password);
-                    }
-                    client_builder = client_builder.proxy(proxy_obj);
-                }
-            }
-        }
-
-        let client = client_builder.build().map_err(|e| e.to_string())?;
 
         Ok(Self {
             client,
@@ -98,7 +69,8 @@ impl YandexMusicSource {
             }
         }
         debug!("Yandex Music API request: {}", url);
-        let resp = self.client.get(&url).send().await.ok()?;
+        let builder = self.client.get(&url);
+        let resp = self.base_request(builder).send().await.ok()?;
         let status = resp.status();
         debug!("Yandex Music API response status: {} -> {}", url, status);
 
@@ -449,6 +421,16 @@ impl YandexMusicSource {
             .or(data["cover"]["uri"].as_str())?;
 
         Some(format!("https://{}", uri.replace("%%", "400x400")))
+    }
+
+    fn base_request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder
+            .header(reqwest::header::USER_AGENT, "Yandex-Music-API")
+            .header("X-Yandex-Music-Client", "YandexMusicAndroid/24023621")
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("OAuth {}", self.access_token),
+            )
     }
 }
 

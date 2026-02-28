@@ -11,6 +11,7 @@ use parking_lot::{Condvar, Mutex};
 use symphonia::core::io::MediaSource;
 use tracing::{debug, trace, warn};
 
+use super::AudioSource;
 use crate::{
     audio::constants::{
         CHUNK_SIZE, FETCH_WAIT_MS, MAX_CONCURRENT_FETCHES, MAX_FETCH_RETRIES, PREFETCH_CHUNKS,
@@ -18,8 +19,6 @@ use crate::{
     },
     common::types::AnyResult,
 };
-
-use super::AudioSource;
 
 // ─── Internal types ──────────────────────────────────────────────────────────
 

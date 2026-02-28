@@ -7,8 +7,10 @@ use axum::{
 
 use crate::{
     server::AppState,
-    transport::middleware::{add_response_headers, check_auth},
-    transport::routes::{lyrics, player, stats},
+    transport::{
+        middleware::{add_response_headers, check_auth},
+        routes::{lyrics, player, stats},
+    },
 };
 const API_V4: &str = "/v4";
 

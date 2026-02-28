@@ -2,8 +2,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use regex::Regex;
-use reqwest::header::HeaderMap;
-use tracing::debug;
 
 use self::track::JioSaavnTrack;
 use crate::{protocol::tracks::LoadResult, sources::plugin::PlayableTrack};
@@ -17,7 +15,7 @@ pub mod search;
 pub mod track;
 
 pub struct JioSaavnSource {
-    pub(crate) client: reqwest::Client,
+    pub(crate) client: Arc<reqwest::Client>,
     pub(crate) url_regex: Regex,
     pub(crate) search_prefixes: Vec<String>,
     pub(crate) rec_prefixes: Vec<String>,
@@ -32,21 +30,10 @@ pub struct JioSaavnSource {
 }
 
 impl JioSaavnSource {
-    pub fn new(config: Option<crate::configs::JioSaavnConfig>) -> Result<Self, String> {
-        let mut headers = HeaderMap::new();
-
-        headers.insert(
-      "User-Agent",
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-        .parse()
-        .unwrap(),
-    );
-
-        headers.insert("Accept", "application/json".parse().unwrap());
-        headers.insert("Accept-Language", "en-US,en;q=0.9".parse().unwrap());
-        headers.insert("Referer", "https://www.jiosaavn.com/".parse().unwrap());
-        headers.insert("Origin", "https://www.jiosaavn.com".parse().unwrap());
-
+    pub fn new(
+        config: Option<crate::configs::JioSaavnConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let (
             secret_key,
             search_limit,
@@ -70,25 +57,6 @@ impl JioSaavnSource {
         } else {
             ("38346591".to_string(), 10, 10, 50, 50, 20, None)
         };
-
-        let mut client_builder = reqwest::Client::builder().default_headers(headers);
-
-        if let Some(proxy_config) = &proxy {
-            if let Some(url) = &proxy_config.url {
-                debug!("Configuring proxy for JioSaavnSource: {}", url);
-                if let Ok(proxy_obj) = reqwest::Proxy::all(url) {
-                    let mut proxy_obj = proxy_obj;
-                    if let (Some(username), Some(password)) =
-                        (&proxy_config.username, &proxy_config.password)
-                    {
-                        proxy_obj = proxy_obj.basic_auth(username, password);
-                    }
-                    client_builder = client_builder.proxy(proxy_obj);
-                }
-            }
-        }
-
-        let client = client_builder.build().map_err(|e| e.to_string())?;
 
         Ok(Self {
       client,

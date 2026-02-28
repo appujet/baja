@@ -16,13 +16,13 @@ pub struct PandoraTokens {
 }
 
 pub struct PandoraTokenTracker {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     tokens: Arc<RwLock<Option<PandoraTokens>>>,
     csrf_override: Option<String>,
 }
 
 impl PandoraTokenTracker {
-    pub fn new(client: reqwest::Client, csrf_override: Option<String>) -> Self {
+    pub fn new(client: Arc<reqwest::Client>, csrf_override: Option<String>) -> Self {
         Self {
             client,
             tokens: Arc::new(RwLock::new(None)),

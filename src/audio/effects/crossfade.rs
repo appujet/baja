@@ -3,12 +3,14 @@
 //! Buffers the next track's PCM into a `RingBuffer` ahead of time, then
 //! blends it with the main track using cos/sin curves to maintain perceived loudness.
 
-use super::fade::FadeCurve;
-use crate::audio::RingBuffer;
-use crate::audio::buffer::PooledBuffer;
 use flume::Receiver;
 
-use crate::audio::constants::{HALF_PI, INT16_MAX_F, INT16_MIN_F};
+use super::fade::FadeCurve;
+use crate::audio::{
+    RingBuffer,
+    buffer::PooledBuffer,
+    constants::{HALF_PI, INT16_MAX_F, INT16_MIN_F},
+};
 
 pub struct CrossfadeController {
     sample_rate: u32,

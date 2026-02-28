@@ -14,16 +14,16 @@ use std::{
 
 use flume::Receiver;
 
-use crate::audio::{
-    buffer::PooledBuffer,
-    constants::{MAX_LAYERS, MIXER_CHANNELS},
-    flow::FlowController,
-    playback::handle::PlaybackState,
-};
-
-use crate::configs::player::PlayerConfig;
-
 use super::layer::MixLayer;
+use crate::{
+    audio::{
+        buffer::PooledBuffer,
+        constants::{MAX_LAYERS, MIXER_CHANNELS},
+        flow::FlowController,
+        playback::handle::PlaybackState,
+    },
+    configs::player::PlayerConfig,
+};
 
 // ─── AudioMixer ──────────────────────────────────────────────────────────────
 

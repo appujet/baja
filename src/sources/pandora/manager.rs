@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use regex::Regex;
-use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderValue, USER_AGENT};
+use reqwest::header::{ACCEPT, CONTENT_TYPE, USER_AGENT};
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
@@ -20,7 +20,7 @@ const ENDPOINT_PLAYLIST_TRACKS: &str = "/api/v7/playlists/getTracks";
 const ENDPOINT_ARTIST_ALL_TRACKS: &str = "/api/v4/catalog/getAllArtistTracksWithCollaborations";
 
 pub struct PandoraSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     token_tracker: Arc<PandoraTokenTracker>,
     url_regex: Regex,
     search_prefixes: Vec<String>,
@@ -29,35 +29,16 @@ pub struct PandoraSource {
 }
 
 impl PandoraSource {
-    pub fn new(config: Option<crate::configs::PandoraConfig>) -> Result<Self, String> {
-        let mut headers = HeaderMap::new();
-        headers.insert(USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"));
-
-        let mut client_builder = reqwest::Client::builder()
-            .default_headers(headers)
-            .gzip(true)
-            .timeout(std::time::Duration::from_secs(30));
-
+    pub fn new(
+        config: Option<crate::configs::PandoraConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let (s_limit, csrf_override) = if let Some(c) = config {
-            if let Some(proxy_config) = &c.proxy {
-                if let Some(url) = &proxy_config.url {
-                    debug!("Configuring proxy for PandoraSource: {}", url);
-                    if let Ok(mut proxy_obj) = reqwest::Proxy::all(url) {
-                        if let (Some(username), Some(password)) =
-                            (&proxy_config.username, &proxy_config.password)
-                        {
-                            proxy_obj = proxy_obj.basic_auth(username, password);
-                        }
-                        client_builder = client_builder.proxy(proxy_obj);
-                    }
-                }
-            }
             (c.search_limit, c.csrf_token)
         } else {
             (10, None)
         };
 
-        let client = client_builder.build().map_err(|e| e.to_string())?;
         let token_tracker = Arc::new(PandoraTokenTracker::new(client.clone(), csrf_override));
         token_tracker.clone().init();
 
@@ -77,8 +58,7 @@ impl PandoraSource {
             let url = format!("{}{}", BASE_URL, path);
 
             let resp = match self
-                .client
-                .post(&url)
+                .base_request(self.client.post(&url))
                 .header(ACCEPT, "application/json, text/plain, */*")
                 .header(CONTENT_TYPE, "application/json")
                 .header("origin", BASE_URL)
@@ -678,6 +658,10 @@ impl PandoraSource {
         } else {
             LoadResult::Search(tracks)
         }
+    }
+
+    pub fn base_request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder.header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
     }
 
     async fn get_autocomplete(&self, query: &str, types: &[String]) -> Option<SearchResult> {

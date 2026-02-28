@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, sync::Arc};
 
 use flume::{Receiver, Sender};
 use regex::Regex;
@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub struct BandcampTrack {
-    pub client: reqwest::Client,
+    pub client: Arc<reqwest::Client>,
     pub uri: String,
     pub stream_url: Option<String>,
     pub local_addr: Option<IpAddr>,
@@ -95,7 +95,7 @@ impl PlayableTrack for BandcampTrack {
     }
 }
 
-async fn fetch_stream_url(client: &reqwest::Client, uri: &str) -> Option<String> {
+async fn fetch_stream_url(client: &Arc<reqwest::Client>, uri: &str) -> Option<String> {
     let resp = client.get(uri).send().await.ok()?;
     if !resp.status().is_success() {
         return None;

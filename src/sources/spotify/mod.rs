@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 
 use crate::{
     protocol::tracks::{LoadResult, Track},
@@ -17,7 +16,7 @@ pub mod search;
 pub mod token;
 
 pub struct SpotifySource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     search_prefixes: Vec<String>,
     rec_prefixes: Vec<String>,
     url_regex: Regex,
@@ -36,20 +35,10 @@ pub struct SpotifySource {
 }
 
 impl SpotifySource {
-    pub fn new(config: Option<crate::configs::SpotifyConfig>) -> Result<Self, String> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-      USER_AGENT,
-      HeaderValue::from_static(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.178 Spotify/1.2.65.255 Safari/537.36",
-      ),
-    );
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .map_err(|e| e.to_string())?;
-
+    pub fn new(
+        config: Option<crate::configs::SpotifyConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let (
             playlist_load_limit,
             album_load_limit,
@@ -109,6 +98,10 @@ impl SpotifySource {
             &self.isrc_binary_regex,
         )
         .await
+    }
+
+    pub fn base_request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder.header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.178 Spotify/1.2.65.255 Safari/537.36")
     }
 }
 

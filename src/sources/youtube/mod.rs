@@ -46,11 +46,11 @@ pub struct YouTubeSource {
     cipher_manager: Arc<YouTubeCipherManager>,
     visitor_data: SharedRw<Option<String>>,
     #[allow(dead_code)]
-    http: reqwest::Client,
+    http: Arc<reqwest::Client>,
 }
 
 impl YouTubeSource {
-    pub fn new(config: Option<YouTubeConfig>) -> Self {
+    pub fn new(config: Option<YouTubeConfig>, http: Arc<reqwest::Client>) -> Self {
         let config = config.unwrap_or_default();
         let oauth = Arc::new(YouTubeOAuth::new(config.clients.refresh_tokens.clone()));
         let cipher_manager = Arc::new(YouTubeCipherManager::new(config.cipher.clone()));
@@ -75,10 +75,6 @@ impl YouTubeSource {
         });
 
         let visitor_data = Arc::new(RwLock::new(None));
-        let http = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
-            .build()
-            .unwrap_or_default();
 
         let vd_clone = visitor_data.clone();
         let http_clone = http.clone();
@@ -100,26 +96,29 @@ impl YouTubeSource {
         let create_client = |name: &str| -> Option<Arc<dyn YouTubeClient>> {
             match name.to_uppercase().as_str() {
                 "WEB" => Some(Arc::new(WebClient::with_cipher_url(
+                    http.clone(),
                     cipher_url.clone(),
                     cipher_token.clone(),
                 ))),
                 "MWEB" | "MUSIC_WEB" | "WEB_REMIX" | "REMIX" => {
-                    Some(Arc::new(WebRemixClient::new()))
+                    Some(Arc::new(WebRemixClient::new(http.clone())))
                 }
-                "ANDROID" => Some(Arc::new(AndroidClient::new())),
-                "IOS" => Some(Arc::new(IosClient::new())),
-                "TV" | "TVHTML5" => Some(Arc::new(TvClient::new())),
-                "TV_CAST" | "TVHTML5_CAST" => Some(Arc::new(TvCastClient::new())),
+                "ANDROID" => Some(Arc::new(AndroidClient::new(http.clone()))),
+                "IOS" => Some(Arc::new(IosClient::new(http.clone()))),
+                "TV" | "TVHTML5" => Some(Arc::new(TvClient::new(http.clone()))),
+                "TV_CAST" | "TVHTML5_CAST" => Some(Arc::new(TvCastClient::new(http.clone()))),
                 "TVHTML5_SIMPLY" | "TVHTML5_SIMPLY_EMBEDDED_PLAYER" | "TV_EMBEDDED" => {
-                    Some(Arc::new(TvEmbeddedClient::new()))
+                    Some(Arc::new(TvEmbeddedClient::new(http.clone())))
                 }
                 "MUSIC" | "MUSIC_ANDROID" | "ANDROID_MUSIC" => {
-                    Some(Arc::new(MusicAndroidClient::new()))
+                    Some(Arc::new(MusicAndroidClient::new(http.clone())))
                 }
-                "ANDROID_VR" | "ANDROIDVR" => Some(Arc::new(AndroidVrClient::new())),
-                "WEB_EMBEDDED" | "WEBEMBEDDED" => Some(Arc::new(WebEmbeddedClient::new())),
+                "ANDROID_VR" | "ANDROIDVR" => Some(Arc::new(AndroidVrClient::new(http.clone()))),
+                "WEB_EMBEDDED" | "WEBEMBEDDED" => {
+                    Some(Arc::new(WebEmbeddedClient::new(http.clone())))
+                }
                 "WEB_PARENT_TOOLS" | "WEBPARENTTOOLS" => {
-                    Some(Arc::new(WebParentToolsClient::new()))
+                    Some(Arc::new(WebParentToolsClient::new(http.clone())))
                 }
                 _ => {
                     tracing::warn!("Unknown YouTube client: {}", name);
@@ -136,7 +135,7 @@ impl YouTubeSource {
         }
         if search_clients.is_empty() {
             tracing::warn!("No valid YouTube search clients configured! Fallback to Web.");
-            search_clients.push(Arc::new(WebClient::new()));
+            search_clients.push(Arc::new(WebClient::new(http.clone())));
         }
 
         let mut playback_clients = Vec::new();
@@ -148,7 +147,7 @@ impl YouTubeSource {
 
         if playback_clients.is_empty() {
             tracing::warn!("No valid YouTube playback clients configured! Fallback to Web.");
-            playback_clients.push(Arc::new(WebClient::new()));
+            playback_clients.push(Arc::new(WebClient::new(http.clone())));
         }
 
         let mut resolve_clients = Vec::new();
@@ -159,7 +158,7 @@ impl YouTubeSource {
         }
         if resolve_clients.is_empty() {
             tracing::warn!("No valid YouTube resolve clients configured! Fallback to Web.");
-            resolve_clients.push(Arc::new(WebClient::new()));
+            resolve_clients.push(Arc::new(WebClient::new(http.clone())));
         }
 
         tracing::info!(

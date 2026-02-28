@@ -22,14 +22,14 @@ pub struct DeezerTokens {
 }
 
 pub struct DeezerTokenTracker {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     arls: Vec<String>,
     tokens: Shared<Vec<Option<DeezerTokens>>>,
     current_index: AtomicUsize,
 }
 
 impl DeezerTokenTracker {
-    pub fn new(client: reqwest::Client, arls: Vec<String>) -> Self {
+    pub fn new(client: Arc<reqwest::Client>, arls: Vec<String>) -> Self {
         let size = arls.len();
         Self {
             client,

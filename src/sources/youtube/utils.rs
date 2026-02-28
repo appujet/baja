@@ -1,10 +1,14 @@
-use crate::common::types::AudioFormat;
-use crate::sources::http::reader::HttpReader;
-use crate::sources::youtube::cipher::YouTubeCipherManager;
-use crate::sources::youtube::hls::HlsReader;
-use crate::sources::youtube::reader::YoutubeReader;
 use std::sync::Arc;
+
 use symphonia::core::io::MediaSource;
+
+use crate::{
+    common::types::AudioFormat,
+    sources::{
+        http::reader::HttpReader,
+        youtube::{cipher::YouTubeCipherManager, hls::HlsReader, reader::YoutubeReader},
+    },
+};
 
 pub const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36";
 

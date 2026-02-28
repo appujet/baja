@@ -1,4 +1,3 @@
-use serde_json::Value;
 use std::{
     collections::HashSet,
     net::SocketAddr,
@@ -7,10 +6,17 @@ use std::{
         atomic::{AtomicI64, AtomicU64, Ordering},
     },
 };
+
+use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tracing::{debug, error, info, warn};
 
+use super::{
+    VoiceGateway,
+    heartbeat::spawn_heartbeat,
+    voice::{discover_ip, speak_loop},
+};
 use crate::{
     common::types::{Shared, UserId},
     gateway::{
@@ -18,12 +24,6 @@ use crate::{
         constants::{DAVE_INITIAL_VERSION, DEFAULT_VOICE_MODE},
         session::types::{SessionOutcome, VoiceGatewayMessage},
     },
-};
-
-use super::{
-    VoiceGateway,
-    heartbeat::spawn_heartbeat,
-    voice::{discover_ip, speak_loop},
 };
 
 pub struct SessionState<'a> {

@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, sync::Arc};
 
 use flume::{Receiver, Sender};
 use regex::Regex;
@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub struct YandexMusicTrack {
-    pub client: reqwest::Client,
+    pub client: Arc<reqwest::Client>,
     pub track_id: String,
     pub local_addr: Option<IpAddr>,
     pub proxy: Option<crate::configs::HttpProxyConfig>,
@@ -93,7 +93,7 @@ impl PlayableTrack for YandexMusicTrack {
     }
 }
 
-async fn fetch_download_url(client: &reqwest::Client, id: &str) -> Option<String> {
+async fn fetch_download_url(client: &Arc<reqwest::Client>, id: &str) -> Option<String> {
     let url = format!("https://api.music.yandex.net/tracks/{}/download-info", id);
     let resp = client.get(url).send().await.ok()?;
     let data: serde_json::Value = resp.json().await.ok()?;

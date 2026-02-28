@@ -13,7 +13,7 @@ const SOUNDCLOUD_URL: &str = "https://soundcloud.com";
 const CLIENT_ID_REFRESH_INTERVAL: Duration = Duration::from_secs(3600); // 1 hour
 
 pub struct SoundCloudTokenTracker {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     client_id: SharedRw<CachedClientId>,
     // for extracting client_id from HTML/JS
     asset_re: Regex,
@@ -35,7 +35,7 @@ impl CachedClientId {
 }
 
 impl SoundCloudTokenTracker {
-    pub fn new(client: reqwest::Client, config: &crate::configs::SoundCloudConfig) -> Self {
+    pub fn new(client: Arc<reqwest::Client>, config: &crate::configs::SoundCloudConfig) -> Self {
         // Pre-seed client_id from config if provided
         let cached = CachedClientId {
             value: config.client_id.clone(),

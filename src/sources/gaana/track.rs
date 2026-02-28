@@ -1,4 +1,4 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, sync::Arc};
 
 use flume::{Receiver, Sender};
 use tracing::warn;
@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub struct GaanaTrack {
-    pub client: reqwest::Client,
+    pub client: Arc<reqwest::Client>,
     pub track_id: String,
     pub stream_quality: String,
     pub local_addr: Option<IpAddr>,
@@ -108,7 +108,7 @@ impl PlayableTrack for GaanaTrack {
 }
 
 async fn fetch_stream_url_internal(
-    client: &reqwest::Client,
+    client: &Arc<reqwest::Client>,
     track_id: &str,
     quality: &str,
 ) -> Option<String> {
@@ -118,8 +118,12 @@ async fn fetch_stream_url_internal(
         urlencoding::encode(track_id)
     );
 
-    let resp = client
+    let resp: reqwest::Response = client
         .post("https://gaana.com/api/stream-url")
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
+        .header("Referer", "https://gaana.com/")
+        .header("Origin", "https://gaana.com")
+        .header("Accept", "application/json, text/plain, */*")
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(body)
         .send()
@@ -130,11 +134,9 @@ async fn fetch_stream_url_internal(
         return None;
     }
 
-    let data: serde_json::Value = resp.json().await.ok()?;
-    let encrypted_path = data
-        .get("data")
-        .and_then(|d| d.get("stream_path"))
-        .and_then(|v| v.as_str())?;
+    let data: serde_json::Value = resp.json::<serde_json::Value>().await.ok()?;
+    let data_obj = data.get("data")?;
+    let encrypted_path = data_obj.get("stream_path")?.as_str()?;
 
     decrypt_stream_path(encrypted_path)
 }

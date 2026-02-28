@@ -26,7 +26,7 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
      AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
 
 pub struct WebClient {
-    http: reqwest::Client,
+    http: Arc<reqwest::Client>,
     /// Optional URL of the yt-cipher service for SABR PoToken fetching.
     pub yt_cipher_url: Option<String>,
     /// Optional API token for the yt-cipher service (matches its API_TOKEN env var).
@@ -34,13 +34,7 @@ pub struct WebClient {
 }
 
 impl WebClient {
-    pub fn new() -> Self {
-        let http = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("Failed to build Web HTTP client");
-
+    pub fn new(http: Arc<reqwest::Client>) -> Self {
         Self {
             http,
             yt_cipher_url: None,
@@ -49,8 +43,12 @@ impl WebClient {
     }
 
     /// Configure the yt-cipher service URL and optional API token.
-    pub fn with_cipher_url(yt_cipher_url: Option<String>, yt_cipher_token: Option<String>) -> Self {
-        let mut client = Self::new();
+    pub fn with_cipher_url(
+        http: Arc<reqwest::Client>,
+        yt_cipher_url: Option<String>,
+        yt_cipher_token: Option<String>,
+    ) -> Self {
+        let mut client = Self::new(http);
         client.yt_cipher_url = yt_cipher_url;
         client.yt_cipher_token = yt_cipher_token;
         client
@@ -181,6 +179,7 @@ impl YouTubeClient for WebClient {
         let mut req = self
             .http
             .post(&url)
+            .header("User-Agent", USER_AGENT)
             .header("X-YouTube-Client-Name", CLIENT_ID)
             .header("X-YouTube-Client-Version", CLIENT_VERSION)
             .header("X-Goog-Api-Format-Version", "2");
@@ -268,6 +267,7 @@ impl YouTubeClient for WebClient {
         let mut req = self
             .http
             .post(&url)
+            .header("User-Agent", USER_AGENT)
             .header("X-YouTube-Client-Name", CLIENT_ID)
             .header("X-YouTube-Client-Version", CLIENT_VERSION);
 

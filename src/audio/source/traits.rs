@@ -1,4 +1,5 @@
 use std::io::{Read, Seek};
+
 use symphonia::core::io::MediaSource;
 
 /// Common trait implemented by every readable audio source.

@@ -8,7 +8,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use token::AppleMusicTokenTracker;
 
 use crate::{protocol::tracks::LoadResult, sources::SourcePlugin};
@@ -16,7 +15,7 @@ use crate::{protocol::tracks::LoadResult, sources::SourcePlugin};
 const API_BASE: &str = "https://api.music.apple.com/v1";
 
 pub struct AppleMusicSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     token_tracker: Arc<AppleMusicTokenTracker>,
     country_code: String,
 
@@ -29,16 +28,10 @@ pub struct AppleMusicSource {
 }
 
 impl AppleMusicSource {
-    pub fn new(config: Option<crate::configs::AppleMusicConfig>) -> Result<Self, String> {
-        let mut headers = HeaderMap::new();
-        headers.insert(USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"));
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .gzip(true)
-            .build()
-            .map_err(|e| e.to_string())?;
-
+    pub fn new(
+        config: Option<crate::configs::AppleMusicConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let (country, p_limit, a_limit, p_conc, a_conc) = if let Some(c) = config {
             (
                 c.country_code,

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use regex::Regex;
 use serde_json::Value;
@@ -13,11 +15,11 @@ pub struct AppleMusicToken {
 
 pub struct AppleMusicTokenTracker {
     token: RwLock<Option<AppleMusicToken>>,
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
 }
 
 impl AppleMusicTokenTracker {
-    pub fn new(client: reqwest::Client) -> Self {
+    pub fn new(client: Arc<reqwest::Client>) -> Self {
         Self {
             token: RwLock::new(None),
             client,
@@ -66,7 +68,7 @@ impl AppleMusicTokenTracker {
             return None;
         }
 
-        let html = resp.text().await.unwrap_or_default();
+        let html: String = resp.text().await.unwrap_or_default();
 
         let script_regex =
             Regex::new(r#"<script\s+type="module"\s+crossorigin\s+src="(/assets/index[^"]+\.js)""#)

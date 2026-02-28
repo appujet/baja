@@ -15,14 +15,14 @@ pub struct SpotifyToken {
 }
 
 pub struct SpotifyTokenTracker {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     token: SharedRw<Option<SpotifyToken>>,
     token_regex: Regex,
     expiry_regex: Regex,
 }
 
 impl SpotifyTokenTracker {
-    pub fn new(client: reqwest::Client) -> Self {
+    pub fn new(client: Arc<reqwest::Client>) -> Self {
         Self {
             client,
             token: Arc::new(RwLock::new(None)),
@@ -53,6 +53,7 @@ impl SpotifyTokenTracker {
         let request = self
             .client
             .get(EMBED_URL)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.178 Spotify/1.2.65.255 Safari/537.36")
             .header("Accept-Language", "en-US,en;q=0.9")
             .header("Sec-Fetch-Dest", "iframe")
             .header("Sec-Fetch-Mode", "navigate")

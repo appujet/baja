@@ -3,11 +3,12 @@ pub mod fade;
 pub mod tape;
 pub mod volume;
 
-use crate::audio::buffer::PooledBuffer;
 use std::sync::{
     Arc,
     atomic::{AtomicU8, AtomicU64},
 };
+
+use crate::audio::buffer::PooledBuffer;
 
 /// Interface for transition effects.
 pub trait TransitionEffect: Send {

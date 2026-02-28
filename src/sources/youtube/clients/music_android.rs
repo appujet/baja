@@ -23,17 +23,11 @@ const USER_AGENT: &str =
 const INNERTUBE_API: &str = "https://music.youtube.com";
 
 pub struct MusicAndroidClient {
-    http: reqwest::Client,
+    http: Arc<reqwest::Client>,
 }
 
 impl MusicAndroidClient {
-    pub fn new() -> Self {
-        let http = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-            .expect("Failed to build Music Android HTTP client");
-
+    pub fn new(http: Arc<reqwest::Client>) -> Self {
         Self { http }
     }
 
@@ -476,6 +470,7 @@ impl YouTubeClient for MusicAndroidClient {
         let mut req = self
             .http
             .post(&url)
+            .header("User-Agent", USER_AGENT)
             .header("X-YouTube-Client-Name", "67")
             .header("X-YouTube-Client-Version", CLIENT_VERSION);
 

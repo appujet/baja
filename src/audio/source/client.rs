@@ -1,5 +1,6 @@
-use crate::audio::constants::HTTP_CLIENT_TIMEOUT_SECS;
 use std::net::IpAddr;
+
+use crate::audio::constants::HTTP_CLIENT_TIMEOUT_SECS;
 
 /// Build a `reqwest::Client` with optional UA, local address and proxy.
 pub fn create_client(

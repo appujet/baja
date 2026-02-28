@@ -17,7 +17,7 @@ const DECRYPTION_KEY: &[u8] = b"IFYOUWANTTHEARTISTSTOGETPAIDDONOTDOWNLOADFROMMIX
 const GRAPHQL_URL: &str = "https://app.mixcloud.com/graphql";
 
 pub struct MixcloudSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     track_url_re: Regex,
     playlist_url_re: Regex,
     user_url_re: Regex,
@@ -26,18 +26,10 @@ pub struct MixcloudSource {
 }
 
 impl MixcloudSource {
-    pub fn new(config: Option<crate::configs::MixcloudConfig>) -> Result<Self, String> {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::USER_AGENT,
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36".parse().unwrap()
-        );
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .map_err(|e| e.to_string())?;
-
+    pub fn new(
+        config: Option<crate::configs::MixcloudConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         Ok(Self {
             client,
             track_url_re: Regex::new(
@@ -403,7 +395,7 @@ impl MixcloudSource {
 }
 
 pub async fn fetch_track_stream_info(
-    client: &reqwest::Client,
+    client: &Arc<reqwest::Client>,
     url: &str,
 ) -> Option<(Option<String>, Option<String>)> {
     let path_parts: Vec<&str> = url
@@ -527,7 +519,7 @@ impl SourcePlugin for MixcloudSource {
     }
 }
 
-async fn graphql_request_internal(client: &reqwest::Client, query: &str) -> Option<Value> {
+async fn graphql_request_internal(client: &Arc<reqwest::Client>, query: &str) -> Option<Value> {
     let url = format!("{}?query={}", GRAPHQL_URL, urlencoding::encode(query));
     let resp = client.get(url).send().await.ok()?;
     if !resp.status().is_success() {

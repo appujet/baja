@@ -12,7 +12,7 @@ use crate::{
 pub mod track;
 
 pub struct AudiusSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     track_pattern: Regex,
     playlist_pattern: Regex,
     album_pattern: Regex,
@@ -25,18 +25,10 @@ pub struct AudiusSource {
 }
 
 impl AudiusSource {
-    pub fn new(config: Option<crate::configs::AudiusConfig>) -> Result<Self, String> {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::USER_AGENT,
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36".parse().unwrap()
-        );
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .map_err(|e| e.to_string())?;
-
+    pub fn new(
+        config: Option<crate::configs::AudiusConfig>,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let config = config.unwrap_or_default();
 
         Ok(Self {

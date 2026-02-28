@@ -12,11 +12,11 @@ pub struct TidalToken {
 
 pub struct TidalTokenTracker {
     pub token: RwLock<Option<TidalToken>>,
-    pub client: reqwest::Client,
+    pub client: Arc<reqwest::Client>,
 }
 
 impl TidalTokenTracker {
-    pub fn new(client: reqwest::Client, initial_token: Option<String>) -> Self {
+    pub fn new(client: Arc<reqwest::Client>, initial_token: Option<String>) -> Self {
         let token = if let Some(t) = initial_token {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

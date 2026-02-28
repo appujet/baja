@@ -1,8 +1,9 @@
 use std::sync::{Arc, atomic::Ordering};
+
 use tracing::{error, info};
 
-use super::super::context::PlayerContext;
 use super::{
+    super::context::PlayerContext,
     error::send_load_failed,
     lyrics::spawn_lyrics_fetch,
     monitor::{MonitorCtx, monitor_loop},

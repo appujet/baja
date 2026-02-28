@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq, Eq, Hash)]
 pub struct HttpProxyConfig {
     pub url: Option<String>,
     pub username: Option<String>,
@@ -43,18 +43,21 @@ pub struct YouTubeConfig {
 pub struct YouTubeCipherConfig {
     pub url: Option<String>,
     pub token: Option<String>,
+    pub proxy: Option<HttpProxyConfig>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct MixcloudConfig {
     #[serde(default = "default_search_limit")]
     pub search_limit: usize,
+    pub proxy: Option<HttpProxyConfig>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct BandcampConfig {
     #[serde(default = "default_search_limit")]
     pub search_limit: usize,
+    pub proxy: Option<HttpProxyConfig>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
@@ -67,6 +70,7 @@ pub struct AudiusConfig {
     pub album_load_limit: usize,
     #[serde(default)]
     pub app_name: Option<String>,
+    pub proxy: Option<HttpProxyConfig>,
 }
 
 fn default_playlist_load_limit() -> usize {
@@ -85,6 +89,7 @@ fn default_search_limit() -> usize {
 pub struct ShazamConfig {
     #[serde(default = "default_search_limit")]
     pub search_limit: usize,
+    pub proxy: Option<HttpProxyConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -135,6 +140,7 @@ pub struct SpotifyConfig {
     pub playlist_page_load_concurrency: usize,
     pub album_page_load_concurrency: usize,
     pub track_resolve_concurrency: usize,
+    pub proxy: Option<HttpProxyConfig>,
 }
 
 impl Default for SpotifyConfig {
@@ -147,6 +153,7 @@ impl Default for SpotifyConfig {
             playlist_page_load_concurrency: 10,
             album_page_load_concurrency: 5,
             track_resolve_concurrency: 50,
+            proxy: None,
         }
     }
 }
@@ -199,6 +206,7 @@ pub struct AppleMusicConfig {
     pub album_load_limit: usize,
     pub playlist_page_load_concurrency: usize,
     pub album_page_load_concurrency: usize,
+    pub proxy: Option<HttpProxyConfig>,
 }
 
 impl Default for AppleMusicConfig {
@@ -210,6 +218,7 @@ impl Default for AppleMusicConfig {
             album_load_limit: 0,
             playlist_page_load_concurrency: 5,
             album_page_load_concurrency: 5,
+            proxy: None,
         }
     }
 }
@@ -259,6 +268,7 @@ pub struct TidalConfig {
     pub playlist_load_limit: usize,
     pub album_load_limit: usize,
     pub artist_load_limit: usize,
+    pub proxy: Option<HttpProxyConfig>,
 }
 
 impl Default for TidalConfig {
@@ -269,6 +279,7 @@ impl Default for TidalConfig {
             playlist_load_limit: 50,
             album_load_limit: 50,
             artist_load_limit: 20,
+            proxy: None,
         }
     }
 }
@@ -297,11 +308,15 @@ impl Default for SoundCloudConfig {
 #[serde(default)]
 pub struct AudiomackConfig {
     pub search_limit: usize,
+    pub proxy: Option<HttpProxyConfig>,
 }
 
 impl Default for AudiomackConfig {
     fn default() -> Self {
-        Self { search_limit: 20 }
+        Self {
+            search_limit: 20,
+            proxy: None,
+        }
     }
 }
 
@@ -357,11 +372,15 @@ impl Default for QobuzConfig {
 #[serde(default)]
 pub struct AnghamiConfig {
     pub search_limit: usize,
+    pub proxy: Option<HttpProxyConfig>,
 }
 
 impl Default for AnghamiConfig {
     fn default() -> Self {
-        Self { search_limit: 10 }
+        Self {
+            search_limit: 10,
+            proxy: None,
+        }
     }
 }
 

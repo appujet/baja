@@ -22,12 +22,14 @@ use super::{
     yandexmusic::YandexMusicSource,
     youtube::{YouTubeSource, cipher::YouTubeCipherManager},
 };
+use crate::common::HttpClientPool;
 
 /// Source Manager
 pub struct SourceManager {
     pub sources: Vec<BoxedSource>,
     mirrors: Option<crate::configs::MirrorsConfig>,
     pub youtube_cipher_manager: Option<Arc<YouTubeCipherManager>>,
+    pub http_pool: Arc<HttpClientPool>,
 }
 
 impl SourceManager {
@@ -35,11 +37,19 @@ impl SourceManager {
     pub fn new(config: &crate::configs::Config) -> Self {
         let mut sources: Vec<BoxedSource> = Vec::new();
         let mut youtube_cipher_manager = None;
+        let http_pool = Arc::new(HttpClientPool::new());
 
         // Register all sources using a macro for better scalability (M3)
         macro_rules! register_source {
-            ($enabled:expr, $name:literal, $ctor:expr) => {
+            ($enabled:expr, $name:literal, $proxy:expr, $ctor:expr) => {
                 if $enabled {
+                    if let Some(p) = &$proxy {
+                        tracing::info!(
+                            "Loading {} with proxy: {}",
+                            $name,
+                            p.url.as_ref().unwrap_or(&"enabled".to_string())
+                        );
+                    }
                     match $ctor {
                         Ok(src) => {
                             tracing::info!("Loaded source: {}", $name);
@@ -55,27 +65,39 @@ impl SourceManager {
 
         if config.sources.youtube {
             tracing::info!("Loaded source: YouTube");
-            let yt = YouTubeSource::new(config.youtube.clone());
+            // YouTube doesn't currently define a proxy config in its config,
+            // so we pass None to the pool to get a shared direct-connect client.
+            let yt_client = http_pool.get(None);
+            let yt = YouTubeSource::new(config.youtube.clone(), yt_client);
             youtube_cipher_manager = Some(yt.cipher_manager());
             sources.push(Box::new(yt));
         }
 
+        let soundcloud_proxy = config.soundcloud.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.soundcloud,
             "SoundCloud",
-            SoundCloudSource::new(config.soundcloud.clone().unwrap_or_default())
+            soundcloud_proxy,
+            SoundCloudSource::new(
+                config.soundcloud.clone().unwrap_or_default(),
+                http_pool.get(soundcloud_proxy.clone())
+            )
         );
 
+        // Spotify currently doesn't define a proxy in its config, but we'll use a direct client
         register_source!(
             config.sources.spotify,
             "Spotify",
-            SpotifySource::new(config.spotify.clone())
+            None::<crate::configs::HttpProxyConfig>,
+            SpotifySource::new(config.spotify.clone(), http_pool.get(None))
         );
 
+        let jiosaavn_proxy = config.jiosaavn.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.jiosaavn,
             "JioSaavn",
-            JioSaavnSource::new(config.jiosaavn.clone())
+            jiosaavn_proxy,
+            JioSaavnSource::new(config.jiosaavn.clone(), http_pool.get(jiosaavn_proxy.clone()))
         );
 
         let (deezer_token_provided, deezer_key_provided) = if let Some(c) = config.deezer.as_ref() {
@@ -107,40 +129,61 @@ impl SourceManager {
                 if missing.len() > 1 { "are" } else { "is" }
             );
         }
+        let deezer_proxy = config.deezer.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.deezer && deezer_token_provided && deezer_key_provided,
             "Deezer",
-            DeezerSource::new(config.deezer.clone().unwrap_or_default())
+            deezer_proxy,
+            DeezerSource::new(
+                config.deezer.clone().unwrap_or_default(),
+                http_pool.get(deezer_proxy.clone())
+            )
         );
 
+        let apple_proxy = config.applemusic.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.applemusic,
             "Apple Music",
-            AppleMusicSource::new(config.applemusic.clone())
+            apple_proxy,
+            AppleMusicSource::new(
+                config.applemusic.clone(),
+                http_pool.get(apple_proxy.clone())
+            )
         );
 
+        let gaana_proxy = config.gaana.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.gaana,
             "Gaana",
-            GaanaSource::new(config.gaana.clone())
+            gaana_proxy,
+            GaanaSource::new(config.gaana.clone(), http_pool.get(gaana_proxy.clone()))
         );
 
+        let tidal_proxy = config.tidal.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.tidal,
             "Tidal",
-            TidalSource::new(config.tidal.clone())
+            tidal_proxy,
+            TidalSource::new(config.tidal.clone(), http_pool.get(tidal_proxy.clone()))
         );
 
+        let audiomack_proxy = config.audiomack.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.audiomack,
             "Audiomack",
-            AudiomackSource::new(config.audiomack.clone())
+            audiomack_proxy,
+            AudiomackSource::new(
+                config.audiomack.clone(),
+                http_pool.get(audiomack_proxy.clone())
+            )
         );
 
+        let pandora_proxy = config.pandora.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.pandora,
             "Pandora",
-            PandoraSource::new(config.pandora.clone())
+            pandora_proxy,
+            PandoraSource::new(config.pandora.clone(), http_pool.get(pandora_proxy.clone()))
         );
 
         let qobuz_token_provided = config
@@ -152,32 +195,58 @@ impl SourceManager {
         if config.sources.qobuz && !qobuz_token_provided {
             tracing::warn!("Qobuz user_token is missing; all playback will fall back to mirrors.");
         }
-        register_source!(config.sources.qobuz, "Qobuz", QobuzSource::new(config));
+        let qobuz_proxy = config.qobuz.as_ref().and_then(|c| c.proxy.clone());
+        register_source!(
+            config.sources.qobuz,
+            "Qobuz",
+            qobuz_proxy,
+            QobuzSource::new(config, http_pool.get(qobuz_proxy.clone()))
+        );
 
+        let anghami_proxy = config.anghami.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.anghami,
             "Anghami",
-            AnghamiSource::new(config)
+            anghami_proxy,
+            AnghamiSource::new(config, http_pool.get(anghami_proxy.clone()))
         );
 
-        register_source!(config.sources.shazam, "Shazam", ShazamSource::new(config));
+        let shazam_proxy = config.shazam.as_ref().and_then(|c| c.proxy.clone());
+        register_source!(
+            config.sources.shazam,
+            "Shazam",
+            shazam_proxy,
+            ShazamSource::new(config, http_pool.get(shazam_proxy.clone()))
+        );
 
+        let mixcloud_proxy = config.mixcloud.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.mixcloud,
             "Mixcloud",
-            MixcloudSource::new(config.mixcloud.clone())
+            mixcloud_proxy,
+            MixcloudSource::new(
+                config.mixcloud.clone(),
+                http_pool.get(mixcloud_proxy.clone())
+            )
         );
 
+        let bandcamp_proxy = config.bandcamp.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.bandcamp,
             "Bandcamp",
-            BandcampSource::new(config.bandcamp.clone())
+            bandcamp_proxy,
+            BandcampSource::new(
+                config.bandcamp.clone(),
+                http_pool.get(bandcamp_proxy.clone())
+            )
         );
 
+        let audius_proxy = config.audius.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.audius,
             "Audius",
-            AudiusSource::new(config.audius.clone())
+            audius_proxy,
+            AudiusSource::new(config.audius.clone(), http_pool.get(audius_proxy.clone()))
         );
 
         let yandex_token_provided = config
@@ -190,10 +259,15 @@ impl SourceManager {
                 "Yandex Music source is enabled but the access_token is missing; it will be disabled."
             );
         }
+        let yandex_proxy = config.yandexmusic.as_ref().and_then(|c| c.proxy.clone());
         register_source!(
             config.sources.yandexmusic && yandex_token_provided,
             "Yandex Music",
-            YandexMusicSource::new(config.yandexmusic.clone())
+            yandex_proxy,
+            YandexMusicSource::new(
+                config.yandexmusic.clone(),
+                http_pool.get(yandex_proxy.clone())
+            )
         );
 
         if config.sources.http {
@@ -210,6 +284,7 @@ impl SourceManager {
             sources,
             mirrors: config.mirrors.clone(),
             youtube_cipher_manager,
+            http_pool,
         }
     }
 

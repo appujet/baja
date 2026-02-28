@@ -15,10 +15,7 @@
 pub mod format;
 pub mod webm_opus;
 
-pub use crate::common::types::AudioFormat;
 pub use format::detect_format;
-pub use webm_opus::WebmOpusDemuxer;
-
 use symphonia::core::{
     codecs::{CODEC_TYPE_NULL, Decoder, DecoderOptions},
     errors::Error,
@@ -27,8 +24,10 @@ use symphonia::core::{
     meta::MetadataOptions,
     probe::Hint,
 };
+pub use webm_opus::WebmOpusDemuxer;
 
 use crate::audio::constants::{MIXER_CHANNELS, TARGET_SAMPLE_RATE};
+pub use crate::common::types::AudioFormat;
 
 /// Resolved demux result returned by `open_format`.
 pub enum DemuxResult {

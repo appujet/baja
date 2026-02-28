@@ -18,7 +18,7 @@ use crate::{
 const API_URL: &str = "https://www.qobuz.com/api.json/0.2/";
 
 pub struct QobuzSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     token_tracker: Arc<QobuzTokenTracker>,
     search_limit: usize,
     album_load_limit: usize,
@@ -31,26 +31,8 @@ pub struct QobuzSource {
 }
 
 impl QobuzSource {
-    pub fn new(config: &Config) -> Result<Self, String> {
+    pub fn new(config: &Config, client: Arc<reqwest::Client>) -> Result<Self, String> {
         let qobuz_config = config.qobuz.clone().unwrap_or_default();
-
-        let mut client_builder = reqwest::Client::builder()
-            .gzip(true)
-            .timeout(std::time::Duration::from_secs(30));
-
-        if let Some(proxy_cfg) = &qobuz_config.proxy {
-            if let Some(url) = &proxy_cfg.url {
-                debug!("Configuring proxy for QobuzSource: {}", url);
-                if let Ok(mut proxy) = reqwest::Proxy::all(url) {
-                    if let (Some(u), Some(p)) = (&proxy_cfg.username, &proxy_cfg.password) {
-                        proxy = proxy.basic_auth(u, p);
-                    }
-                    client_builder = client_builder.proxy(proxy);
-                }
-            }
-        }
-
-        let client = client_builder.build().map_err(|e| e.to_string())?;
 
         let tracker = Arc::new(QobuzTokenTracker::new(
             client.clone(),
@@ -93,8 +75,7 @@ impl QobuzSource {
         }
 
         let mut request = self
-            .client
-            .get(url)
+            .base_request(self.client.get(url))
             .header("Accept", "application/json")
             .header("x-app-id", &tokens.app_id);
 
@@ -109,7 +90,12 @@ impl QobuzSource {
             return Err(format!("Qobuz API error ({}): {}", status, body).into());
         }
 
-        Ok(resp.json().await?)
+        let json: Value = resp.json().await?;
+        Ok(json)
+    }
+
+    pub fn base_request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder.header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
     }
 
     pub fn parse_qobuz_track(&self, json: &Value) -> QobuzTrack {
@@ -281,8 +267,7 @@ impl QobuzSource {
         };
 
         let mut request = self
-            .client
-            .post(format!("{}dynamic/suggest", API_URL))
+            .base_request(self.client.post(format!("{}dynamic/suggest", API_URL)))
             .header("Accept", "application/json")
             .header("x-app-id", &tokens.app_id)
             .json(&payload);

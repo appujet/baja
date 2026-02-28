@@ -4,8 +4,9 @@
 //! forwards them to the Mixer's passthrough channel without decoding or
 //! re-encoding.  This is the hot-path for YouTube WebM/Opus streams.
 
-use flume::Sender;
 use std::sync::Arc;
+
+use flume::Sender;
 
 use super::Engine;
 use crate::audio::buffer::PooledBuffer;

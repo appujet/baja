@@ -17,7 +17,7 @@ pub struct QobuzTrack {
     pub artist_url: Option<String>,
     pub artist_artwork_url: Option<String>,
     pub token_tracker: Arc<QobuzTokenTracker>,
-    pub client: reqwest::Client,
+    pub client: Arc<reqwest::Client>,
 }
 
 impl PlayableTrack for QobuzTrack {
@@ -98,7 +98,7 @@ impl PlayableTrack for QobuzTrack {
 }
 
 async fn resolve_media_url(
-    client: &reqwest::Client,
+    client: &Arc<reqwest::Client>,
     token_tracker: &QobuzTokenTracker,
     track_id: &str,
 ) -> crate::common::types::AnyResult<Option<String>> {

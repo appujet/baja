@@ -11,9 +11,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use regex::Regex;
-use reqwest::header::HeaderMap;
 use token::DeezerTokenTracker;
-use tracing::debug;
 use track::DeezerTrack;
 
 use crate::{
@@ -25,7 +23,7 @@ const PUBLIC_API_BASE: &str = "https://api.deezer.com";
 const PRIVATE_API_BASE: &str = "https://www.deezer.com/ajax/gw-light.php";
 
 pub struct DeezerSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     config: crate::configs::DeezerConfig,
     pub token_tracker: Arc<DeezerTokenTracker>,
     url_regex: Regex,
@@ -38,7 +36,10 @@ pub struct DeezerSource {
 }
 
 impl DeezerSource {
-    pub fn new(config: crate::configs::DeezerConfig) -> Result<Self, String> {
+    pub fn new(
+        config: crate::configs::DeezerConfig,
+        client: Arc<reqwest::Client>,
+    ) -> Result<Self, String> {
         let mut arls = config.arls.clone().unwrap_or_default();
         arls.retain(|s| !s.is_empty());
         arls.sort();
@@ -47,29 +48,6 @@ impl DeezerSource {
         if arls.is_empty() {
             return Err("Deezer arls must be set".to_string());
         }
-
-        let mut headers = HeaderMap::new();
-        headers.insert("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36".parse().unwrap());
-
-        let mut client_builder = reqwest::Client::builder()
-            .default_headers(headers)
-            .cookie_store(true);
-
-        if let Some(proxy_config) = &config.proxy {
-            if let Some(url) = &proxy_config.url {
-                debug!("Configuring proxy for DeezerSource: {}", url);
-                if let Ok(mut proxy_obj) = reqwest::Proxy::all(url) {
-                    if let (Some(username), Some(password)) =
-                        (&proxy_config.username, &proxy_config.password)
-                    {
-                        proxy_obj = proxy_obj.basic_auth(username, password);
-                    }
-                    client_builder = client_builder.proxy(proxy_obj);
-                }
-            }
-        }
-
-        let client = client_builder.build().map_err(|e| e.to_string())?;
         let token_tracker = Arc::new(DeezerTokenTracker::new(client.clone(), arls));
 
         Ok(Self {
@@ -148,7 +126,7 @@ impl SourcePlugin for DeezerSource {
             let client = reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
-                .unwrap_or_else(|_| self.client.clone());
+                .unwrap_or_else(|_| (*self.client).clone());
             if let Ok(res) = client.get(identifier).send().await {
                 if res.status().is_redirection() {
                     if let Some(loc) = res.headers().get("location").and_then(|l| l.to_str().ok()) {

@@ -1,6 +1,6 @@
-use rand::{Rng, distributions::Alphanumeric};
 use std::sync::Arc;
 
+use rand::{Rng, distributions::Alphanumeric};
 use tokio::sync::{Mutex, RwLock};
 
 /// A thread-safe, mutually exclusive shared component.

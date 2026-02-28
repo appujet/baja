@@ -8,9 +8,8 @@ use parking_lot::{Condvar, Mutex};
 use symphonia::core::io::MediaSource;
 use tracing::{debug, info};
 
-use crate::{audio::constants::HTTP_INITIAL_BUF_CAPACITY, common::types::AnyResult};
-
 use super::AudioSource;
+use crate::{audio::constants::HTTP_INITIAL_BUF_CAPACITY, common::types::AnyResult};
 
 pub mod prefetcher;
 use prefetcher::{PrefetchCommand, SharedState, prefetch_loop};

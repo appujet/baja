@@ -15,7 +15,7 @@ use crate::{
 const BASE_URL: &str = "https://api.anghami.com/gateway.php";
 
 pub struct AnghamiSource {
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     udid: String,
     search_limit: usize,
     search_prefixes: Vec<String>,
@@ -23,24 +23,8 @@ pub struct AnghamiSource {
 }
 
 impl AnghamiSource {
-    pub fn new(config: &Config) -> Result<Self, String> {
+    pub fn new(config: &Config, client: Arc<reqwest::Client>) -> Result<Self, String> {
         let ag_config = config.anghami.clone().unwrap_or_default();
-
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-      reqwest::header::USER_AGENT,
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        .parse().unwrap(),
-    );
-        headers.insert("Referer", "https://play.anghami.com/".parse().unwrap());
-        headers.insert("Origin", "https://play.anghami.com".parse().unwrap());
-
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .gzip(true)
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-            .map_err(|e| e.to_string())?;
 
         let udid = uuid::Uuid::new_v4().simple().to_string();
 
@@ -72,8 +56,7 @@ impl AnghamiSource {
         }
 
         let resp = self
-            .client
-            .get(url)
+            .base_request(self.client.get(url))
             .header("X-ANGH-UDID", &self.udid)
             .header("X-ANGH-TS", self.unix_ts().to_string())
             .send()
@@ -581,6 +564,13 @@ impl AnghamiSource {
             }),
             tracks,
         })
+    }
+
+    pub fn base_request(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        builder
+            .header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .header("Referer", "https://play.anghami.com/")
+            .header("Origin", "https://play.anghami.com")
     }
 }
 
