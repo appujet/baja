@@ -90,6 +90,7 @@ providers = [
   "ytsearch:%ISRC%",
   "ytsearch:%QUERY%",
   "jssearch:%QUERY%",
+  "gnsearch:%QUERY%",
 ] # Mirror providers for fallback searching
 
 [youtube.clients]
