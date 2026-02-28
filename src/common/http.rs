@@ -46,6 +46,7 @@ impl HttpClientPool {
         let mut builder = Client::builder()
             .user_agent(default_user_agent())
             .cookie_store(true)
+            .gzip(true)
             .timeout(Duration::from_secs(15));
 
         if let Some(proxy_config) = proxy {
