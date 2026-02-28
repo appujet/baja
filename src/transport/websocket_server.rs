@@ -189,8 +189,8 @@ pub async fn handle_socket(
     loop {
         tokio::select! {
             _ = ping_interval.tick() => {
-                if let Err(e) = socket.send(Message::Ping(vec![].into())).await {
-                    error!("Socket send error (ping): session={} err={}", session_id, e);
+                if let Err(e) = socket.send(Message::Ping(b"heartbeat".to_vec().into())).await {
+                    error!("WebSocket connection lost (ping failed): session={} err={}", session_id, e);
                     break;
                 }
             }
@@ -200,16 +200,24 @@ pub async fn handle_socket(
                     let msg = protocol::OutgoingMessage::Stats { stats };
                     if let Ok(json) = serde_json::to_string(&msg) {
                         if let Err(e) = socket.send(Message::Text(json.into())).await {
-                            error!("Socket send error (stats): session={} err={}", session_id, e);
+                            error!("WebSocket connection lost (stats send failed): session={} err={}", session_id, e);
                             break;
                         }
                     }
                 }
             }
-            Ok(msg) = rx.recv_async() => {
-                if let Err(e) = socket.send(msg).await {
-                    error!("Socket send error: session={} err={}", session_id, e);
-                    break;
+            res = rx.recv_async() => {
+                match res {
+                    Ok(msg) => {
+                        if let Err(e) = socket.send(msg).await {
+                            error!("WebSocket connection lost (message send failed): session={} err={}", session_id, e);
+                            break;
+                        }
+                    }
+                    Err(_) => {
+                        warn!("WebSocket session dropped (internal channel closed): session={}", session_id);
+                        break;
+                    }
                 }
             }
             msg = socket.recv() => {
@@ -218,13 +226,16 @@ pub async fn handle_socket(
                     Some(Err(e)) => {
                         let err_msg = e.to_string();
                         if err_msg.contains("Connection reset") || err_msg.contains("Broken pipe") {
-                            debug!("WebSocket connection closed abruptly: session={} err={}", session_id, e);
+                            debug!("WebSocket connection closed abruptly by client: session={} err={}", session_id, e);
                         } else {
-                            warn!("WebSocket error: session={} err={}", session_id, e);
+                            warn!("WebSocket error from client: session={} err={}", session_id, e);
                         }
                         break;
                     }
-                    None => break,
+                    None => {
+                        info!("WebSocket connection closed by client: session={}", session_id);
+                        break;
+                    }
                 };
 
                 match msg {
@@ -233,11 +244,17 @@ pub async fn handle_socket(
                     }
                     Message::Ping(payload) => {
                         if let Err(e) = socket.send(Message::Pong(payload)).await {
-                             error!("Socket send error (pong): session={} err={}", session_id, e);
+                             error!("WebSocket connection lost (pong response failed): session={} err={}", session_id, e);
                              break;
                         }
                     }
-                    Message::Close(_) => break,
+                    Message::Pong(_) => {
+                        debug!("Received heartbeat pong from client: session={}", session_id);
+                    }
+                    Message::Close(_) => {
+                        info!("WebSocket received close frame: session={}", session_id);
+                        break;
+                    }
                     _ => {}
                 }
             }
