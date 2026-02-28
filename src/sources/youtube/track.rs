@@ -234,9 +234,7 @@ impl PlayableTrack for YoutubeTrack {
                         Some(err_tx_clone.clone()),
                         config_for_processor,
                     ) {
-                        Ok(mut processor) => {
-                            processor.run().map_err(|e| e.to_string())
-                        }
+                        Ok(mut processor) => processor.run().map_err(|e| e.to_string()),
                         Err(e) => {
                             error!("YoutubeTrack: AudioProcessor initialization failed: {}", e);
                             Err(format!("Failed to initialize processor: {}", e))

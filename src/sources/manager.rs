@@ -97,7 +97,10 @@ impl SourceManager {
             config.sources.jiosaavn,
             "JioSaavn",
             jiosaavn_proxy,
-            JioSaavnSource::new(config.jiosaavn.clone(), http_pool.get(jiosaavn_proxy.clone()))
+            JioSaavnSource::new(
+                config.jiosaavn.clone(),
+                http_pool.get(jiosaavn_proxy.clone())
+            )
         );
 
         let (deezer_token_provided, deezer_key_provided) = if let Some(c) = config.deezer.as_ref() {
