@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// Alias for the player registry within a session.
-pub type PlayerMap = DashMap<GuildId, PlayerContext>;
+pub type PlayerMap = DashMap<GuildId, std::sync::Arc<tokio::sync::RwLock<PlayerContext>>>;
 
 /// A client session managing multiple players and WebSocket communication.
 pub struct Session {
@@ -96,13 +96,19 @@ impl Session {
     }
 
     fn stop_all_players(&self) {
-        for item in self.players.iter() {
-            let player = item.value();
-            if let Some(task) = &player.gateway_task {
-                task.abort();
-            }
-            if let Some(task) = &player.track_task {
-                task.abort();
+        let players: Vec<_> = self
+            .players
+            .iter()
+            .map(|item| item.value().clone())
+            .collect();
+        for player_arc in players {
+            if let Ok(player) = player_arc.try_write() {
+                if let Some(task) = &player.gateway_task {
+                    task.abort();
+                }
+                if let Some(task) = &player.track_task {
+                    task.abort();
+                }
             }
         }
     }

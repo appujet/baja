@@ -58,17 +58,23 @@ pub async fn handle_op(
                 .ok_or("Missing endpoint in voice update event")?
                 .to_string();
 
-            if !session.players.contains_key(&guild_id) {
-                session.players.insert(
-                    guild_id.clone(),
-                    PlayerContext::new(guild_id.clone(), &state.config.player),
-                );
-            }
+            let player_arc = session
+                .players
+                .entry(guild_id.clone())
+                .or_insert_with(|| {
+                    Arc::new(tokio::sync::RwLock::new(PlayerContext::new(
+                        guild_id.clone(),
+                        &state.config.player,
+                        Some(state.total_players.clone()),
+                        Some(state.playing_players.clone()),
+                    )))
+                })
+                .clone();
 
             if let Some(uid) = session.user_id {
                 let mut changed = false;
                 {
-                    let mut player = session.players.get_mut(&guild_id).unwrap();
+                    let mut player = player_arc.write().await;
                     if player.voice.token != token
                         || player.voice.endpoint != endpoint
                         || player.voice.session_id != voice_session_id
@@ -84,14 +90,12 @@ pub async fn handle_op(
                     }
                 }
 
-                if changed
-                    || session
-                        .players
-                        .get(&guild_id)
-                        .map(|p| p.gateway_task.is_none())
-                        .unwrap_or(true)
-                {
-                    let mut player = session.players.get_mut(&guild_id).unwrap();
+                let needs_task = {
+                    let player = player_arc.read().await;
+                    player.gateway_task.is_none()
+                };
+                if changed || needs_task {
+                    let mut player = player_arc.write().await;
                     let engine = player.engine.clone();
                     let guild = player.guild_id.clone();
                     let voice_state = player.voice.clone();
@@ -127,21 +131,26 @@ pub async fn handle_op(
                     )
                     .await;
 
-                    if let Some(mut player) = session.players.get_mut(&guild_id) {
-                        player.gateway_task = Some(new_task);
-                    }
+                    let mut player_w = player_arc.write().await;
+                    player_w.gateway_task = Some(new_task);
                 }
             }
         }
         IncomingMessage::Play { guild_id, track } => {
-            if !session.players.contains_key(&guild_id) {
-                session.players.insert(
-                    guild_id.clone(),
-                    PlayerContext::new(guild_id.clone(), &state.config.player),
-                );
-            }
+            let player_arc = session
+                .players
+                .entry(guild_id.clone())
+                .or_insert_with(|| {
+                    Arc::new(tokio::sync::RwLock::new(PlayerContext::new(
+                        guild_id.clone(),
+                        &state.config.player,
+                        Some(state.total_players.clone()),
+                        Some(state.playing_players.clone()),
+                    )))
+                })
+                .clone();
 
-            let mut player = session.players.get_mut(&guild_id).unwrap();
+            let mut player = player_arc.write().await;
             crate::player::start_playback(
                 &mut player,
                 track,
@@ -156,7 +165,8 @@ pub async fn handle_op(
             .await;
         }
         IncomingMessage::Stop { guild_id } => {
-            if let Some(mut player) = session.players.get_mut(&guild_id) {
+            if let Some(player_arc) = session.players.get(&guild_id).map(|kv| kv.value().clone()) {
+                let mut player = player_arc.write().await;
                 if let Some(handle) = &player.track_handle {
                     handle.stop();
                 }
@@ -165,7 +175,8 @@ pub async fn handle_op(
             }
         }
         IncomingMessage::Destroy { guild_id } => {
-            if let Some((_, mut player)) = session.players.remove(&guild_id) {
+            if let Some((_, player_arc)) = session.players.remove(&guild_id) {
+                let mut player = player_arc.write().await;
                 if let Some(task) = player.gateway_task.take() {
                     task.abort();
                 }

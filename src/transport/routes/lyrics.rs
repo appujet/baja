@@ -76,8 +76,8 @@ pub async fn subscribe_lyrics(
     );
 
     if let Some(session) = state.sessions.get(&session_id) {
-        if let Some(player_ref) = session.players.get(&guild_id) {
-            let player: &crate::player::PlayerContext = player_ref.value();
+        if let Some(player_arc) = session.players.get(&guild_id).map(|kv| kv.value().clone()) {
+            let player = player_arc.write().await;
             player.subscribe_lyrics().await;
 
             if let Some(track) = &player.track_info {
@@ -153,8 +153,8 @@ pub async fn unsubscribe_lyrics(
     );
 
     if let Some(session) = state.sessions.get(&session_id) {
-        if let Some(player_ref) = session.players.get(&guild_id) {
-            let player: &crate::player::PlayerContext = player_ref.value();
+        if let Some(player_arc) = session.players.get(&guild_id).map(|kv| kv.value().clone()) {
+            let player = player_arc.write().await;
             player.unsubscribe_lyrics().await;
             return axum::http::StatusCode::NO_CONTENT;
         }
@@ -228,10 +228,12 @@ pub async fn get_player_lyrics(
         None => return axum::http::StatusCode::NOT_FOUND.into_response(),
     };
 
-    let player = match session.players.get(&guild_id) {
-        Some(p) => p,
+    let player_arc = match session.players.get(&guild_id) {
+        Some(p) => p.value().clone(),
         None => return axum::http::StatusCode::NOT_FOUND.into_response(),
     };
+
+    let player = player_arc.read().await;
 
     let track = match &player.track_info {
         Some(t) => t,

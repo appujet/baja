@@ -20,7 +20,8 @@ pub async fn destroy_player(
 
     match state.sessions.get(&session_id) {
         Some(session) => {
-            if let Some((_, player)) = session.players.remove(&guild_id) {
+            if let Some((_, player_arc)) = session.players.remove(&guild_id) {
+                let player = player_arc.write().await;
                 // Emit TrackEnd(Cleanup) if track existed
                 if player.track.is_some() {
                     if let Some(track_data) = player.to_player_response().track {

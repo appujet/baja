@@ -1,6 +1,6 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU64, Ordering},
 };
 
 use tokio::sync::Mutex;
@@ -37,10 +37,22 @@ pub struct PlayerContext {
     pub lyrics_data: Arc<Mutex<Option<crate::protocol::models::LyricsData>>>,
     pub last_lyric_index: Arc<AtomicI64>,
     pub tape_stop: Arc<AtomicBool>,
+
+    // Global counters for O(1) stats
+    pub global_total_players: Option<Arc<AtomicI32>>,
+    pub global_playing_players: Option<Arc<AtomicI32>>,
 }
 
 impl PlayerContext {
-    pub fn new(guild_id: crate::common::types::GuildId, config: &PlayerConfig) -> Self {
+    pub fn new(
+        guild_id: crate::common::types::GuildId,
+        config: &PlayerConfig,
+        total_players: Option<Arc<AtomicI32>>,
+        playing_players: Option<Arc<AtomicI32>>,
+    ) -> Self {
+        if let Some(ref counter) = total_players {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
         Self {
             guild_id,
             volume: 100,
@@ -64,8 +76,10 @@ impl PlayerContext {
             config: config.clone(),
             lyrics_subscribed: Arc::new(AtomicBool::new(false)),
             lyrics_data: Arc::new(Mutex::new(None)),
-            last_lyric_index: Arc::new(AtomicI64::new(-1)),
+            last_lyric_index: Arc::new(std::sync::atomic::AtomicI64::new(-1)),
             tape_stop: Arc::new(AtomicBool::new(config.tape.tape_stop)),
+            global_total_players: total_players,
+            global_playing_players: playing_players,
         }
     }
 
@@ -87,6 +101,17 @@ impl PlayerContext {
     }
 
     pub fn set_paused(&mut self, paused: bool) {
+        if self.paused != paused {
+            if let Some(ref playing_counter) = self.global_playing_players {
+                if self.track.is_some() {
+                    if paused {
+                        playing_counter.fetch_sub(1, Ordering::Relaxed);
+                    } else {
+                        playing_counter.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            }
+        }
         self.paused = paused;
         if let Some(handle) = &self.track_handle {
             if paused {
@@ -129,6 +154,19 @@ impl PlayerContext {
                 channel_id: self.voice.channel_id.clone(),
             },
             filters: self.filters.clone(),
+        }
+    }
+}
+
+impl Drop for PlayerContext {
+    fn drop(&mut self) {
+        if let Some(ref total_counter) = self.global_total_players {
+            total_counter.fetch_sub(1, Ordering::Relaxed);
+        }
+        if let Some(ref playing_counter) = self.global_playing_players {
+            if self.track.is_some() && !self.paused {
+                playing_counter.fetch_sub(1, Ordering::Relaxed);
+            }
         }
     }
 }

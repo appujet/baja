@@ -7,25 +7,8 @@ pub fn collect_stats(
     session: Option<&crate::server::session::Session>,
 ) -> protocol::Stats {
     let uptime = state.start_time.elapsed().as_millis() as u64;
-    let mut total_players = 0i32;
-    let mut playing_players = 0i32;
-
-    for s in state.sessions.iter() {
-        total_players += s.players.len() as i32;
-        for player in s.players.iter() {
-            if player.track.is_some() && !player.paused {
-                playing_players += 1;
-            }
-        }
-    }
-    for s in state.resumable_sessions.iter() {
-        total_players += s.players.len() as i32;
-        for player in s.players.iter() {
-            if player.track.is_some() && !player.paused {
-                playing_players += 1;
-            }
-        }
-    }
+    let total_players = state.total_players.load(Ordering::Relaxed);
+    let playing_players = state.playing_players.load(Ordering::Relaxed);
 
     let mut current_total_sent: u64;
     let mut current_total_nulled: u64;
@@ -38,17 +21,24 @@ pub fn collect_stats(
         current_total_sent = s.total_sent_historical.load(Ordering::Relaxed);
         current_total_nulled = s.total_nulled_historical.load(Ordering::Relaxed);
 
-        for player in s.players.iter() {
-            if player.track.is_some() && !player.paused {
-                player_count += 1;
-                current_total_sent += player.frames_sent.load(Ordering::Relaxed);
-                current_total_nulled += player.frames_nulled.load(Ordering::Relaxed);
+        let arcs: Vec<_> = s.players.iter().map(|kv| kv.value().clone()).collect();
+        for arc in arcs {
+            if let Ok(player) = arc.try_read() {
+                if player.track.is_some() && !player.paused {
+                    player_count += 1;
+                    current_total_sent += player.frames_sent.load(Ordering::Relaxed);
+                    current_total_nulled += player.frames_nulled.load(Ordering::Relaxed);
+                }
             }
         }
 
         // Calculate delta since the last time this session requested stats.
-        let last_sent = s.last_stats_sent.swap(current_total_sent, Ordering::Relaxed);
-        let last_nulled = s.last_stats_nulled.swap(current_total_nulled, Ordering::Relaxed);
+        let last_sent = s
+            .last_stats_sent
+            .swap(current_total_sent, Ordering::Relaxed);
+        let last_nulled = s
+            .last_stats_nulled
+            .swap(current_total_nulled, Ordering::Relaxed);
 
         // If it's the first time, we don't have a delta yet.
         if last_sent != 0 || last_nulled != 0 {

@@ -52,14 +52,20 @@ pub async fn update_player(
         .unwrap_or(false);
 
     // Get or create player
-    if !session.players.contains_key(&guild_id) {
-        session.players.insert(
-            guild_id.clone(),
-            PlayerContext::new(guild_id.clone(), &state.config.player),
-        );
-    }
+    let player_arc = session
+        .players
+        .entry(guild_id.clone())
+        .or_insert_with(|| {
+            std::sync::Arc::new(tokio::sync::RwLock::new(PlayerContext::new(
+                guild_id.clone(),
+                &state.config.player,
+                Some(state.total_players.clone()),
+                Some(state.playing_players.clone()),
+            )))
+        })
+        .clone();
 
-    let mut player = session.players.get_mut(&guild_id).unwrap();
+    let mut player = player_arc.write().await;
 
     // 1. Apply basic state (volume, paused, position)
     if let Some(vol) = body.volume {
@@ -157,7 +163,7 @@ pub async fn update_player(
             )
             .await;
 
-            player = session.players.get_mut(&guild_id).unwrap();
+            player = player_arc.write().await;
             if let Some(old_task) = player.gateway_task.replace(handle) {
                 old_task.abort();
             }

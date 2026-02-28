@@ -9,7 +9,8 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use tracing::{debug, error, info, warn};
+use futures::{SinkExt, StreamExt};
+use tracing::{debug, info, warn};
 
 use crate::{
     common::{
@@ -146,7 +147,7 @@ pub async fn handle_socket(
         let _ = socket.send(Message::Text(json.into())).await;
     }
 
-    // If resumed, replay queued events
+    // Replay queued events if resumed
     if resumed {
         let queued = {
             let mut queue = session.event_queue.lock();
@@ -156,7 +157,14 @@ pub async fn handle_socket(
             let _ = socket.send(Message::Text(json.into())).await;
         }
 
-        for player in session.players.iter() {
+        let player_arcs: Vec<_> = session
+            .players
+            .iter()
+            .map(|kv| kv.value().clone())
+            .collect();
+        let mut updates = Vec::new();
+        for player_arc in player_arcs {
+            let player = player_arc.read().await;
             let update = protocol::OutgoingMessage::PlayerUpdate {
                 guild_id: player.guild_id.clone(),
                 state: PlayerState {
@@ -167,12 +175,14 @@ pub async fn handle_socket(
                         .map(|h| h.get_position())
                         .unwrap_or(player.position),
                     connected: !player.voice.token.is_empty(),
-                    ping: -1,
+                    ping: player.ping.load(Ordering::Relaxed),
                 },
             };
-            if let Ok(json) = serde_json::to_string(&update) {
-                let _ = socket.send(Message::Text(json.into())).await;
-            }
+            updates.push(update);
+        }
+
+        for update in updates {
+            session.send_message(&update);
         }
     }
 
@@ -186,11 +196,27 @@ pub async fn handle_socket(
     ));
     ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+    let (mut ws_sink, mut ws_stream) = socket.split();
+    let (ws_tx, mut ws_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+
+    // Spawn dedicated writer task to prevent HoL blocking
+    let writer_session_id = session_id.clone();
+    tokio::spawn(async move {
+        while let Some(msg) = ws_rx.recv().await {
+            if let Err(e) = ws_sink.send(msg).await {
+                debug!(
+                    "WebSocket writer task terminating for {}: {}",
+                    writer_session_id, e
+                );
+                break;
+            }
+        }
+    });
+
     loop {
         tokio::select! {
             _ = ping_interval.tick() => {
-                if let Err(e) = socket.send(Message::Ping(b"heartbeat".to_vec().into())).await {
-                    error!("WebSocket connection lost (ping failed): session={} err={}", session_id, e);
+                if ws_tx.send(Message::Ping(b"heartbeat".to_vec().into())).is_err() {
                     break;
                 }
             }
@@ -199,8 +225,7 @@ pub async fn handle_socket(
                     let stats = collect_stats(&state, Some(&session));
                     let msg = protocol::OutgoingMessage::Stats { stats };
                     if let Ok(json) = serde_json::to_string(&msg) {
-                        if let Err(e) = socket.send(Message::Text(json.into())).await {
-                            error!("WebSocket connection lost (stats send failed): session={} err={}", session_id, e);
+                        if ws_tx.send(Message::Text(json.into())).is_err() {
                             break;
                         }
                     }
@@ -209,8 +234,7 @@ pub async fn handle_socket(
             res = rx.recv_async() => {
                 match res {
                     Ok(msg) => {
-                        if let Err(e) = socket.send(msg).await {
-                            error!("WebSocket connection lost (message send failed): session={} err={}", session_id, e);
+                        if ws_tx.send(msg).is_err() {
                             break;
                         }
                     }
@@ -220,7 +244,7 @@ pub async fn handle_socket(
                     }
                 }
             }
-            msg = socket.recv() => {
+            msg = ws_stream.next() => {
                 let msg = match msg {
                     Some(Ok(msg)) => msg,
                     Some(Err(e)) => {
@@ -243,8 +267,7 @@ pub async fn handle_socket(
                         warn!("Rustalink does not support WebSocket messages. Please use the REST API.");
                     }
                     Message::Ping(payload) => {
-                        if let Err(e) = socket.send(Message::Pong(payload)).await {
-                             error!("WebSocket connection lost (pong response failed): session={} err={}", session_id, e);
+                        if ws_tx.send(Message::Pong(payload)).is_err() {
                              break;
                         }
                     }

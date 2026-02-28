@@ -20,11 +20,15 @@ pub async fn get_players(
     tracing::info!("GET /v4/sessions/{}/players", session_id);
     match state.sessions.get(&session_id) {
         Some(session) => {
-            let players: Vec<Player> = session
+            let player_arcs: Vec<_> = session
                 .players
                 .iter()
-                .map(|p| p.to_player_response())
+                .map(|kv| kv.value().clone())
                 .collect();
+            let mut players = Vec::new();
+            for arc in player_arcs {
+                players.push(arc.read().await.to_player_response());
+            }
             (StatusCode::OK, Json(Players { players })).into_response()
         }
         None => (
@@ -51,31 +55,37 @@ pub async fn get_player(
 ) -> impl IntoResponse {
     tracing::info!("GET /v4/sessions/{}/players/{}", session_id, guild_id);
     match state.sessions.get(&session_id) {
-        Some(session) => match session.players.get(&guild_id) {
-            Some(player) => (
-                StatusCode::OK,
-                Json(serde_json::to_value(player.to_player_response()).unwrap()),
-            )
-                .into_response(),
-            None => {
-                // Return empty player
-                let empty = Player {
-                    guild_id: guild_id.clone(),
-                    track: None,
-                    volume: 100,
-                    paused: false,
-                    state: PlayerState {
-                        time: now_ms(),
-                        position: 0,
-                        connected: false,
-                        ping: -1,
-                    },
-                    voice: VoiceState::default(),
-                    filters: Filters::default(),
-                };
-                (StatusCode::OK, Json(serde_json::to_value(empty).unwrap())).into_response()
+        Some(session) => {
+            let player_arc = session.players.get(&guild_id).map(|kv| kv.value().clone());
+            match player_arc {
+                Some(arc) => {
+                    let player = arc.read().await;
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::to_value(player.to_player_response()).unwrap()),
+                    )
+                        .into_response()
+                }
+                None => {
+                    // Return empty player
+                    let empty = Player {
+                        guild_id: guild_id.clone(),
+                        track: None,
+                        volume: 100,
+                        paused: false,
+                        state: PlayerState {
+                            time: now_ms(),
+                            position: 0,
+                            connected: false,
+                            ping: -1,
+                        },
+                        voice: VoiceState::default(),
+                        filters: Filters::default(),
+                    };
+                    (StatusCode::OK, Json(serde_json::to_value(empty).unwrap())).into_response()
+                }
             }
-        },
+        }
         None => (
             StatusCode::NOT_FOUND,
             Json(

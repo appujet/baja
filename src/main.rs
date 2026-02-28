@@ -63,6 +63,8 @@ async fn main() -> AnyResult<()> {
         source_manager,
         lyrics_manager,
         config: config.clone(),
+        total_players: Arc::new(std::sync::atomic::AtomicI32::new(0)),
+        playing_players: Arc::new(std::sync::atomic::AtomicI32::new(0)),
     });
 
     let app = Router::new()

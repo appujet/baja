@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicI32};
 
 use dashmap::DashMap;
 
@@ -18,4 +18,8 @@ pub struct AppState {
     pub source_manager: Arc<SourceManager>,
     pub lyrics_manager: Arc<crate::lyrics::LyricsManager>,
     pub config: crate::configs::Config,
+
+    // Global stats counters for O(1) collection
+    pub total_players: Arc<AtomicI32>,
+    pub playing_players: Arc<AtomicI32>,
 }

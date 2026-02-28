@@ -151,6 +151,10 @@ pub async fn start_playback(
     };
 
     player.track_task = Some(tokio::spawn(monitor_loop(ctx)));
+
+    if let Some(ref counter) = player.global_playing_players {
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 /// Stop the currently playing track and emit `TrackEnd: Replaced` if needed.
@@ -176,11 +180,22 @@ async fn stop_current_track(player: &mut PlayerContext, session: &Session) {
     if let Some(handle) = &player.track_handle {
         player.stop_signal.store(true, Ordering::SeqCst);
         handle.stop();
+        if !player.paused {
+            if let Some(ref counter) = player.global_playing_players {
+                counter.fetch_sub(1, Ordering::Relaxed);
+            }
+        }
     }
 
     // Accumulate final frame counts into the session history before discard.
-    session.total_sent_historical.fetch_add(player.frames_sent.load(Ordering::Relaxed), Ordering::Relaxed);
-    session.total_nulled_historical.fetch_add(player.frames_nulled.load(Ordering::Relaxed), Ordering::Relaxed);
+    session.total_sent_historical.fetch_add(
+        player.frames_sent.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
+    session.total_nulled_historical.fetch_add(
+        player.frames_nulled.load(Ordering::Relaxed),
+        Ordering::Relaxed,
+    );
     // Reset player counters so they don't get double-counted if the context is reused (though usually it's not).
     player.frames_sent.store(0, Ordering::Relaxed);
     player.frames_nulled.store(0, Ordering::Relaxed);

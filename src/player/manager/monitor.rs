@@ -93,8 +93,13 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
             });
 
             // Clear track state in PlayerContext if it hasn't been replaced.
-            if let Some(mut p) = session.players.get_mut(&guild_id) {
-                if p.track_handle.as_ref().map(|h| h.is_same(&handle)).unwrap_or(false) {
+            if let Some(player_arc) = session.players.get(&guild_id).map(|kv| kv.value().clone()) {
+                let mut p = player_arc.write().await;
+                if p.track_handle
+                    .as_ref()
+                    .map(|h| h.is_same(&handle))
+                    .unwrap_or(false)
+                {
                     p.track = None;
                     p.track_info = None;
                     p.track_handle = None;
