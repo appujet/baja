@@ -2,20 +2,30 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{protocol, server::AppState};
 
-pub fn collect_stats(state: &AppState, uptime: u64) -> protocol::Stats {
+pub fn collect_stats(
+    state: &AppState,
+    session: Option<&crate::server::session::Session>,
+) -> protocol::Stats {
+    let uptime = state.start_time.elapsed().as_millis() as u64;
     let mut total_players = 0i32;
     let mut playing_players = 0i32;
+
+    for s in state.sessions.iter() {
+        total_players += s.players.len() as i32;
+        for player in s.players.iter() {
+            if player.track.is_some() {
+                playing_players += 1;
+            }
+        }
+    }
 
     let mut total_sent = 0;
     let mut total_nulled = 0;
     let mut player_count = 0;
 
-    for session in state.sessions.iter() {
-        for player in session.players.iter() {
-            total_players += 1;
+    if let Some(s) = session {
+        for player in s.players.iter() {
             if player.track.is_some() && !player.paused {
-                playing_players += 1;
-
                 player_count += 1;
                 total_sent += player
                     .frames_sent
@@ -29,8 +39,10 @@ pub fn collect_stats(state: &AppState, uptime: u64) -> protocol::Stats {
         }
     }
 
-    let frame_stats = if player_count != 0 {
-        let total_deficit = player_count * 3000 - (total_sent + total_nulled); // 3000 per minute per player
+    let frame_stats = if session.is_some() && player_count != 0 {
+        let expected_per_player = (state.config.server.stats_interval * 50) as i32;
+        let total_deficit = player_count * expected_per_player - (total_sent + total_nulled);
+
         Some(protocol::FrameStats {
             sent: total_sent / player_count,
             nulled: total_nulled / player_count,

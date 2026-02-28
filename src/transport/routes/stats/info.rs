@@ -54,11 +54,7 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<protocol::Info
 /// GET /v4/stats
 pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<protocol::Stats> {
     tracing::info!("GET /v4/stats");
-    let uptime = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-    Json(crate::monitoring::collect_stats(&state, uptime))
+    Json(crate::monitoring::collect_stats(&state, None))
 }
 
 /// GET /version

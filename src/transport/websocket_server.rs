@@ -183,7 +183,6 @@ pub async fn handle_socket(
     ));
     ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    let start_time = std::time::Instant::now();
     loop {
         tokio::select! {
             _ = ping_interval.tick() => {
@@ -194,7 +193,7 @@ pub async fn handle_socket(
             }
             _ = stats_interval.tick() => {
                 if !session.paused.load(Relaxed) {
-                    let stats = collect_stats(&state, start_time.elapsed().as_millis() as u64);
+                    let stats = collect_stats(&state, Some(&session));
                     let msg = protocol::OutgoingMessage::Stats { stats };
                     if let Ok(json) = serde_json::to_string(&msg) {
                         if let Err(e) = socket.send(Message::Text(json.into())).await {
@@ -227,7 +226,7 @@ pub async fn handle_socket(
 
                 match msg {
                     Message::Text(_) => {
-                        warn!("Rustalink v4 does not support WebSocket messages. Please use the REST API.");
+                        warn!("Rustalink does not support WebSocket messages. Please use the REST API.");
                     }
                     Message::Ping(payload) => {
                         if let Err(e) = socket.send(Message::Pong(payload)).await {

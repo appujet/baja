@@ -11,6 +11,7 @@ use crate::{
 pub type SessionMap = DashMap<SessionId, Arc<Session>>;
 
 pub struct AppState {
+    pub start_time: std::time::Instant,
     pub sessions: SessionMap,
     pub resumable_sessions: SessionMap,
     pub routeplanner: Option<Arc<dyn RoutePlanner>>,

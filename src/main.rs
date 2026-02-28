@@ -56,6 +56,7 @@ async fn main() -> AnyResult<()> {
     let lyrics_manager = Arc::new(rustalink::lyrics::LyricsManager::new(&config));
 
     let shared_state = Arc::new(AppState {
+        start_time: std::time::Instant::now(),
         sessions: DashMap::new(),
         resumable_sessions: DashMap::new(),
         routeplanner,
