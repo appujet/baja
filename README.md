@@ -58,28 +58,41 @@ Rustalink supports direct playback and **Mirroring**. Mirroring allows playback 
 | **Pandora** | Mirror | `pdsearch:` | `pdrec:` |
 | **Audius** | Direct | `ausearch:`, `audsearch:` | - |
 | **HTTP / Local**| Direct | - | - |
-| **Google TTS**| Direct | `gtts:`, `speak:` | - |
-| **Flowery TTS**| Direct | `ftts:` | Override parameters via query `?voice=...` |
-| **LazyPy TTS**| Direct | `lazypytts:`, `lazytts:` | Override via format `lazypytts:Service:Voice:Text` |
+| **Google TTS**| Direct | `gtts:`, `speak:` | `gtts://lang:text` to override language |
+| **Flowery TTS**| Direct | `ftts:` | `ftts://` pattern supported. Override parameters via query `?voice=...` |
+| **LazyPy TTS**| Direct | `lazypytts:`, `lazytts:` | `lazypytts://` pattern supported. Override via format `lazypytts:Service:Voice:Text` |
 
 > [!TIP]
 > **Hybrid** sources support direct playback if credentials are provided. Otherwise, they seamlessly fall back to mirroring.
 
-### Text-to-Speech (TTS) Sources
+<details>
+<summary><b>Text-to-Speech (TTS) Usage & Parameters</b></summary>
 
-Rustalink features three distinct TTS sources with unique routing parameters you can use via search prefixes directly:
+Rustalink features three distinct TTS sources with unique routing parameters:
 
 1. **Google TTS** (`gtts:` or `speak:`)
    - Uses standard Google Translate voices based on the `config.toml` language code.
-   - Example: `gtts:Hello World`
+   - You can also optionally override your language for a specific query by appending a colon after the `gtts://` scheme or base prefix.
+   - Examples: 
+     - Basic: `gtts:Hello World`
+     - Custom Language: `gtts://fr:Bonjour le monde` or `speak:es:Hola Mundo`
 
-2. **Flowery TTS** (`ftts:`)
+2. **Flowery TTS** (`ftts://` or `ftts:`)
    - Capable of overriding your `config.toml` voice and speed settings on the fly utilizing URL query variables. 
-   - Example: `ftts:Hello World?voice=Bria&speed=1.5`
+   - Available Parameters: `voice`, `translate`, `silence`, `speed`.
+   - Examples:
+     - Basic: `ftts://Hello World`
+     - All Params: `ftts://Hello World?voice=Bria&translate=false&silence=500&speed=1.5`
 
 3. **LazyPy TTS** (`lazypytts:` or `lazytts:`)
    - Connects to various web TTS APIs. You can define the custom service and voice utilizing colon separators.
-   - Example: `lazypytts:Amazon:Matthew:Hello World`
+   - You can also use the `lazypytts://` or `lazytts://` pattern.
+   - Examples:
+     - Basic: `lazypytts:Hello World`
+     - URL Style: `lazypytts://Jorge:Hello World`
+     - Custom Service & Voice: `lazypytts:Amazon:Matthew:Hello World`
+
+</details>
 
 ### YouTube Playback Clients
 

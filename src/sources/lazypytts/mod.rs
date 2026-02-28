@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
+use regex::Regex;
 use serde::Deserialize;
 use tracing::{debug, error};
 
@@ -16,21 +17,37 @@ use crate::{
 pub struct LazyPyTtsSource {
     config: LazyPyTtsConfig,
     search_prefixes: Vec<String>,
+    url_pattern: Regex,
 }
 
 impl LazyPyTtsSource {
     pub fn new(config: LazyPyTtsConfig) -> Self {
         Self {
             config,
-            search_prefixes: vec!["lazypytts:".to_string(), "lazytts:".to_string()],
+            search_prefixes: vec![
+                "lazypytts:".to_string(), 
+                "lazytts:".to_string(),
+            ],
+            url_pattern: Regex::new(r"(?i)^(lazypytts://|lazytts://)").unwrap(),
         }
     }
 
     fn parse_query(&self, identifier: &str) -> (String, String, String) {
-        let raw = identifier
-            .trim_start_matches("lazypytts:")
-            .trim_start_matches("lazytts:")
-            .trim();
+        let mut raw = identifier;
+        
+        for prefix in &self.search_prefixes {
+            if raw.starts_with(prefix) {
+                raw = raw.trim_start_matches(prefix);
+                break;
+            }
+        }
+        
+        // Handle // after prefix (e.g., lazypytts://hello)
+        if raw.starts_with("//") {
+            raw = &raw[2..];
+        }
+        
+        raw = raw.trim();
 
         let parts: Vec<&str> = raw.split(':').collect();
 
@@ -84,6 +101,7 @@ impl SourcePlugin for LazyPyTtsSource {
 
     fn can_handle(&self, identifier: &str) -> bool {
         self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+            || self.url_pattern.is_match(identifier)
     }
 
     async fn load(

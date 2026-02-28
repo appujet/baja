@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
+use regex::Regex;
 use tracing::debug;
 
 use crate::{
@@ -14,13 +15,17 @@ use crate::{
 pub struct FlowerySource {
     config: FloweryConfig,
     search_prefixes: Vec<String>,
+    url_pattern: Regex,
 }
 
 impl FlowerySource {
     pub fn new(config: FloweryConfig) -> Self {
         Self {
             config,
-            search_prefixes: vec!["ftts:".to_string()],
+            search_prefixes: vec![
+                "ftts:".to_string(),
+            ],
+            url_pattern: Regex::new(r"(?i)^ftts://").unwrap(),
         }
     }
 
@@ -79,7 +84,19 @@ impl FlowerySource {
     }
 
     fn parse_query(&self, identifier: &str) -> (String, std::collections::HashMap<String, String>) {
-        let path_and_query = identifier.trim_start_matches("ftts:");
+        let mut path_and_query = identifier;
+
+        for prefix in &self.search_prefixes {
+            if path_and_query.starts_with(prefix) {
+                path_and_query = path_and_query.trim_start_matches(prefix);
+                break;
+            }
+        }
+
+        // Handle // after prefix (e.g., ftts://hello)
+        if path_and_query.starts_with("//") {
+            path_and_query = &path_and_query[2..];
+        }
         let mut params = std::collections::HashMap::new();
 
         let text = if let Some(split_idx) = path_and_query.find('?') {
@@ -122,6 +139,7 @@ impl SourcePlugin for FlowerySource {
 
     fn can_handle(&self, identifier: &str) -> bool {
         self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+            || self.url_pattern.is_match(identifier)
     }
 
     async fn load(
