@@ -5,7 +5,7 @@ use tracing::{debug, warn};
 
 use super::HttpSource;
 use crate::audio::constants::{
-    HTTP_FETCH_CHUNK_LIMIT, HTTP_PREFETCH_BUFFER_SIZE, HTTP_SOCKET_SKIP_LIMIT,
+    HTTP_FETCH_CHUNK_LIMIT, HTTP_PREFETCH_BUFFER_SIZE, HTTP_SOCKET_SKIP_LIMIT, MAX_FETCH_RETRIES,
 };
 
 #[derive(Debug)]
@@ -32,6 +32,7 @@ pub fn prefetch_loop(
     total_len: Option<u64>,
     handle: tokio::runtime::Handle,
 ) {
+    let mut retry_count = 0;
     loop {
         let mut target_seek = None;
 
@@ -123,7 +124,10 @@ pub fn prefetch_loop(
                 current_pos,
                 Some(HTTP_FETCH_CHUNK_LIMIT),
             )) {
-                Ok(res) => current_response = Some(res),
+                Ok(res) => {
+                    current_response = Some(res);
+                    retry_count = 0;
+                }
                 Err(e) => {
                     let err_msg = e.to_string();
                     if err_msg.contains("416") {
@@ -137,13 +141,22 @@ pub fn prefetch_loop(
                         break;
                     }
 
-                    warn!("HttpSource prefetch fetch failed: {}", e);
+                    retry_count += 1;
+                    if retry_count <= MAX_FETCH_RETRIES {
+                        warn!(
+                            "HttpSource prefetch fetch failed (retry {}/{}): {}",
+                            retry_count, MAX_FETCH_RETRIES, e
+                        );
+                        thread::sleep(Duration::from_millis(500 * retry_count as u64));
+                        continue;
+                    }
+
+                    warn!("HttpSource prefetch fetch failed fatally: {}", e);
                     let (lock, cvar) = &*shared;
                     let mut state = lock.lock();
                     state.error = Some(e.to_string());
                     cvar.notify_all();
-                    thread::sleep(Duration::from_millis(500));
-                    continue;
+                    break;
                 }
             }
         }
@@ -163,6 +176,7 @@ pub fn prefetch_loop(
                         }
                         cvar.notify_all();
                     }
+                    retry_count = 0;
                 }
                 Ok(None) => {
                     let (lock, cvar) = &*shared;
@@ -178,17 +192,27 @@ pub fn prefetch_loop(
                     } else {
                         current_response = None;
                     }
+                    retry_count = 0;
                     continue;
                 }
                 Err(e) => {
-                    warn!("HttpSource prefetch read failed: {}", e);
+                    retry_count += 1;
+                    if retry_count <= MAX_FETCH_RETRIES {
+                        warn!(
+                            "HttpSource prefetch read failed (retry {}/{}): {}",
+                            retry_count, MAX_FETCH_RETRIES, e
+                        );
+                        current_response = None;
+                        thread::sleep(Duration::from_millis(100 * retry_count as u64));
+                        continue;
+                    }
+
+                    warn!("HttpSource prefetch read failed fatally: {}", e);
                     let (lock, cvar) = &*shared;
                     let mut state = lock.lock();
                     state.error = Some(e.to_string());
                     cvar.notify_all();
-                    current_response = None;
-                    thread::sleep(Duration::from_millis(100));
-                    continue;
+                    break;
                 }
             }
         }
