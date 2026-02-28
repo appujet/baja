@@ -90,7 +90,7 @@ impl JioSaavnSource {
                       "url": data.get("perma_url").and_then(|v| v.as_str()),
                       "type": type_,
                       "artworkUrl": data.get("image").and_then(|v| v.as_str()).map(|s| s.replace("150x150", "500x500").replace("50x50", "500x500")),
-                      "author": data.get("subtitle").or_else(|| data.get("header_desc")).and_then(|v| v.as_str()),
+                      "author": data.get("subtitle").or_else(|| data.get("header_desc")).and_then(|v| v.as_str()).map(|s| s.split(',').map(|p| p.trim()).take(3).collect::<Vec<_>>().join(", ")),
                       "totalTracks": data.get("list_count").and_then(|v| v.as_str()).and_then(|s| s.parse::<u64>().ok()).unwrap_or(tracks.len() as u64)
                     }),
                     tracks,

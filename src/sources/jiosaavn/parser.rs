@@ -49,6 +49,7 @@ pub fn parse_track(json: &Value) -> Option<Track> {
     let author = if let Some(arr) = meta_artists {
         arr.iter()
             .filter_map(|a| a.get("name").and_then(|v| v.as_str()))
+            .take(3)
             .collect::<Vec<_>>()
             .join(", ")
     } else {
@@ -57,8 +58,14 @@ pub fn parse_track(json: &Value) -> Option<Track> {
             .or_else(|| json.get("primary_artists"))
             .or_else(|| json.get("singers"))
             .and_then(|v| v.as_str())
-            .unwrap_or("Unknown Artist")
-            .to_string()
+            .map(|s| {
+                s.split(',')
+                    .map(|part| part.trim())
+                    .take(3)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_else(|| "Unknown Artist".to_string())
     };
     let author = clean_string(&author);
 
@@ -88,11 +95,17 @@ pub fn parse_track(json: &Value) -> Option<Track> {
 pub fn parse_search_item(json: &Value) -> Option<Track> {
     let id = json.get("id")?.as_str()?;
     let title = clean_string(json.get("title")?.as_str()?);
-    let author = clean_string(
-        json.get("description")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown Artist"),
-    );
+    let raw_desc = json
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Unknown Artist");
+    let limited_author = raw_desc
+        .split(',')
+        .map(|s| s.trim())
+        .take(3)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let author = clean_string(&limited_author);
     let uri = json
         .get("url")
         .and_then(|v| v.as_str())
@@ -238,7 +251,13 @@ pub fn parse_search_playlist(json: &Value, type_: &str) -> Option<PlaylistData> 
                     .and_then(|v| v.as_str())
                     .filter(|s| !s.is_empty())
             })
-            .map(|s| s.to_string());
+            .map(|s| {
+                s.split(',')
+                    .map(|part| part.trim())
+                    .take(3)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            });
     }
 
     let final_author = if type_ == "artist" {

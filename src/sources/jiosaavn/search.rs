@@ -146,7 +146,13 @@ impl JioSaavnSource {
                             detail.get("primary_artists").and_then(|v| v.as_str())
                         {
                             if !artists.is_empty() {
-                                track.info.author = super::helpers::clean_string(artists);
+                                let limited_artists = artists
+                                    .split(',')
+                                    .map(|s| s.trim())
+                                    .take(3)
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                track.info.author = super::helpers::clean_string(&limited_artists);
                             }
                         }
 
