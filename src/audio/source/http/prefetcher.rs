@@ -124,6 +124,18 @@ pub fn prefetch_loop(
             )) {
                 Ok(res) => current_response = Some(res),
                 Err(e) => {
+                    let err_msg = e.to_string();
+                    if err_msg.contains("416") {
+                        debug!(
+                            "HttpSource prefetch: hit end of stream (416 Range Not Satisfiable)"
+                        );
+                        let (lock, cvar) = &*shared;
+                        let mut state = lock.lock();
+                        state.done = true;
+                        cvar.notify_all();
+                        break;
+                    }
+
                     warn!("HttpSource prefetch fetch failed: {}", e);
                     thread::sleep(Duration::from_millis(500));
                     continue;
