@@ -16,7 +16,7 @@ pub async fn destroy_player(
     )>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    tracing::info!("Destroy player: session={} guild={}", session_id, guild_id);
+    tracing::info!("DELETE /v4/sessions/{}/players/{}", session_id, guild_id);
 
     match state.sessions.get(&session_id) {
         Some(session) => {

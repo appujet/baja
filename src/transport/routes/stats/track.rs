@@ -67,8 +67,8 @@ pub async fn load_search(
 
 /// GET /v4/decodetrack?encodedTrack=...
 pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoResponse {
-    tracing::info!("GET /v4/decodetrack");
-    let encoded = params.encoded_track.or(params.track);
+    let encoded = params.encoded_track.clone().or(params.track.clone());
+    tracing::info!("GET /v4/decodetrack: encodedTrack={:?}", encoded);
 
     let encoded = match encoded {
         Some(e) => e,
