@@ -24,7 +24,7 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[tokio::main]
 async fn main() -> AnyResult<()> {
-    let config = rustalink::configs::Config::load()?;
+    let config = rustalink::configs::Config::load().await?;
 
     rustalink::common::logger::init(&config);
 

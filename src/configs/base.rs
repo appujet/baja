@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use base64::{Engine as _, engine::general_purpose};
+use toml::Value;
 
 use crate::configs::*;
 
@@ -52,6 +54,15 @@ pub struct Config {
     pub yandexmusic: Option<YandexMusicConfig>,
     #[serde(default)]
     pub yandex: Option<YandexConfig>,
+    #[serde(default)]
+    pub config_server: Option<ConfigServerConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ConfigServerConfig {
+    pub url: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 impl Default for Config {
@@ -83,6 +94,7 @@ impl Default for Config {
             audius: None,
             yandexmusic: None,
             yandex: None,
+            config_server: None,
         }
     }
 }
@@ -90,7 +102,7 @@ impl Default for Config {
 use crate::common::types::AnyResult;
 
 impl Config {
-    pub fn load() -> AnyResult<Self> {
+    pub async fn load() -> AnyResult<Self> {
         let config_path = if std::path::Path::new("config.toml").exists() {
             "config.toml"
         } else if std::path::Path::new("config.default.toml").exists() {
@@ -104,6 +116,30 @@ impl Config {
         let config_str = std::fs::read_to_string(config_path)?;
         if config_str.is_empty() {
             return Err(format!("{} is empty", config_path).into());
+        }
+
+        let raw_val: Value = toml::from_str(&config_str)?;
+        
+        if let Some(cs_val) = raw_val.get("config_server") {
+            let cs: ConfigServerConfig = cs_val.clone().try_into()?;
+                        
+            let client = reqwest::Client::new();
+            let mut request = client.get(&cs.url);
+
+            if let (Some(u), Some(p)) = (&cs.username, &cs.password) {
+                let auth = format!("{}:{}", u, p);
+                let encoded = general_purpose::STANDARD.encode(auth);
+                request = request.header("Authorization", format!("Basic {}", encoded));
+            }
+
+            let response = request.send().await?;
+            if !response.status().is_success() {
+                return Err(format!("Failed to fetch remote config: status {}", response.status()).into());
+            }
+
+            let remote_toml = response.text().await?;
+
+            return Ok(toml::from_str(&remote_toml)?);
         }
 
         let config: Config = toml::from_str(&config_str)?;
