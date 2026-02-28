@@ -1,6 +1,6 @@
 [package]
 name = "rustalink"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["appujet", "notdeltaxd", "contributors"]
@@ -8,6 +8,7 @@ repository = "https://github.com/bongodevs/Rustalink"
 
 [dependencies]
 base64 = "^0.22.1"
+bytes = "1.11.1"
 flume = "^0.11.1"
 dashmap = "^6.1.0"
 tracing = "^0.1.41"

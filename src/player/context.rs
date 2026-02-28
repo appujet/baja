@@ -113,7 +113,7 @@ impl PlayerContext {
             volume: self.volume,
             paused: self.paused,
             state: PlayerState {
-                time: crate::server::now_ms(),
+                time: crate::common::utils::now_ms(),
                 position: self
                     .track_handle
                     .as_ref()

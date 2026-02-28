@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use bytes::Bytes;
 use parking_lot::{Condvar, Mutex};
 use symphonia::core::io::MediaSource;
 use tracing::{debug, trace, warn};
@@ -30,7 +31,7 @@ enum ChunkState {
     /// A worker has claimed this chunk and is downloading it.
     Downloading,
     /// Data is available for reading.
-    Ready(Arc<Vec<u8>>),
+    Ready(Bytes),
 }
 
 struct ReaderState {
@@ -156,9 +157,9 @@ impl Read for SegmentedSource {
             let offset_in_chunk = (self.pos % CHUNK_SIZE as u64) as usize;
 
             match state.chunks.get(&chunk_idx) {
-                Some(ChunkState::Ready(data)) => {
-                    let data = Arc::clone(data);
-                    let available = data.len().saturating_sub(offset_in_chunk);
+                Some(ChunkState::Ready(bytes)) => {
+                    let bytes = bytes.clone();
+                    let available = bytes.len().saturating_sub(offset_in_chunk);
 
                     if available == 0 {
                         // Chunk is exhausted; advance to the next one.
@@ -168,7 +169,7 @@ impl Read for SegmentedSource {
                     }
 
                     let n = buf.len().min(available);
-                    buf[..n].copy_from_slice(&data[offset_in_chunk..offset_in_chunk + n]);
+                    buf[..n].copy_from_slice(&bytes[offset_in_chunk..offset_in_chunk + n]);
                     self.pos += n as u64;
                     state.current_pos = self.pos;
 
@@ -336,9 +337,8 @@ fn fetch_worker(
             Ok(res) => match handle.block_on(res.bytes()) {
                 Ok(bytes) => {
                     let actual = bytes.len();
-                    let arc = Arc::new(bytes.to_vec());
                     let mut state = lock.lock();
-                    state.chunks.insert(idx, ChunkState::Ready(arc));
+                    state.chunks.insert(idx, ChunkState::Ready(bytes));
                     trace!(
                         "Worker {}: filled chunk {} ({} bytes)",
                         worker_id, idx, actual

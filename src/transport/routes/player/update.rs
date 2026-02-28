@@ -74,7 +74,7 @@ pub async fn update_player(
             let seek_update = protocol::OutgoingMessage::PlayerUpdate {
                 guild_id: guild_id.clone(),
                 state: crate::player::PlayerState {
-                    time: crate::server::now_ms(),
+                    time: crate::common::utils::now_ms(),
                     position: pos,
                     connected: !player.voice.token.is_empty(),
                     ping: player.ping.load(std::sync::atomic::Ordering::Relaxed),

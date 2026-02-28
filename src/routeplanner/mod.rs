@@ -142,8 +142,8 @@ impl BalancingIpRoutePlanner {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner());
                 if let Some(&timestamp) = failing.get(&ip_str) {
-                    let now = crate::server::now_ms();
-                    if now > timestamp + 604800000 {
+                    let now = crate::common::utils::now_ms();
+                    if now > timestamp + crate::audio::constants::ROUTE_PLANNER_FAIL_EXPIRE_MS {
                         failing.remove(&ip_str);
                         false
                     } else {
@@ -226,7 +226,7 @@ impl RoutePlanner for BalancingIpRoutePlanner {
     }
 
     fn mark_failed(&self, address: &str) {
-        let now = crate::server::now_ms();
+        let now = crate::common::utils::now_ms();
         self.failing_addresses
             .lock()
             .unwrap_or_else(|e| e.into_inner())

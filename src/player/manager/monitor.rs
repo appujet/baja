@@ -126,7 +126,7 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
             session.send_message(&protocol::OutgoingMessage::PlayerUpdate {
                 guild_id: guild_id.clone(),
                 state: PlayerState {
-                    time: crate::server::now_ms(),
+                    time: crate::common::utils::now_ms(),
                     position: cur_pos,
                     connected: true,
                     ping: ping.load(Ordering::Relaxed),

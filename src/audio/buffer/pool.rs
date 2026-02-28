@@ -16,14 +16,17 @@ struct PoolInner {
     buckets: HashMap<usize, Vec<Vec<u8>>>,
     total_bytes: usize,
     last_activity: Instant,
+    last_cleanup: Instant,
 }
 
 impl PoolInner {
     fn new() -> Self {
+        let now = Instant::now();
         Self {
             buckets: HashMap::new(),
             total_bytes: 0,
-            last_activity: Instant::now(),
+            last_activity: now,
+            last_cleanup: now,
         }
     }
 
@@ -73,6 +76,13 @@ impl PoolInner {
         if self.total_bytes == 0 {
             return;
         }
+
+        // Rate-limit cleanup checks to every 30 seconds.
+        if self.last_cleanup.elapsed() < Duration::from_secs(30) {
+            return;
+        }
+        self.last_cleanup = Instant::now();
+
         if self.last_activity.elapsed() >= Duration::from_secs(POOL_IDLE_CLEAR_SECS) {
             self.buckets.clear();
             self.total_bytes = 0;

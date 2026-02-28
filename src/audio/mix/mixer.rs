@@ -32,6 +32,7 @@ pub struct AudioMixer {
     pub layers: HashMap<String, MixLayer>,
     pub max_layers: usize,
     pub enabled: bool,
+    acc_buf: Vec<i32>,
 }
 
 impl AudioMixer {
@@ -40,6 +41,7 @@ impl AudioMixer {
             layers: HashMap::new(),
             max_layers: MAX_LAYERS,
             enabled: true,
+            acc_buf: Vec::with_capacity(1920),
         }
     }
 
@@ -74,7 +76,14 @@ impl AudioMixer {
             return;
         }
 
-        let mut acc: Vec<i32> = main_frame.iter().map(|&s| s as i32).collect();
+        let out_len = main_frame.len();
+        if self.acc_buf.len() != out_len {
+            self.acc_buf.resize(out_len, 0);
+        }
+
+        for (i, &s) in main_frame.iter().enumerate() {
+            self.acc_buf[i] = s as i32;
+        }
 
         self.layers.retain(|_, layer| {
             layer.fill();
@@ -82,10 +91,10 @@ impl AudioMixer {
         });
 
         for layer in self.layers.values_mut() {
-            layer.accumulate(&mut acc);
+            layer.accumulate(&mut self.acc_buf);
         }
 
-        for (i, &sum) in acc.iter().enumerate() {
+        for (i, &sum) in self.acc_buf.iter().enumerate() {
             main_frame[i] = sum.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
         }
     }
@@ -103,6 +112,7 @@ pub struct Mixer {
     mix_buf: Vec<i32>,
     pub audio_mixer: AudioMixer,
     opus_passthrough: Option<PassthroughTrack>,
+    final_pcm_buf: Vec<i16>,
 }
 
 struct PassthroughTrack {
@@ -122,6 +132,7 @@ struct MixerTrack {
     position: Arc<AtomicU64>,
     config: PlayerConfig,
     finished: bool,
+    slice_buf: Vec<i16>,
 }
 
 impl Mixer {
@@ -131,6 +142,7 @@ impl Mixer {
             mix_buf: Vec::with_capacity(1920),
             audio_mixer: AudioMixer::new(),
             opus_passthrough: None,
+            final_pcm_buf: Vec::with_capacity(1920),
         }
     }
 
@@ -156,6 +168,7 @@ impl Mixer {
             position,
             config,
             finished: false,
+            slice_buf: Vec::with_capacity(1920),
         });
     }
 
@@ -249,13 +262,16 @@ impl Mixer {
                 );
             }
 
-            let mut slice = vec![0i16; out_len];
+            if track.slice_buf.len() != out_len {
+                track.slice_buf.resize(out_len, 0);
+            }
+            track.slice_buf.fill(0);
             let mut filled = 0usize;
 
             // 1. Drain overflow from previous tick.
             if track.pending_pos < track.pending.len() {
                 let n = (out_len - filled).min(track.pending.len() - track.pending_pos);
-                slice[filled..filled + n]
+                track.slice_buf[filled..filled + n]
                     .copy_from_slice(&track.pending[track.pending_pos..track.pending_pos + n]);
                 track.pending_pos += n;
                 filled += n;
@@ -270,7 +286,7 @@ impl Mixer {
                 match track.flow.try_pop_frame() {
                     Ok(Some(frame)) => {
                         let can = frame.len().min(out_len - filled);
-                        slice[filled..filled + can].copy_from_slice(&frame[..can]);
+                        track.slice_buf[filled..filled + can].copy_from_slice(&frame[..can]);
                         if can < frame.len() {
                             track.pending.extend_from_slice(&frame[can..]);
                             track.pending_pos = 0;
@@ -287,7 +303,7 @@ impl Mixer {
 
             if filled > 0 {
                 for j in 0..filled {
-                    self.mix_buf[j] += slice[j] as i32;
+                    self.mix_buf[j] += track.slice_buf[j] as i32;
                 }
                 has_audio = true;
                 track
@@ -319,17 +335,20 @@ impl Mixer {
             }
         }
 
-        let mut final_pcm = vec![0i16; out_len];
-        for (i, &s) in self.mix_buf.iter().enumerate() {
-            final_pcm[i] = s.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        if self.final_pcm_buf.len() != out_len {
+            self.final_pcm_buf.resize(out_len, 0);
         }
 
-        self.audio_mixer.mix(&mut final_pcm);
+        for (i, &s) in self.mix_buf.iter().enumerate() {
+            self.final_pcm_buf[i] = s.clamp(i16::MIN as i32, i16::MAX as i32) as i16;
+        }
+
+        self.audio_mixer.mix(&mut self.final_pcm_buf);
         if !self.audio_mixer.layers.is_empty() {
             has_audio = true;
         }
 
-        buf.copy_from_slice(&final_pcm);
+        buf.copy_from_slice(&self.final_pcm_buf);
         has_audio
     }
 }

@@ -4,6 +4,8 @@
 //! This is the highest quality mode, suitable for critical listening,
 //! though it has a higher CPU cost than Hermite or Linear methods.
 
+use std::collections::VecDeque;
+
 pub struct SincResampler {
     ratio: f32,
     index: f32,
@@ -11,7 +13,7 @@ pub struct SincResampler {
     /// Number of taps (should be even). More taps = better quality, higher CPU.
     taps: usize,
     /// History buffer for convolution.
-    buffer: Vec<Vec<f32>>,
+    buffer: Vec<VecDeque<f32>>,
 }
 
 impl SincResampler {
@@ -22,7 +24,7 @@ impl SincResampler {
             index: 0.0,
             channels,
             taps,
-            buffer: vec![vec![0.0; taps]; channels],
+            buffer: vec![VecDeque::from(vec![0.0; taps]); channels],
         }
     }
 
@@ -51,8 +53,8 @@ impl SincResampler {
         for frame in 0..num_frames {
             // Push new sample to history buffer
             for ch in 0..self.channels {
-                self.buffer[ch].remove(0);
-                self.buffer[ch].push(input[frame * self.channels + ch] as f32);
+                self.buffer[ch].pop_front();
+                self.buffer[ch].push_back(input[frame * self.channels + ch] as f32);
             }
 
             // Produce as many output frames as needed
@@ -79,7 +81,9 @@ impl SincResampler {
     pub fn reset(&mut self) {
         self.index = 0.0;
         for ch in &mut self.buffer {
-            ch.fill(0.0);
+            for x in ch {
+                *x = 0.0;
+            }
         }
     }
 

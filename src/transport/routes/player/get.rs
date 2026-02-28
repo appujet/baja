@@ -7,8 +7,9 @@ use axum::{
 };
 
 use crate::{
+    common::utils::now_ms,
     player::{Filters, Player, PlayerState, Players, VoiceState},
-    server::{AppState, now_ms},
+    server::AppState,
 };
 
 /// GET /v4/sessions/{sessionId}/players

@@ -80,8 +80,8 @@ pub const PROBE_TIMEOUT_SECS: u64 = 10;
 
 // ── HttpSource ───────────────────────────────────────────────────────────────
 
-/// HTTP prefetch buffer size (8 MB) — how much data can be stored ahead.
-pub const HTTP_PREFETCH_BUFFER_SIZE: usize = 8 * 1_024 * 1_024;
+/// HTTP prefetch buffer size (2 MB) — how much data can be stored ahead.
+pub const HTTP_PREFETCH_BUFFER_SIZE: usize = 2 * 1_024 * 1_024;
 
 /// Smallest buffer capacity used for initial fetching (256 KB).
 pub const HTTP_INITIAL_BUF_CAPACITY: usize = 256 * 1_024;
@@ -90,11 +90,16 @@ pub const HTTP_INITIAL_BUF_CAPACITY: usize = 256 * 1_024;
 /// Small forward jumps are faster to skip data on the same connection.
 pub const HTTP_SOCKET_SKIP_LIMIT: u64 = 1_000_000;
 
-/// Limit for a single HTTP range fetch in the prefetch loop (5 MB).
+/// Limit for a single HTTP range fetch in the prefetch loop (2 MB).
 /// Prevents excessively large requests and allows for more granular seeking.
-pub const HTTP_FETCH_CHUNK_LIMIT: u64 = 5 * 1_024 * 1_024;
+pub const HTTP_FETCH_CHUNK_LIMIT: u64 = 2 * 1_024 * 1_024;
 
 // ── Effects ───────────────────────────────────────────────────────────────────
 
 /// π / 2 — used in sinusoidal crossfade curves.
 pub const HALF_PI: f32 = std::f32::consts::PI / 2.0;
+
+// ── Route Planner ─────────────────────────────────────────────────────────────
+
+/// Time before a failing IP address is retried (1 week).
+pub const ROUTE_PLANNER_FAIL_EXPIRE_MS: u64 = 7 * 24 * 60 * 60 * 1_000;

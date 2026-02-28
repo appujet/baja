@@ -5,8 +5,8 @@ use std::sync::{
 use tokio_tungstenite::tungstenite::protocol::Message;
 
 use crate::{
+    common::utils::now_ms,
     gateway::{constants::OP_HEARTBEAT, session::types::VoiceGatewayMessage},
-    server::now_ms,
 };
 
 pub fn spawn_heartbeat(
