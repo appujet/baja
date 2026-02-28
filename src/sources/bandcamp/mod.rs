@@ -14,7 +14,7 @@ pub mod track;
 
 pub struct BandcampSource {
     client: Arc<reqwest::Client>,
-    pattern: Regex,
+    url_regex: Regex,
     identifier_pattern: Regex,
     search_prefixes: Vec<String>,
     search_limit: usize,
@@ -27,8 +27,8 @@ impl BandcampSource {
     ) -> Result<Self, String> {
         Ok(Self {
             client,
-            pattern: Regex::new(r"(?i)^https?://(?P<subdomain>[^/]+)\.bandcamp\.com/(?P<type>track|album)/(?P<slug>[^/?]+)").unwrap(),
-            identifier_pattern: Regex::new(r"^(?P<subdomain>[^:]+):(?P<slug>[^:]+)$").unwrap(),
+            url_regex: Regex::new(r"(?i)^https?://(?P<subdomain>[^/]+)\.bandcamp\.com/(?P<type>track|album)/(?P<slug>[^/?]+)").unwrap(),
+            identifier_pattern: Regex::new(r"^(?P<subdomain>[a-zA-Z0-9\-]+):(?P<slug>[a-zA-Z0-9\-]+)$").unwrap(),
             search_prefixes: vec!["bcsearch:".to_string()],
             search_limit: config.map(|c| c.search_limit).unwrap_or(10),
         })
@@ -238,7 +238,7 @@ impl BandcampSource {
     }
 
     fn get_identifier_from_url(&self, url: &str) -> String {
-        if let Some(caps) = self.pattern.captures(url) {
+        if let Some(caps) = self.url_regex.captures(url) {
             return format!("{}:{}", &caps["subdomain"], &caps["slug"]);
         }
         url.to_string()
@@ -259,8 +259,7 @@ impl SourcePlugin for BandcampSource {
         self.search_prefixes
             .iter()
             .any(|p| identifier.starts_with(p))
-            || self.pattern.is_match(identifier)
-            || self.identifier_pattern.is_match(identifier)
+            || self.url_regex.is_match(identifier)
     }
 
     fn search_prefixes(&self) -> Vec<&str> {
@@ -278,16 +277,8 @@ impl SourcePlugin for BandcampSource {
             }
         }
 
-        if self.pattern.is_match(identifier) {
+        if self.url_regex.is_match(identifier) {
             return self.resolve(identifier).await;
-        }
-
-        if let Some(caps) = self.identifier_pattern.captures(identifier) {
-            let url = format!(
-                "https://{}.bandcamp.com/track/{}",
-                &caps["subdomain"], &caps["slug"]
-            );
-            return self.resolve(&url).await;
         }
 
         LoadResult::Empty {}
