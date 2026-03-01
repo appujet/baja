@@ -98,11 +98,27 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
 }
 
 /// POST /v4/decodetracks
+/// Body: raw JSON array of base64-encoded track strings e.g. ["enc1","enc2"]
 pub async fn decode_tracks(Json(body): Json<protocol::EncodedTracks>) -> impl IntoResponse {
-    tracing::info!("POST /v4/decodetracks: count={}", body.tracks.len());
+    let tracks_input = body.0;
+    tracing::info!("POST /v4/decodetracks: count={}", tracks_input.len());
 
-    let mut tracks = Vec::with_capacity(body.tracks.len());
-    for encoded in &body.tracks {
+    if tracks_input.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(
+                serde_json::to_value(crate::common::RustalinkError::bad_request(
+                    "No tracks to decode provided",
+                    "/v4/decodetracks",
+                ))
+                .unwrap(),
+            ),
+        )
+            .into_response();
+    }
+
+    let mut tracks = Vec::with_capacity(tracks_input.len());
+    for encoded in &tracks_input {
         match Track::decode(encoded) {
             Some(t) => tracks.push(t),
             None => {

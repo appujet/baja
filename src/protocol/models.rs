@@ -23,10 +23,9 @@ pub struct DecodeTrackQuery {
     pub track: Option<String>,
 }
 
+/// e.g. POST body: ["encoded1", "encoded2"]
 #[derive(Deserialize)]
-pub struct EncodedTracks {
-    pub tracks: Vec<String>,
-}
+pub struct EncodedTracks(pub Vec<String>);
 
 #[derive(Serialize)]
 pub struct Tracks {
