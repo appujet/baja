@@ -1,0 +1,25 @@
+use std::sync::{Arc, atomic::AtomicI32};
+
+use dashmap::DashMap;
+
+use crate::{
+    common::types::SessionId, routeplanner::RoutePlanner, server::session::Session,
+    sources::SourceManager,
+};
+
+/// Alias for the primary session registry.
+pub type SessionMap = DashMap<SessionId, Arc<Session>>;
+
+pub struct AppState {
+    pub start_time: std::time::Instant,
+    pub sessions: SessionMap,
+    pub resumable_sessions: SessionMap,
+    pub routeplanner: Option<Arc<dyn RoutePlanner>>,
+    pub source_manager: Arc<SourceManager>,
+    pub lyrics_manager: Arc<crate::lyrics::LyricsManager>,
+    pub config: crate::configs::Config,
+
+    // Global stats counters for O(1) collection
+    pub total_players: Arc<AtomicI32>,
+    pub playing_players: Arc<AtomicI32>,
+}
