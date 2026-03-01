@@ -6,11 +6,7 @@ use axum::{
     response::{IntoResponse, Json},
 };
 
-use crate::{
-    common::utils::now_ms,
-    player::{Filters, Player, PlayerState, Players, VoiceState},
-    server::AppState,
-};
+use crate::{player::Players, server::AppState};
 
 /// GET /v4/sessions/{sessionId}/players
 pub async fn get_players(
@@ -66,24 +62,17 @@ pub async fn get_player(
                     )
                         .into_response()
                 }
-                None => {
-                    // Return empty player
-                    let empty = Player {
-                        guild_id: guild_id.clone(),
-                        track: None,
-                        volume: 100,
-                        paused: false,
-                        state: PlayerState {
-                            time: now_ms(),
-                            position: 0,
-                            connected: false,
-                            ping: -1,
-                        },
-                        voice: VoiceState::default(),
-                        filters: Filters::default(),
-                    };
-                    (StatusCode::OK, Json(serde_json::to_value(empty).unwrap())).into_response()
-                }
+                None => (
+                    StatusCode::NOT_FOUND,
+                    Json(
+                        serde_json::to_value(crate::common::RustalinkError::not_found(
+                            format!("Player not found for guild: {}", guild_id),
+                            format!("/v4/sessions/{}/players/{}", session_id, guild_id),
+                        ))
+                        .unwrap(),
+                    ),
+                )
+                    .into_response(),
             }
         }
         None => (

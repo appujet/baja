@@ -28,17 +28,7 @@ async fn main() -> AnyResult<()> {
 
     rustalink::common::logger::init(&config);
 
-    rustalink::log_println!(
-        r#"
-    [32m____            __        ___       __  [0m
-   [32m/ __ \__  _______/ /_____ _/ (_)___  / /__[0m
-  [32m/ /_/ / / / / ___/ __/ __ `/ / / __ \/ //_/[0m   v{}
- [32m/ _, _/ /_/ (__  ) /_/ /_/ / / / / / / ,<   [0m   Running on Rust
-[32m/_/ |_|\__,_/____/\__/\__,_/_/_/_/ /_/_/|_|  [0m   
-                                             
-    "#,
-        env!("CARGO_PKG_VERSION")
-    );
+    rustalink::common::banner::print_banner(&rustalink::common::banner::BannerInfo::default());
 
     info!("Rustalink Server starting...");
 
@@ -54,6 +44,7 @@ async fn main() -> AnyResult<()> {
 
     let source_manager = Arc::new(rustalink::sources::SourceManager::new(&config));
     let lyrics_manager = Arc::new(rustalink::lyrics::LyricsManager::new(&config));
+    let youtube_ctx = source_manager.youtube_stream_ctx.clone();
 
     let shared_state = Arc::new(AppState {
         start_time: std::time::Instant::now(),
@@ -63,8 +54,7 @@ async fn main() -> AnyResult<()> {
         source_manager,
         lyrics_manager,
         config: config.clone(),
-        total_players: Arc::new(std::sync::atomic::AtomicI32::new(0)),
-        playing_players: Arc::new(std::sync::atomic::AtomicI32::new(0)),
+        youtube: youtube_ctx,
     });
 
     let app = Router::new()

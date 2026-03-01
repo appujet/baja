@@ -134,9 +134,10 @@ impl MixcloudSource {
                 if let Some(data) = body["data"]["cloudcastLookup"].as_object() {
                     if let Some(reason) = data.get("restrictedReason").and_then(|v| v.as_str()) {
                         return LoadResult::Error(crate::protocol::tracks::LoadError {
-                            message: format!("Track restricted: {}", reason),
+                            message: Some(format!("Track restricted: {}", reason)),
                             severity: crate::common::Severity::Common,
                             cause: reason.to_string(),
+                            cause_stack_trace: None,
                         });
                     }
 

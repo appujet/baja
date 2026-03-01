@@ -7,19 +7,40 @@ pub fn collect_stats(
     session: Option<&crate::server::session::Session>,
 ) -> protocol::Stats {
     let uptime = state.start_time.elapsed().as_millis() as u64;
-    let total_players = state.total_players.load(Ordering::Relaxed);
-    let playing_players = state.playing_players.load(Ordering::Relaxed);
 
-    let mut current_total_sent: u64;
-    let mut current_total_nulled: u64;
-    let mut player_count = 0;
-    let total_sent: i32;
-    let total_nulled: i32;
+    // --- Compute live player counts across ALL sessions (same as Lavalink) ---
+    let mut total_players: i32 = 0;
+    let mut playing_players: i32 = 0;
 
-    if let Some(s) = session {
-        // Accumulate current totals from all active players + history.
-        current_total_sent = s.total_sent_historical.load(Ordering::Relaxed);
-        current_total_nulled = s.total_nulled_historical.load(Ordering::Relaxed);
+    for entry in state.sessions.iter() {
+        let s = entry.value();
+        total_players += s.players.len() as i32;
+        for player_ref in s.players.iter() {
+            if let Ok(p) = player_ref.value().try_read() {
+                if p.track.is_some() && !p.paused {
+                    playing_players += 1;
+                }
+            }
+        }
+    }
+    // Also count resumable sessions
+    for entry in state.resumable_sessions.iter() {
+        let s = entry.value();
+        total_players += s.players.len() as i32;
+        for player_ref in s.players.iter() {
+            if let Ok(p) = player_ref.value().try_read() {
+                if p.track.is_some() && !p.paused {
+                    playing_players += 1;
+                }
+            }
+        }
+    }
+
+    // --- Frame stats: per-session only, over actively playing players ---
+    let frame_stats = if let Some(s) = session {
+        let mut current_total_sent: u64 = s.total_sent_historical.load(Ordering::Relaxed);
+        let mut current_total_nulled: u64 = s.total_nulled_historical.load(Ordering::Relaxed);
+        let mut player_count: i32 = 0;
 
         let arcs: Vec<_> = s.players.iter().map(|kv| kv.value().clone()).collect();
         for arc in arcs {
@@ -32,7 +53,7 @@ pub fn collect_stats(
             }
         }
 
-        // Calculate delta since the last time this session requested stats.
+        // Delta since last stats call
         let last_sent = s
             .last_stats_sent
             .swap(current_total_sent, Ordering::Relaxed);
@@ -40,29 +61,27 @@ pub fn collect_stats(
             .last_stats_nulled
             .swap(current_total_nulled, Ordering::Relaxed);
 
-        // If it's the first time, we don't have a delta yet.
-        if last_sent != 0 || last_nulled != 0 {
-            total_sent = current_total_sent.saturating_sub(last_sent) as i32;
-            total_nulled = current_total_nulled.saturating_sub(last_nulled) as i32;
+        let (total_sent, total_nulled) = if last_sent != 0 || last_nulled != 0 {
+            (
+                current_total_sent.saturating_sub(last_sent) as i32,
+                current_total_nulled.saturating_sub(last_nulled) as i32,
+            )
         } else {
-            // First tick or zero frames.
-            total_sent = 0;
-            total_nulled = 0;
+            (0, 0)
+        };
+
+        if player_count != 0 {
+            let expected_per_player = (state.config.server.stats_interval * 50) as i32;
+            let total_deficit = player_count * expected_per_player - (total_sent + total_nulled);
+
+            Some(protocol::FrameStats {
+                sent: total_sent / player_count,
+                nulled: total_nulled / player_count,
+                deficit: total_deficit / player_count,
+            })
+        } else {
+            None
         }
-    } else {
-        total_sent = 0;
-        total_nulled = 0;
-    }
-
-    let frame_stats = if session.is_some() && player_count != 0 {
-        let expected_per_player = (state.config.server.stats_interval * 50) as i32;
-        let total_deficit = player_count * expected_per_player - (total_sent + total_nulled);
-
-        Some(protocol::FrameStats {
-            sent: total_sent / player_count,
-            nulled: total_nulled / player_count,
-            deficit: total_deficit / player_count,
-        })
     } else {
         None
     };

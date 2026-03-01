@@ -194,8 +194,12 @@ The compiled binary will be at `target/release/rustalink`.
 
 ## ❤️ Credits & Inspiration
 
-- **[Lavalink](https://github.com/lavalink-devs/Lavalink)** - The original standalone audio node.
-- **[NodeLink](https://github.com/PerformanC/NodeLink)** - Lightweight Lavalink alternative.
+Rustalink is an independent reimplementation in Rust and does not copy source code from the following projects. We acknowledge their design and architectural influence:
+
+- **[Lavalink](https://github.com/lavalink-devs/Lavalink)** *(MIT License)* — The original standalone audio node. Rustalink implements the Lavalink v4 protocol and draws inspiration from its player management, session handling, and event emission design.
+- **[NodeLink](https://github.com/PerformanC/NodeLink)** *(GPL-3.0)* — Lightweight Lavalink alternative by PerformanC. Inspired Rustalink's approach to source handling and route planning.
+
+See [NOTICE](./NOTICE) for full third-party attribution details.
 
 ---
 

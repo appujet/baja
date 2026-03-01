@@ -144,17 +144,19 @@ impl SourcePlugin for LocalSource {
             Ok(Err(e)) => {
                 warn!("Local source: failed to probe '{}': {}", path, e);
                 LoadResult::Error(LoadError {
-                    message: format!("Failed to load local file: {}", e),
+                    message: Some(format!("Failed to load local file: {}", e)),
                     severity: Severity::Suspicious,
                     cause: e.to_string(),
+                    cause_stack_trace: None,
                 })
             }
             Err(e) => {
                 error!("Local source: task join error: {}", e);
                 LoadResult::Error(LoadError {
-                    message: "Internal error reading local file".to_string(),
+                    message: Some("Internal error reading local file".to_string()),
                     severity: Severity::Fault,
                     cause: e.to_string(),
+                    cause_stack_trace: None,
                 })
             }
         }

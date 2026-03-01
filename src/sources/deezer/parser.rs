@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::DeezerSource;
 use crate::protocol::tracks::{Track, TrackInfo};
@@ -60,14 +60,14 @@ impl DeezerSource {
         let artist_artwork_url = json.pointer("/artist/picture_xl").and_then(|v| v.as_str());
         let preview_url = json.get("preview").and_then(|v| v.as_str());
 
-        track.plugin_info = crate::protocol::tracks::PluginInfo {
-            album_name: album_name.map(|s| s.to_string()),
-            album_url,
-            artist_url,
-            artist_artwork_url: artist_artwork_url.map(|s| s.to_string()),
-            preview_url: preview_url.map(|s| s.to_string()),
-            is_preview: false,
-        };
+        track.plugin_info = json!({
+            "albumName": album_name,
+            "albumUrl": album_url,
+            "artistUrl": artist_url,
+            "artistArtworkUrl": artist_artwork_url,
+            "previewUrl": preview_url,
+            "isPreview": false
+        });
 
         Some(track)
     }
@@ -141,14 +141,14 @@ impl DeezerSource {
             });
         let preview_url = json.pointer("/MEDIA/0/HREF").and_then(|v| v.as_str());
 
-        track.plugin_info = crate::protocol::tracks::PluginInfo {
-            album_name: album_name.map(|s| s.to_string()),
-            album_url,
-            artist_url,
-            artist_artwork_url: artist_artwork_url.map(|s| s.to_string()),
-            preview_url: preview_url.map(|s| s.to_string()),
-            is_preview: false,
-        };
+        track.plugin_info = json!({
+            "albumName": album_name,
+            "albumUrl": album_url,
+            "artistUrl": artist_url,
+            "artistArtworkUrl": artist_artwork_url,
+            "previewUrl": preview_url,
+            "isPreview": false
+        });
 
         Some(track)
     }

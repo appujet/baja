@@ -290,4 +290,38 @@ impl YouTubeOAuth {
             .await
             .map(|t| format!("Bearer {}", t))
     }
+
+    pub async fn get_refresh_tokens(&self) -> Vec<String> {
+        self.refresh_tokens.read().await.clone()
+    }
+
+    pub async fn refresh_with_token(
+        &self,
+        refresh_token: &str,
+    ) -> AnyResult<serde_json::Value> {
+        let res = self
+            .client
+            .post("https://www.youtube.com/o/oauth2/token")
+            .json(&json!({
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token"
+            }))
+            .send()
+            .await?;
+
+        let status = res.status();
+        let body: serde_json::Value = res.json().await?;
+
+        if status.is_success() {
+            Ok(body)
+        } else {
+            Err(format!(
+                "OAuth refresh failed: status={}, body={}",
+                status, body
+            )
+            .into())
+        }
+    }
 }

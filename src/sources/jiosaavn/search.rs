@@ -37,9 +37,10 @@ impl JioSaavnSource {
             LoadResult::Empty {}
         } else {
             LoadResult::Error(LoadError {
-                message: "JioSaavn search failed".to_string(),
+                message: Some("JioSaavn search failed".to_string()),
                 severity: crate::common::Severity::Common,
-                cause: "".to_string(),
+                cause: String::new(),
+                cause_stack_trace: None,
             })
         }
     }
@@ -110,36 +111,30 @@ impl JioSaavnSource {
                         }
 
                         // Enrich pluginInfo
-                        track.plugin_info = crate::protocol::tracks::PluginInfo {
-                            album_name: detail
+                        track.plugin_info = serde_json::json!({
+                            "albumName": detail
                                 .get("album")
                                 .or_else(|| detail.pointer("/more_info/album"))
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string()),
-                            album_url: detail
+                                .and_then(|v| v.as_str()),
+                            "albumUrl": detail
                                 .get("album_url")
                                 .or_else(|| detail.pointer("/more_info/album_url"))
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string()),
-                            artist_url: detail
+                                .and_then(|v| v.as_str()),
+                            "artistUrl": detail
                                 .pointer("/more_info/artistMap/primary_artists/0/perma_url")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string()),
-                            artist_artwork_url: detail
+                                .and_then(|v| v.as_str()),
+                            "artistArtworkUrl": detail
                                 .pointer("/more_info/artistMap/primary_artists/0/image")
                                 .and_then(|v| v.as_str())
-                                .map(|s| {
-                                    s.replace("150x150", "500x500").replace("50x50", "500x500")
-                                }),
-                            preview_url: detail
+                                .map(|s| s.replace("150x150", "500x500").replace("50x50", "500x500")),
+                            "previewUrl": detail
                                 .get("media_preview_url")
                                 .or_else(|| detail.pointer("/more_info/media_preview_url"))
                                 .or_else(|| detail.get("vlink"))
                                 .or_else(|| detail.pointer("/more_info/vlink"))
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string()),
-                            is_preview: false,
-                        };
+                                .and_then(|v| v.as_str()),
+                            "isPreview": false
+                        });
 
                         // Update Author
                         if let Some(artists) =

@@ -49,6 +49,15 @@ pub struct YouTubeSource {
     http: Arc<reqwest::Client>,
 }
 
+pub struct YoutubeStreamContext {
+    pub clients: Vec<Arc<dyn YouTubeClient>>,
+    pub oauth: Arc<YouTubeOAuth>,
+    pub cipher_manager: Arc<YouTubeCipherManager>,
+    pub visitor_data: SharedRw<Option<String>>,
+    pub http: Arc<reqwest::Client>,
+}
+
+
 impl YouTubeSource {
     pub fn new(config: Option<YouTubeConfig>, http: Arc<reqwest::Client>) -> Self {
         let config = config.unwrap_or_default();
@@ -180,6 +189,16 @@ impl YouTubeSource {
             visitor_data,
             http,
         }
+    }
+
+    pub fn stream_context(&self) -> Arc<YoutubeStreamContext> {
+        Arc::new(YoutubeStreamContext {
+            clients: self.playback_clients.clone(),
+            oauth: self.oauth.clone(),
+            cipher_manager: self.cipher_manager.clone(),
+            visitor_data: self.visitor_data.clone(),
+            http: self.http.clone(),
+        })
     }
 
     async fn refresh_visitor_data(http: &reqwest::Client) -> Option<String> {

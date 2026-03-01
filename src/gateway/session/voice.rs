@@ -76,7 +76,7 @@ pub async fn speak_loop(
     let mut encoder = Encoder::new().map_err(map_boxed_err)?;
     let mut udp = UdpBackend::new(socket, addr, ssrc, key, &mode).map_err(map_boxed_err)?;
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(FRAME_DURATION_MS));
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     let mut pcm_buf = vec![0i16; PCM_FRAME_SIZE];
     let mut opus_buf = vec![0u8; MAX_OPUS_FRAME_SIZE];

@@ -1,5 +1,6 @@
 use std::sync::{Arc, atomic::Ordering};
 
+use tokio::time::{Duration, timeout};
 use tracing::{error, info};
 
 use super::{
@@ -28,6 +29,7 @@ pub async fn start_playback(
     update_interval_secs: u64,
     user_data: Option<serde_json::Value>,
     end_time: Option<u64>,
+    start_time_ms: Option<u64>,
 ) {
     // -- 1. Tear down the current track ------------------------------------
     stop_current_track(player, &session).await;
@@ -36,7 +38,6 @@ pub async fn start_playback(
     player.track_info = protocol::tracks::Track::decode(&track);
     player.track = Some(track.clone());
     player.position = 0;
-    player.paused = false;
     player.end_time = end_time;
     player.user_data = user_data.unwrap_or_else(|| serde_json::json!({}));
     player.stop_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -65,11 +66,26 @@ pub async fn start_playback(
         .unwrap_or_else(|| track_info.identifier.clone());
 
     // -- 3. Resolve the track via SourceManager ----------------------------
-    let playable = match source_manager.get_track(&track_info, routeplanner).await {
-        Some(t) => t,
-        None => {
+    let playable = match timeout(
+        Duration::from_secs(30),
+        source_manager.get_track(&track_info, routeplanner),
+    )
+    .await
+    {
+        Ok(Some(t)) => t,
+        Ok(None) => {
             error!("Failed to resolve track: {}", identifier);
             send_load_failed(player, &session, format!("Failed to resolve: {identifier}")).await;
+            return;
+        }
+        Err(_elapsed) => {
+            error!("Track resolution timed out (30 s): {}", identifier);
+            send_load_failed(
+                player,
+                &session,
+                format!("Track resolution timed out: {identifier}"),
+            )
+            .await;
             return;
         }
     };
@@ -100,6 +116,12 @@ pub async fn start_playback(
     }
 
     player.track_handle = Some(handle.clone());
+
+    if let Some(start_ms) = start_time_ms {
+        if start_ms > 0 {
+            handle.seek(start_ms);
+        }
+    }
 
     if player.paused {
         handle.pause();
@@ -148,13 +170,10 @@ pub async fn start_playback(
         lyrics_subscribed: player.lyrics_subscribed.clone(),
         lyrics_data: player.lyrics_data.clone(),
         last_lyric_index: player.last_lyric_index.clone(),
+        end_time_ms: player.end_time,
     };
 
     player.track_task = Some(tokio::spawn(monitor_loop(ctx)));
-
-    if let Some(ref counter) = player.global_playing_players {
-        counter.fetch_add(1, Ordering::Relaxed);
-    }
 }
 
 /// Stop the currently playing track and emit `TrackEnd: Replaced` if needed.
@@ -174,17 +193,13 @@ async fn stop_current_track(player: &mut PlayerContext, session: &Session) {
         }
     }
 
+    player.stop_signal.store(true, Ordering::SeqCst);
+
     if let Some(task) = player.track_task.take() {
         task.abort();
     }
     if let Some(handle) = &player.track_handle {
-        player.stop_signal.store(true, Ordering::SeqCst);
         handle.stop();
-        if !player.paused {
-            if let Some(ref counter) = player.global_playing_players {
-                counter.fetch_sub(1, Ordering::Relaxed);
-            }
-        }
     }
 
     // Accumulate final frame counts into the session history before discard.

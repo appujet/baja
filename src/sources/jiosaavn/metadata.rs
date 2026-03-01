@@ -100,9 +100,10 @@ impl JioSaavnSource {
             }
         } else {
             LoadResult::Error(LoadError {
-                message: "JioSaavn list fetch failed".to_string(),
+                message: Some("JioSaavn list fetch failed".to_string()),
                 severity: crate::common::Severity::Common,
-                cause: "".to_string(),
+                cause: String::new(),
+                cause_stack_trace: None,
             })
         }
     }

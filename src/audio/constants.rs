@@ -66,7 +66,7 @@ pub const MAX_CONCURRENT_FETCHES: usize = 2;
 pub const HTTP_CLIENT_TIMEOUT_SECS: u64 = 15;
 
 /// Maximum times a single chunk is retried before the source raises a fatal error.
-pub const MAX_FETCH_RETRIES: usize = 5;
+pub const MAX_FETCH_RETRIES: u32 = 5;
 
 /// Milliseconds a fetch worker parks on the condvar when there is no work to do.
 pub const WORKER_IDLE_MS: u64 = 50;
@@ -82,6 +82,10 @@ pub const PROBE_TIMEOUT_SECS: u64 = 10;
 
 /// HTTP prefetch buffer size (2 MB) — how much data can be stored ahead.
 pub const HTTP_PREFETCH_BUFFER_SIZE: usize = 2 * 1_024 * 1_024;
+
+/// Maximum total bytes buffered in `next_buf` before the prefetcher pauses.
+/// Prevents unbounded memory growth when the consumer (decoder) stalls.
+pub const MAX_HTTP_BUF_BYTES: usize = 8 * 1_024 * 1_024;
 
 /// Smallest buffer capacity used for initial fetching (256 KB).
 pub const HTTP_INITIAL_BUF_CAPACITY: usize = 256 * 1_024;

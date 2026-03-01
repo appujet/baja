@@ -17,6 +17,7 @@ pub struct ShazamSource {
     client: Arc<reqwest::Client>,
     search_prefixes: Vec<String>,
     url_regex: Regex,
+    og_title_regex: Regex,
     search_limit: usize,
 }
 
@@ -28,7 +29,10 @@ impl ShazamSource {
         Ok(Self {
             client,
             search_prefixes: vec!["shsearch:".to_string(), "szsearch:".to_string()],
-            url_regex: Regex::new(r"https?://(?:www\.)?shazam\.com/song/\d+(?:/[^/?#]+)?").unwrap(),
+            url_regex: Regex::new(r"https?://(?:www\.)?shazam\.com/song/\d+(?:/[^/?#]+)?")
+                .expect("shazam URL regex is a valid literal"),
+            og_title_regex: Regex::new(r"^(.+?) - (.+?):")
+                .expect("shazam og:title regex is a valid literal"),
             search_limit: config.shazam.as_ref().map(|c| c.search_limit).unwrap_or(10),
         })
     }
@@ -130,14 +134,14 @@ impl ShazamSource {
             source_name: "shazam".to_string(),
         });
 
-        track.plugin_info = crate::protocol::tracks::PluginInfo {
-            album_name: None,
-            album_url: None,
-            artist_url: None,
-            artist_artwork_url: None,
-            preview_url: None,
-            is_preview: false,
-        };
+        track.plugin_info = serde_json::json!({
+            "albumName": null,
+            "albumUrl": null,
+            "artistUrl": null,
+            "artistArtworkUrl": null,
+            "previewUrl": null,
+            "isPreview": false
+        });
 
         Some(track)
     }
@@ -176,9 +180,18 @@ impl ShazamSource {
 
         if final_title == "Unknown" {
             if let Some(og_title) = self.extract_meta_content(&html, "og:title") {
-                if let Some(caps) = Regex::new(r"^(.+?) - (.+?):").unwrap().captures(&og_title) {
-                    final_title = caps.get(1).map(|m| m.as_str().to_string()).unwrap();
-                    final_artist = caps.get(2).map(|m| m.as_str().to_string()).unwrap();
+                // Use the pre-compiled field regex — never allocate inside a request path.
+                if let Some(caps) = self.og_title_regex.captures(&og_title) {
+                    // Both groups are guaranteed by the regex structure, but use
+                    // safe accessors to avoid panics if the input is malformed.
+                    final_title = caps
+                        .get(1)
+                        .map(|m| m.as_str().to_string())
+                        .unwrap_or_else(|| og_title.clone());
+                    final_artist = caps
+                        .get(2)
+                        .map(|m| m.as_str().to_string())
+                        .unwrap_or_else(|| "Unknown".to_string());
                 } else {
                     final_title = og_title;
                 }
@@ -210,14 +223,14 @@ impl ShazamSource {
             source_name: "shazam".to_string(),
         });
 
-        track.plugin_info = crate::protocol::tracks::PluginInfo {
-            album_name: None,
-            album_url: None,
-            artist_url: None,
-            artist_artwork_url: None,
-            preview_url: None,
-            is_preview: false,
-        };
+        track.plugin_info = serde_json::json!({
+            "albumName": null,
+            "albumUrl": null,
+            "artistUrl": null,
+            "artistArtworkUrl": null,
+            "previewUrl": null,
+            "isPreview": false
+        });
 
         LoadResult::Track(track)
     }

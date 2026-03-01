@@ -1,4 +1,5 @@
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use regex::Regex;
 use tracing::debug;
@@ -22,9 +23,7 @@ impl FlowerySource {
     pub fn new(config: FloweryConfig) -> Self {
         Self {
             config,
-            search_prefixes: vec![
-                "ftts:".to_string(),
-            ],
+            search_prefixes: vec!["ftts:".to_string()],
             url_pattern: Regex::new(r"(?i)^ftts://").unwrap(),
         }
     }
@@ -51,7 +50,11 @@ impl FlowerySource {
         }
     }
 
-    fn build_url(&self, text: &str, params_override: std::collections::HashMap<String, String>) -> String {
+    fn build_url(
+        &self,
+        text: &str,
+        params_override: std::collections::HashMap<String, String>,
+    ) -> String {
         let mut voice = self.config.voice.clone();
         let mut translate = self.config.translate;
         let mut silence = self.config.silence;
@@ -103,19 +106,25 @@ impl FlowerySource {
             let decoded_text = urlencoding::decode(&path_and_query[..split_idx])
                 .unwrap_or_else(|_| std::borrow::Cow::Borrowed(&path_and_query[..split_idx]))
                 .into_owned();
-            
+
             let query_str = &path_and_query[split_idx + 1..];
             for pair in query_str.split('&') {
                 if let Some(eq_idx) = pair.find('=') {
                     let key = &pair[..eq_idx];
                     let value = &pair[eq_idx + 1..];
                     params.insert(
-                        urlencoding::decode(key).unwrap_or_else(|_| std::borrow::Cow::Borrowed(key)).into_owned(),
-                        urlencoding::decode(value).unwrap_or_else(|_| std::borrow::Cow::Borrowed(value)).into_owned(),
+                        urlencoding::decode(key)
+                            .unwrap_or_else(|_| std::borrow::Cow::Borrowed(key))
+                            .into_owned(),
+                        urlencoding::decode(value)
+                            .unwrap_or_else(|_| std::borrow::Cow::Borrowed(value))
+                            .into_owned(),
                     );
                 } else if !pair.is_empty() {
                     params.insert(
-                        urlencoding::decode(pair).unwrap_or_else(|_| std::borrow::Cow::Borrowed(pair)).into_owned(),
+                        urlencoding::decode(pair)
+                            .unwrap_or_else(|_| std::borrow::Cow::Borrowed(pair))
+                            .into_owned(),
                         "".to_string(),
                     );
                 }
@@ -138,7 +147,9 @@ impl SourcePlugin for FlowerySource {
     }
 
     fn can_handle(&self, identifier: &str) -> bool {
-        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+        self.search_prefixes
+            .iter()
+            .any(|p| identifier.starts_with(p))
             || self.url_pattern.is_match(identifier)
     }
 
@@ -148,7 +159,7 @@ impl SourcePlugin for FlowerySource {
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
         debug!("Flowery TTS loading: {}", identifier);
-        
+
         let (text, params) = self.parse_query(identifier);
 
         if text.trim().is_empty() {
@@ -167,14 +178,14 @@ impl SourcePlugin for FlowerySource {
     ) -> Option<BoxedTrack> {
         let (text, params) = self.parse_query(identifier);
         let url = self.build_url(&text, params);
-        
+
         Some(Box::new(HttpTrack {
             url,
             local_addr: routeplanner.and_then(|rp| rp.get_address()),
             proxy: None,
         }))
     }
-    
+
     fn search_prefixes(&self) -> Vec<&str> {
         self.search_prefixes.iter().map(|s| s.as_str()).collect()
     }

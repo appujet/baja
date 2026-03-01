@@ -21,7 +21,7 @@ pub async fn destroy_player(
     match state.sessions.get(&session_id) {
         Some(session) => {
             if let Some((_, player_arc)) = session.players.remove(&guild_id) {
-                let player = player_arc.write().await;
+                let mut player = player_arc.write().await;
                 // Emit TrackEnd(Cleanup) if track existed
                 if player.track.is_some() {
                     if let Some(track_data) = player.to_player_response().track {
@@ -36,10 +36,17 @@ pub async fn destroy_player(
                     }
                 }
 
+                // Abort background tasks
+                if let Some(task) = player.track_task.take() {
+                    task.abort();
+                }
+                if let Some(task) = player.gateway_task.take() {
+                    task.abort();
+                }
                 if let Some(handle) = &player.track_handle {
                     player
                         .stop_signal
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
                     handle.stop();
                 }
                 {

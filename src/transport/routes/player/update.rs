@@ -59,37 +59,47 @@ pub async fn update_player(
             std::sync::Arc::new(tokio::sync::RwLock::new(PlayerContext::new(
                 guild_id.clone(),
                 &state.config.player,
-                Some(state.total_players.clone()),
-                Some(state.playing_players.clone()),
             )))
         })
         .clone();
 
     let mut player = player_arc.write().await;
 
-    // 1. Apply basic state (volume, paused, position)
-    if let Some(vol) = body.volume {
-        player.set_volume(vol);
-    }
-    if let Some(paused) = body.paused {
-        player.set_paused(paused);
-    }
-    if let Some(pos) = body.position {
-        player.seek(pos);
-        if player.track.is_some() {
-            let seek_update = protocol::OutgoingMessage::PlayerUpdate {
-                guild_id: guild_id.clone(),
-                state: crate::player::PlayerState {
-                    time: crate::common::utils::now_ms(),
-                    position: pos,
-                    connected: !player.voice.token.is_empty(),
-                    ping: player.ping.load(std::sync::atomic::Ordering::Relaxed),
-                },
-            };
-            let session_clone = session.clone();
-            tokio::spawn(async move {
-                session_clone.send_message(&seek_update);
-            });
+    // Determine if a new track will be loaded
+    let loading_new_track =
+        body.track.is_some() || body.encoded_track.is_some() || body.identifier.is_some();
+
+    // 1. Apply basic state — only when NOT loading a new track
+    //    (Lavalink passes these to the new track instead)
+    if !loading_new_track {
+        if let Some(vol) = body.volume {
+            player.set_volume(vol);
+        }
+        if let Some(paused) = body.paused {
+            player.set_paused(paused);
+        }
+        if let Some(pos) = body.position {
+            player.seek(pos);
+            if player.track.is_some() {
+                let seek_update = protocol::OutgoingMessage::PlayerUpdate {
+                    guild_id: guild_id.clone(),
+                    state: crate::player::PlayerState {
+                        time: crate::common::utils::now_ms(),
+                        position: pos,
+                        connected: !player.voice.token.is_empty(),
+                        ping: player.ping.load(std::sync::atomic::Ordering::Relaxed),
+                    },
+                };
+                let session_clone = session.clone();
+                tokio::spawn(async move {
+                    session_clone.send_message(&seek_update);
+                });
+            }
+        }
+    } else {
+        // Volume can always be applied
+        if let Some(vol) = body.volume {
+            player.set_volume(vol);
         }
     }
 
@@ -121,10 +131,41 @@ pub async fn update_player(
             let mut lock = player.filter_chain.lock().await;
             *lock = new_chain;
         }
+
+        session.send_message(&protocol::OutgoingMessage::PlayerUpdate {
+            guild_id: guild_id.clone(),
+            state: crate::player::PlayerState {
+                time: crate::common::utils::now_ms(),
+                position: player
+                    .track_handle
+                    .as_ref()
+                    .map(|h| h.get_position())
+                    .unwrap_or(player.position),
+                connected: !player.voice.token.is_empty(),
+                ping: player.ping.load(std::sync::atomic::Ordering::Relaxed),
+            },
+        });
     }
 
     // 3. Apply voice connection
     if let Some(voice) = body.voice {
+        // Lavalink rejects partial voice state (empty token/endpoint/sessionId)
+        if voice.token.is_empty() || voice.endpoint.is_empty() || voice.session_id.is_empty() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(
+                    serde_json::to_value(crate::common::RustalinkError::bad_request(
+                        format!(
+                            "Partial Lavalink voice state: token={} endpoint={} session_id={}",
+                            voice.token, voice.endpoint, voice.session_id
+                        ),
+                        format!("/v4/sessions/{}/players/{}", session_id, guild_id),
+                    ))
+                    .unwrap(),
+                ),
+            )
+                .into_response();
+        }
         player.voice = VoiceConnectionState {
             token: voice.token,
             endpoint: voice.endpoint,
@@ -201,6 +242,14 @@ pub async fn update_player(
 
     // 5. Process track update
     if let Some(track_update) = track_to_apply {
+        // position is applied to the new track as a start offset
+        let start_time_ms = if loading_new_track {
+            body.position
+        } else {
+            None
+        };
+        // always reset paused to false for new track unless explicitly set
+        player.paused = body.paused.unwrap_or(false);
         apply_track_update(
             &mut player,
             track_update,
@@ -208,6 +257,7 @@ pub async fn update_player(
             &state,
             no_replace,
             body.end_time.clone(),
+            start_time_ms,
         )
         .await;
     }
@@ -237,6 +287,7 @@ async fn apply_track_update(
     state: &AppState,
     no_replace: bool,
     end_time_input: Option<crate::player::state::EndTime>,
+    start_time_ms: Option<u64>,
 ) {
     let is_replacement = track_update.encoded.is_some() || track_update.identifier.is_some();
     if !is_replacement {
@@ -275,7 +326,7 @@ async fn apply_track_update(
                             track: protocol::tracks::Track {
                                 encoded,
                                 info: protocol::tracks::TrackInfo::default(),
-                                plugin_info: protocol::tracks::PluginInfo::default(),
+                                plugin_info: serde_json::json!({}),
                                 user_data: serde_json::json!({}),
                             },
                             reason: protocol::TrackEndReason::Stopped,
@@ -284,49 +335,43 @@ async fn apply_track_update(
                 }
             }
             crate::player::state::TrackEncoded::Set(track_data) => {
-                let is_playing = player
-                    .track_handle
-                    .as_ref()
-                    .map(|h| {
-                        h.get_state() == crate::audio::playback::handle::PlaybackState::Playing
-                    })
-                    .unwrap_or(false);
-                if !no_replace || !is_playing {
-                    crate::player::start_playback(
-                        player,
-                        track_data,
-                        session,
-                        state.source_manager.clone(),
-                        state.lyrics_manager.clone(),
-                        state.routeplanner.clone(),
-                        state.config.server.player_update_interval,
-                        track_update.user_data,
-                        end_time_val,
-                    )
-                    .await;
+                // noReplace: Lavalink skips if track != null (regardless of paused state)
+                if no_replace && player.track.is_some() {
+                    return;
                 }
+                crate::player::start_playback(
+                    player,
+                    track_data,
+                    session,
+                    state.source_manager.clone(),
+                    state.lyrics_manager.clone(),
+                    state.routeplanner.clone(),
+                    state.config.server.player_update_interval,
+                    track_update.user_data,
+                    end_time_val,
+                    start_time_ms,
+                )
+                .await;
             }
         }
     } else if let Some(identifier) = track_update.identifier {
-        let is_playing = player
-            .track_handle
-            .as_ref()
-            .map(|h| h.get_state() == crate::audio::playback::handle::PlaybackState::Playing)
-            .unwrap_or(false);
-        if !no_replace || !is_playing {
-            crate::player::start_playback(
-                player,
-                identifier,
-                session,
-                state.source_manager.clone(),
-                state.lyrics_manager.clone(),
-                state.routeplanner.clone(),
-                state.config.server.player_update_interval,
-                track_update.user_data,
-                end_time_val,
-            )
-            .await;
+        // noReplace: Lavalink skips if track != null
+        if no_replace && player.track.is_some() {
+            return;
         }
+        crate::player::start_playback(
+            player,
+            identifier,
+            session,
+            state.source_manager.clone(),
+            state.lyrics_manager.clone(),
+            state.routeplanner.clone(),
+            state.config.server.player_update_interval,
+            track_update.user_data,
+            end_time_val,
+            start_time_ms,
+        )
+        .await;
     }
 }
 

@@ -8,60 +8,11 @@ use axum::{
 
 use crate::{
     protocol::{
-        models::{
-            GetLyricsQuery, GetPlayerLyricsQuery, LyricsLoadResult,
-            LyricsResultData as ApiLyricsData, RustalinkLyrics, RustalinkLyricsLine,
-        },
+        models::{GetLyricsQuery, GetPlayerLyricsQuery, RustalinkLyrics, RustalinkLyricsLine},
         tracks::Track,
     },
     server::AppState,
 };
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LoadLyricsQuery {
-    pub encoded_track: String,
-    pub lang: Option<String>,
-}
-
-pub async fn load_lyrics(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<LoadLyricsQuery>,
-) -> Json<LyricsLoadResult> {
-    tracing::info!(
-        "GET /v4/loadlyrics: encoded_track='{}', lang={:?}",
-        query.encoded_track,
-        query.lang
-    );
-    let track = match Track::decode(&query.encoded_track) {
-        Some(t) => t,
-        None => {
-            return Json(LyricsLoadResult::Error(
-                crate::protocol::models::LyricsLoadError {
-                    message: "Invalid encoded track".to_string(),
-                    severity: crate::common::Severity::Common,
-                },
-            ));
-        }
-    };
-
-    match state.lyrics_manager.load_lyrics(&track.info).await {
-        Some(lyrics) => {
-            if let Some(lines) = lyrics.lines {
-                Json(LyricsLoadResult::Lyrics(ApiLyricsData {
-                    name: lyrics.name,
-                    synced: true,
-                    lines,
-                }))
-            } else {
-                Json(LyricsLoadResult::Text(
-                    crate::protocol::models::LyricsTextData { text: lyrics.text },
-                ))
-            }
-        }
-        None => Json(LyricsLoadResult::Empty {}),
-    }
-}
 
 pub async fn subscribe_lyrics(
     State(state): State<Arc<AppState>>,
