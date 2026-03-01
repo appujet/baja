@@ -7,12 +7,12 @@ use super::{
     audius::AudiusSource,
     bandcamp::BandcampSource,
     deezer::DeezerSource,
+    flowery::FlowerySource,
     gaana::GaanaSource,
     google_tts::GoogleTtsSource,
-    flowery::FlowerySource,
-    lazypytts::LazyPyTtsSource,
     http::HttpSource,
     jiosaavn::JioSaavnSource,
+    lazypytts::LazyPyTtsSource,
     local::LocalSource,
     mixcloud::MixcloudSource,
     pandora::PandoraSource,
@@ -285,21 +285,27 @@ impl SourceManager {
             config.sources.google_tts,
             "Google TTS",
             None::<crate::configs::HttpProxyConfig>,
-            Ok::<_, String>(GoogleTtsSource::new(config.google_tts.clone().unwrap_or_default()))
+            Ok::<_, String>(GoogleTtsSource::new(
+                config.google_tts.clone().unwrap_or_default()
+            ))
         );
 
         register_source!(
             config.sources.flowery,
             "Flowery",
             None::<crate::configs::HttpProxyConfig>,
-            Ok::<_, String>(FlowerySource::new(config.flowery.clone().unwrap_or_default()))
+            Ok::<_, String>(FlowerySource::new(
+                config.flowery.clone().unwrap_or_default()
+            ))
         );
 
         register_source!(
             config.sources.lazypytts,
             "LazyPyTTS",
             None::<crate::configs::HttpProxyConfig>,
-            Ok::<_, String>(LazyPyTtsSource::new(config.lazypytts.clone().unwrap_or_default()))
+            Ok::<_, String>(LazyPyTtsSource::new(
+                config.lazypytts.clone().unwrap_or_default()
+            ))
         );
 
         if config.sources.local {

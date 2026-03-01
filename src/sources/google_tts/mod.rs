@@ -1,4 +1,5 @@
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use regex::Regex;
 use tracing::debug;
@@ -22,10 +23,7 @@ impl GoogleTtsSource {
     pub fn new(config: GoogleTtsConfig) -> Self {
         Self {
             config,
-            search_prefixes: vec![
-                "gtts:".to_string(), 
-                "speak:".to_string(),
-            ],
+            search_prefixes: vec!["gtts:".to_string(), "speak:".to_string()],
             url_pattern: Regex::new(r"(?i)^(gtts://|speak://)").unwrap(),
         }
     }
@@ -64,7 +62,7 @@ impl GoogleTtsSource {
 
     fn parse_query(&self, identifier: &str) -> (String, String) {
         let mut path = identifier;
-        
+
         for prefix in &self.search_prefixes {
             if path.starts_with(prefix) {
                 path = path.trim_start_matches(prefix);
@@ -96,7 +94,9 @@ impl SourcePlugin for GoogleTtsSource {
     }
 
     fn can_handle(&self, identifier: &str) -> bool {
-        self.search_prefixes.iter().any(|p| identifier.starts_with(p))
+        self.search_prefixes
+            .iter()
+            .any(|p| identifier.starts_with(p))
             || self.url_pattern.is_match(identifier)
     }
 
@@ -106,7 +106,7 @@ impl SourcePlugin for GoogleTtsSource {
         _routeplanner: Option<Arc<dyn crate::routeplanner::RoutePlanner>>,
     ) -> LoadResult {
         debug!("Google TTS loading: {}", identifier);
-        
+
         let (language, text) = self.parse_query(identifier);
 
         if text.trim().is_empty() {
@@ -124,7 +124,7 @@ impl SourcePlugin for GoogleTtsSource {
     ) -> Option<BoxedTrack> {
         let (language, text) = self.parse_query(identifier);
         let url = self.build_url(&language, &text);
-        
+
         // Use HttpTrack to decode the audio stream
         Some(Box::new(HttpTrack {
             url,
@@ -132,7 +132,7 @@ impl SourcePlugin for GoogleTtsSource {
             proxy: None, // Google TTS doesn't currently support proxy config directly in the new implementation, similar to Spotify
         }))
     }
-    
+
     fn search_prefixes(&self) -> Vec<&str> {
         self.search_prefixes.iter().map(|s| s.as_str()).collect()
     }

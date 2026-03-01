@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use base64::{Engine as _, engine::general_purpose};
+use serde::{Deserialize, Serialize};
 use toml::Value;
 
 use crate::configs::*;
@@ -128,10 +128,10 @@ impl Config {
         }
 
         let raw_val: Value = toml::from_str(&config_str)?;
-        
+
         if let Some(cs_val) = raw_val.get("config_server") {
             let cs: ConfigServerConfig = cs_val.clone().try_into()?;
-                        
+
             let client = reqwest::Client::new();
             let mut request = client.get(&cs.url);
 
@@ -143,7 +143,11 @@ impl Config {
 
             let response = request.send().await?;
             if !response.status().is_success() {
-                return Err(format!("Failed to fetch remote config: status {}", response.status()).into());
+                return Err(format!(
+                    "Failed to fetch remote config: status {}",
+                    response.status()
+                )
+                .into());
             }
 
             let remote_toml = response.text().await?;
