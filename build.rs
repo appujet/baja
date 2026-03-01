@@ -30,9 +30,7 @@ fn main() {
         .filter(|o| o.status.success())
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_owned())
-        .unwrap_or_else(|| {
-            env::var("RUSTC").unwrap_or_else(|_| "unknown".into())
-        });
+        .unwrap_or_else(|| env::var("RUSTC").unwrap_or_else(|_| "unknown".into()));
     println!("cargo:rustc-env=RUST_VERSION={}", rust_version);
 
     let git = gather_git_info();
@@ -53,7 +51,6 @@ fn main() {
     let version_string = build_version_string(&git);
     println!("cargo:rustc-env=GIT_VERSION_STRING={}", version_string);
 }
-
 
 struct GitInfo {
     branch: String,
@@ -79,7 +76,6 @@ impl Default for GitInfo {
     }
 }
 
-
 fn gather_git_info() -> GitInfo {
     let mut info = GitInfo::default();
 
@@ -96,8 +92,8 @@ fn gather_git_info() -> GitInfo {
     }
 
     if info.branch == "unknown" {
-        info.branch = git_output(&["rev-parse", "--abbrev-ref", "HEAD"])
-            .unwrap_or_else(|| "unknown".into());
+        info.branch =
+            git_output(&["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|| "unknown".into());
     }
 
     if info.commit == "unknown" {
@@ -139,7 +135,6 @@ fn gather_git_info() -> GitInfo {
     info
 }
 
-
 /// Run a git command and return trimmed stdout, or `None` on failure.
 fn git_output(args: &[&str]) -> Option<String> {
     let out = Command::new("git").args(args).output().ok()?;
@@ -157,11 +152,7 @@ fn parse_dot_git_head() -> Option<(String, String)> {
 
     if let Some(ref_path) = head.strip_prefix("ref: ") {
         // Symbolic ref — e.g. "ref: refs/heads/main"
-        let branch = ref_path
-            .split('/')
-            .last()
-            .unwrap_or("unknown")
-            .to_owned();
+        let branch = ref_path.split('/').last().unwrap_or("unknown").to_owned();
 
         let commit = fs::read_to_string(format!(".git/{}", ref_path))
             .ok()
@@ -198,10 +189,7 @@ fn packed_ref_lookup(ref_name: &str) -> Option<String> {
 fn file_mtime_ms(path: &str) -> Option<u64> {
     let meta = fs::metadata(path).ok()?;
     let mtime = meta.modified().ok()?;
-    let ms = mtime
-        .duration_since(UNIX_EPOCH)
-        .ok()?
-        .as_millis() as u64;
+    let ms = mtime.duration_since(UNIX_EPOCH).ok()?.as_millis() as u64;
     Some(ms)
 }
 
