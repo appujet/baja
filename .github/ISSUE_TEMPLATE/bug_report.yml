@@ -1,0 +1,61 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in Rustalink
+title: "[Bug]: "
+labels: ["bug"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! 🦀
+        Please fill out the details below so we can reproduce and fix it quickly.
+
+  - type: input
+    id: version
+    attributes:
+      label: Rustalink Version
+      placeholder: e.g. v0.1.0 or commit hash
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug clearly.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Start server with ...
+        2. Send request ...
+        3. Observe error ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened instead?
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Error Output
+      description: Paste relevant logs here.
+      render: shell
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Docker / Linux / Windows / macOS / Arch etc.
