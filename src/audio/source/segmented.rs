@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     io::{Read, Seek, SeekFrom},
     sync::Arc,
-    thread,
     time::Duration,
 };
 
@@ -26,7 +25,7 @@ use crate::{
 #[derive(Clone)]
 enum ChunkState {
     /// Not yet scheduled; inner value is the number of previous failed attempts.
-    Empty(usize),
+    Empty(u32),
     /// A worker has claimed this chunk and is downloading it.
     Downloading,
     /// Data is available for reading.
@@ -111,12 +110,11 @@ impl SegmentedSource {
             let shared_clone = shared.clone();
             let client_clone = client.clone();
             let url_str = url.to_string();
-            let handle_clone = handle.clone();
-            thread::Builder::new()
-                .name(format!("segmented-fetch-{}", worker_id))
-                .spawn(move || {
-                    fetch_worker(worker_id, shared_clone, client_clone, url_str, handle_clone);
-                })?;
+            // Spawn async tasks instead of OS threads so they scale with the
+            // Tokio thread pool rather than creating N OS threads per source.
+            tokio::spawn(async move {
+                fetch_worker(worker_id, shared_clone, client_clone, url_str).await;
+            });
         }
 
         Ok(Self {
@@ -237,13 +235,16 @@ impl Drop for SegmentedSource {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/// Issue a Range request for `[offset, offset + size)` and return the response.
-async fn fetch_range(
+/// Fetch the byte range `[offset, offset + size)` in a single async operation
+/// and return it as a `Bytes` value. Combining the send + body collection into
+/// one async fn avoids two separate `block_on` calls for a single logical HTTP
+/// fetch.
+async fn fetch_chunk(
     client: &reqwest::Client,
     url: &str,
     offset: u64,
     size: u64,
-) -> AnyResult<reqwest::Response> {
+) -> AnyResult<Bytes> {
     let range = format!("bytes={}-{}", offset, offset + size - 1);
     let res = client
         .get(url)
@@ -254,19 +255,23 @@ async fn fetch_range(
 
     // 206 Partial Content is what we expect; any non-2xx is an error.
     if !res.status().is_success() {
-        return Err(format!("fetch_range: HTTP {}", res.status()).into());
+        return Err(format!("fetch_chunk: HTTP {}", res.status()).into());
     }
-    Ok(res)
+    Ok(res.bytes().await?)
 }
 
 // ─── Fetch worker ─────────────────────────────────────────────────────────────
 
-fn fetch_worker(
+/// Async worker task that claims and downloads chunks on behalf of the reader.
+///
+/// Implemented as an `async fn` and spawned via `tokio::spawn` so it runs on
+/// the Tokio thread pool rather than creating a new OS thread per worker per
+/// source.
+async fn fetch_worker(
     worker_id: usize,
     shared: Arc<(Mutex<ReaderState>, Condvar)>,
     client: reqwest::Client,
     url: String,
-    handle: tokio::runtime::Handle,
 ) {
     let (lock, cvar) = &*shared;
 
@@ -316,9 +321,8 @@ fn fetch_worker(
         let (idx, prior_retries, total_len) = match target {
             Some(t) => t,
             None => {
-                // Nothing to do — wait briefly.
-                let mut state = lock.lock();
-                cvar.wait_for(&mut state, Duration::from_millis(WORKER_IDLE_MS));
+                // Nothing to do — yield and wait briefly.
+                tokio::time::sleep(Duration::from_millis(WORKER_IDLE_MS)).await;
                 continue;
             }
         };
@@ -332,34 +336,24 @@ fn fetch_worker(
             worker_id, idx, offset, size
         );
 
-        match handle.block_on(fetch_range(&client, &url, offset, size)) {
-            Ok(res) => match handle.block_on(res.bytes()) {
-                Ok(bytes) => {
-                    let actual = bytes.len();
-                    let mut state = lock.lock();
-                    state.chunks.insert(idx, ChunkState::Ready(bytes));
-                    trace!(
-                        "Worker {}: filled chunk {} ({} bytes)",
-                        worker_id, idx, actual
-                    );
-                    cvar.notify_all();
-                }
-                Err(e) => {
-                    warn!(
-                        "Worker {}: failed to read body for chunk {}: {}",
-                        worker_id, idx, e
-                    );
-                    requeue_or_fatal(lock, cvar, idx, prior_retries, &e.to_string());
-                    thread::sleep(Duration::from_millis(FETCH_WAIT_MS));
-                }
-            },
+        match fetch_chunk(&client, &url, offset, size).await {
+            Ok(bytes) => {
+                let actual = bytes.len();
+                let mut state = lock.lock();
+                state.chunks.insert(idx, ChunkState::Ready(bytes));
+                trace!(
+                    "Worker {}: filled chunk {} ({} bytes)",
+                    worker_id, idx, actual
+                );
+                cvar.notify_all();
+            }
             Err(e) => {
                 warn!(
                     "Worker {}: fetch failed for chunk {}: {}",
                     worker_id, idx, e
                 );
                 requeue_or_fatal(lock, cvar, idx, prior_retries, &e.to_string());
-                thread::sleep(Duration::from_millis(FETCH_WAIT_MS));
+                tokio::time::sleep(Duration::from_millis(FETCH_WAIT_MS)).await;
             }
         }
     }
@@ -370,7 +364,7 @@ fn fetch_worker(
 /// Returns `Some((idx, retry_count))` on success, `None` if the chunk is
 /// already `Downloading` or `Ready`.
 #[inline]
-fn try_claim_chunk(state: &mut ReaderState, idx: usize, total_len: u64) -> Option<(usize, usize)> {
+fn try_claim_chunk(state: &mut ReaderState, idx: usize, total_len: u64) -> Option<(usize, u32)> {
     if (idx * CHUNK_SIZE) as u64 >= total_len {
         return None;
     }
@@ -391,7 +385,7 @@ fn requeue_or_fatal(
     lock: &Mutex<ReaderState>,
     cvar: &Condvar,
     idx: usize,
-    prior_retries: usize,
+    prior_retries: u32,
     error: &str,
 ) {
     let mut state = lock.lock();

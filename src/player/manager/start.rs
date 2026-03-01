@@ -1,5 +1,6 @@
 use std::sync::{Arc, atomic::Ordering};
 
+use tokio::time::{Duration, timeout};
 use tracing::{error, info};
 
 use super::{
@@ -65,11 +66,26 @@ pub async fn start_playback(
         .unwrap_or_else(|| track_info.identifier.clone());
 
     // -- 3. Resolve the track via SourceManager ----------------------------
-    let playable = match source_manager.get_track(&track_info, routeplanner).await {
-        Some(t) => t,
-        None => {
+    let playable = match timeout(
+        Duration::from_secs(30),
+        source_manager.get_track(&track_info, routeplanner),
+    )
+    .await
+    {
+        Ok(Some(t)) => t,
+        Ok(None) => {
             error!("Failed to resolve track: {}", identifier);
             send_load_failed(player, &session, format!("Failed to resolve: {identifier}")).await;
+            return;
+        }
+        Err(_elapsed) => {
+            error!("Track resolution timed out (30 s): {}", identifier);
+            send_load_failed(
+                player,
+                &session,
+                format!("Track resolution timed out: {identifier}"),
+            )
+            .await;
             return;
         }
     };

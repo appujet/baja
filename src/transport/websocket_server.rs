@@ -197,7 +197,8 @@ pub async fn handle_socket(
     ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     let (mut ws_sink, mut ws_stream) = socket.split();
-    let (ws_tx, mut ws_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+    // Bounded channel: cap at 1024 messages. If the writer falls behind (bot's
+    let (ws_tx, mut ws_rx) = tokio::sync::mpsc::channel::<Message>(1024);
 
     // Spawn dedicated writer task to prevent HoL blocking
     let writer_session_id = session_id.clone();
@@ -216,8 +217,15 @@ pub async fn handle_socket(
     loop {
         tokio::select! {
             _ = ping_interval.tick() => {
-                if ws_tx.send(Message::Ping(b"heartbeat".to_vec().into())).is_err() {
-                    break;
+                use tokio::sync::mpsc::error::TrySendError;
+                if let Err(e) = ws_tx.try_send(Message::Ping(b"heartbeat".to_vec().into())) {
+                    match e {
+                        TrySendError::Closed(_) => break,
+                        TrySendError::Full(_) => {
+                            // Full — skip this ping; not critical.
+                            warn!("WS ping dropped (channel full): session={}", session_id);
+                        }
+                    }
                 }
             }
             _ = stats_interval.tick() => {
@@ -225,8 +233,15 @@ pub async fn handle_socket(
                     let stats = collect_stats(&state, Some(&session));
                     let msg = protocol::OutgoingMessage::Stats { stats };
                     if let Ok(json) = serde_json::to_string(&msg) {
-                        if ws_tx.send(Message::Text(json.into())).is_err() {
-                            break;
+                        use tokio::sync::mpsc::error::TrySendError;
+                        if let Err(e) = ws_tx.try_send(Message::Text(json.into())) {
+                            match e {
+                                TrySendError::Closed(_) => break,
+                                TrySendError::Full(_) => {
+                                    // Full — drop stats frame; bot will receive the next one.
+                                    warn!("WS stats dropped (channel full): session={}", session_id);
+                                }
+                            }
                         }
                     }
                 }
@@ -234,8 +249,15 @@ pub async fn handle_socket(
             res = rx.recv_async() => {
                 match res {
                     Ok(msg) => {
-                        if ws_tx.send(msg).is_err() {
-                            break;
+                        use tokio::sync::mpsc::error::TrySendError;
+                        if let Err(e) = ws_tx.try_send(msg) {
+                            match e {
+                                TrySendError::Closed(_) => break,
+                                TrySendError::Full(_) => {
+                                    // Full — log and drop; prevents unbounded backlog.
+                                    warn!("WS event dropped (channel full): session={}", session_id);
+                                }
+                            }
                         }
                     }
                     Err(_) => {
@@ -276,8 +298,14 @@ pub async fn handle_socket(
                         }
                     }
                     Message::Ping(payload) => {
-                        if ws_tx.send(Message::Pong(payload)).is_err() {
-                             break;
+                        use tokio::sync::mpsc::error::TrySendError;
+                        if let Err(e) = ws_tx.try_send(Message::Pong(payload)) {
+                            match e {
+                                TrySendError::Closed(_) => break,
+                                TrySendError::Full(_) => {
+                                    warn!("WS pong dropped (channel full): session={}", session_id);
+                                }
+                            }
                         }
                     }
                     Message::Pong(_) => {

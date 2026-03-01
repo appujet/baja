@@ -94,15 +94,9 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                 Err(_) => TrackEndReason::Finished,
             };
 
-            session.send_message(&protocol::OutgoingMessage::Event {
-                event: RustalinkEvent::TrackEnd {
-                    guild_id: guild_id.clone(),
-                    track,
-                    reason,
-                },
-            });
-
-            // Clear track state in PlayerContext if it hasn't been replaced.
+            // Clear track state in PlayerContext BEFORE sending TrackEnd so
+            // that a bot querying the REST API on receipt of the event sees a
+            // clean state rather than a stale one.
             if let Some(player_arc) = session.players.get(&guild_id).map(|kv| kv.value().clone()) {
                 let mut p = player_arc.write().await;
                 if p.track_handle
@@ -115,6 +109,15 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                     p.track_handle = None;
                 }
             }
+
+            session.send_message(&protocol::OutgoingMessage::Event {
+                event: RustalinkEvent::TrackEnd {
+                    guild_id: guild_id.clone(),
+                    track,
+                    reason,
+                },
+            });
+
             break;
         }
 

@@ -1,4 +1,4 @@
-use std::{sync::Arc, thread, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use parking_lot::{Condvar, Mutex};
 use tracing::{debug, warn};
@@ -6,6 +6,7 @@ use tracing::{debug, warn};
 use super::HttpSource;
 use crate::audio::constants::{
     HTTP_FETCH_CHUNK_LIMIT, HTTP_PREFETCH_BUFFER_SIZE, HTTP_SOCKET_SKIP_LIMIT, MAX_FETCH_RETRIES,
+    MAX_HTTP_BUF_BYTES,
 };
 
 #[derive(Debug)]
@@ -23,6 +24,26 @@ pub struct SharedState {
     pub error: Option<String>,
 }
 
+/// Milliseconds for each short sleep slice when waiting for stop/seek signals.
+const SLEEP_SLICE_MS: u64 = 50;
+
+/// Sleep in short slices so a Stop or Seek command received during a retry
+/// backoff is honoured within one slice interval rather than after the full
+/// sleep duration.
+fn interruptible_sleep(shared: &Arc<(Mutex<SharedState>, Condvar)>, total_ms: u64) -> bool /* returns true if Stop was received */
+{
+    let slices = (total_ms / SLEEP_SLICE_MS).max(1);
+    for _ in 0..slices {
+        std::thread::sleep(Duration::from_millis(SLEEP_SLICE_MS));
+        let (lock, _) = &**shared;
+        let state = lock.lock();
+        if matches!(state.command, PrefetchCommand::Stop) {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn prefetch_loop(
     shared: Arc<(Mutex<SharedState>, Condvar)>,
     client: reqwest::Client,
@@ -32,7 +53,7 @@ pub fn prefetch_loop(
     total_len: Option<u64>,
     handle: tokio::runtime::Handle,
 ) {
-    let mut retry_count = 0;
+    let mut retry_count: u32 = 0;
     loop {
         let mut target_seek = None;
 
@@ -49,12 +70,16 @@ pub fn prefetch_loop(
                 }
                 PrefetchCommand::Stop => break,
                 PrefetchCommand::Continue => {
+                    // Park until the consumer needs more data, the source is
+                    // done, or a Seek/Stop arrives. Use `wait_for` with a
+                    // timeout so the thread is never parked forever when the
+                    // consumer dies without sending Stop.
                     while !state.need_data
                         && !state.done
                         && matches!(state.command, PrefetchCommand::Continue)
                         && state.next_buf.len() >= HTTP_PREFETCH_BUFFER_SIZE
                     {
-                        cvar.wait(&mut state);
+                        cvar.wait_for(&mut state, Duration::from_millis(500));
                     }
                     if matches!(state.command, PrefetchCommand::Stop) {
                         break;
@@ -147,7 +172,13 @@ pub fn prefetch_loop(
                             "HttpSource prefetch fetch failed (retry {}/{}): {}",
                             retry_count, MAX_FETCH_RETRIES, e
                         );
-                        thread::sleep(Duration::from_millis(500 * retry_count as u64));
+                        // Exponential backoff: 100 ms × 2^(retry-1), capped at 5
+                        // doublings (3.2 s). Sleep in short slices so a Stop or
+                        // Seek command interrupts the wait immediately.
+                        let backoff_ms = 100u64 * (1u64 << (retry_count - 1).min(5));
+                        if interruptible_sleep(&shared, backoff_ms) {
+                            break;
+                        }
                         continue;
                     }
 
@@ -168,9 +199,14 @@ pub fn prefetch_loop(
                     let (lock, cvar) = &*shared;
                     let mut state = lock.lock();
 
+                    // Only push bytes if no Seek/Stop arrived during the await.
                     if matches!(state.command, PrefetchCommand::Continue) {
-                        state.next_buf.extend_from_slice(&bytes);
-                        current_pos += n as u64;
+                        // Enforce an upper bound on the prefetch buffer to prevent
+                        // unbounded memory growth when the consumer stalls.
+                        if state.next_buf.len() < MAX_HTTP_BUF_BYTES {
+                            state.next_buf.extend_from_slice(&bytes);
+                            current_pos += n as u64;
+                        }
                         if state.next_buf.len() >= HTTP_PREFETCH_BUFFER_SIZE {
                             state.need_data = false;
                         }
@@ -186,8 +222,11 @@ pub fn prefetch_loop(
                     if is_eof {
                         state.done = true;
                         cvar.notify_all();
+                        // Park until a Seek restarts us or a Stop arrives.
+                        // Use wait_for to avoid leaking the thread if the
+                        // consumer drops without sending Stop.
                         while state.done && matches!(state.command, PrefetchCommand::Continue) {
-                            cvar.wait(&mut state);
+                            cvar.wait_for(&mut state, Duration::from_millis(500));
                         }
                     } else {
                         current_response = None;
@@ -196,14 +235,20 @@ pub fn prefetch_loop(
                     continue;
                 }
                 Err(e) => {
+                    // Always clear the response on a decode error to prevent
+                    // reusing a corrupted connection state.
+                    current_response = None;
                     retry_count += 1;
                     if retry_count <= MAX_FETCH_RETRIES {
                         warn!(
                             "HttpSource prefetch read failed (retry {}/{}): {}",
                             retry_count, MAX_FETCH_RETRIES, e
                         );
-                        current_response = None;
-                        thread::sleep(Duration::from_millis(100 * retry_count as u64));
+                        // Exponential backoff with interruptible slices.
+                        let backoff_ms = 50u64 * (1u64 << (retry_count - 1).min(5));
+                        if interruptible_sleep(&shared, backoff_ms) {
+                            break;
+                        }
                         continue;
                     }
 
