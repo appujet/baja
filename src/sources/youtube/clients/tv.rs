@@ -301,4 +301,15 @@ impl YouTubeClient for TvClient {
 
         Ok(None)
     }
+
+    async fn get_player_body(
+        &self,
+        track_id: &str,
+        visitor_data: Option<&str>,
+        oauth: Arc<YouTubeOAuth>,
+    ) -> Option<serde_json::Value> {
+        self.player_request(track_id, visitor_data, None, &oauth)
+            .await
+            .ok()
+    }
 }

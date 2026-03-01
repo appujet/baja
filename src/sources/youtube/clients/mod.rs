@@ -71,4 +71,13 @@ pub trait YouTubeClient: Send + Sync {
     ) -> Option<SabrConfig> {
         None
     }
+
+    async fn get_player_body(
+        &self,
+        _track_id: &str,
+        _visitor_data: Option<&str>,
+        _oauth: Arc<YouTubeOAuth>,
+    ) -> Option<serde_json::Value> {
+        None
+    }
 }

@@ -23,7 +23,7 @@ use super::{
     spotify::SpotifySource,
     tidal::TidalSource,
     yandexmusic::YandexMusicSource,
-    youtube::{YouTubeSource, cipher::YouTubeCipherManager},
+    youtube::{YouTubeSource, YoutubeStreamContext, cipher::YouTubeCipherManager},
 };
 use crate::common::HttpClientPool;
 
@@ -32,6 +32,7 @@ pub struct SourceManager {
     pub sources: Vec<BoxedSource>,
     mirrors: Option<crate::configs::MirrorsConfig>,
     pub youtube_cipher_manager: Option<Arc<YouTubeCipherManager>>,
+    pub youtube_stream_ctx: Option<Arc<YoutubeStreamContext>>,
     pub http_pool: Arc<HttpClientPool>,
 }
 
@@ -40,6 +41,7 @@ impl SourceManager {
     pub fn new(config: &crate::configs::Config) -> Self {
         let mut sources: Vec<BoxedSource> = Vec::new();
         let mut youtube_cipher_manager = None;
+        let mut youtube_stream_ctx = None;
         let http_pool = Arc::new(HttpClientPool::new());
 
         // Register all sources using a macro for better scalability (M3)
@@ -73,6 +75,7 @@ impl SourceManager {
             let yt_client = http_pool.get(None);
             let yt = YouTubeSource::new(config.youtube.clone(), yt_client);
             youtube_cipher_manager = Some(yt.cipher_manager());
+            youtube_stream_ctx = Some(yt.stream_context());
             sources.push(Box::new(yt));
         }
 
@@ -317,6 +320,7 @@ impl SourceManager {
             sources,
             mirrors: config.mirrors.clone(),
             youtube_cipher_manager,
+            youtube_stream_ctx,
             http_pool,
         }
     }

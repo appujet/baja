@@ -44,6 +44,7 @@ async fn main() -> AnyResult<()> {
 
     let source_manager = Arc::new(rustalink::sources::SourceManager::new(&config));
     let lyrics_manager = Arc::new(rustalink::lyrics::LyricsManager::new(&config));
+    let youtube_ctx = source_manager.youtube_stream_ctx.clone();
 
     let shared_state = Arc::new(AppState {
         start_time: std::time::Instant::now(),
@@ -53,6 +54,7 @@ async fn main() -> AnyResult<()> {
         source_manager,
         lyrics_manager,
         config: config.clone(),
+        youtube: youtube_ctx,
     });
 
     let app = Router::new()

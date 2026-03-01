@@ -9,7 +9,7 @@ use crate::{
     server::AppState,
     transport::{
         middleware::{add_response_headers, check_auth},
-        routes::{lyrics, player, stats},
+        routes::{lyrics, player, stats, youtube},
     },
 };
 const API_V4: &str = "/v4";
@@ -30,7 +30,6 @@ pub fn router(state: Arc<AppState>) -> Router {
                 .delete(player::destroy_player),
         )
         .route("/sessions/{session_id}", patch(player::update_session))
-        .route("/loadlyrics", get(lyrics::load_lyrics))
         .route("/lyrics", get(lyrics::get_lyrics))
         .route(
             "/sessions/{session_id}/players/{guild_id}/lyrics/subscribe",
@@ -50,6 +49,9 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .nest(API_V4, v4_routes)
         .route("/version", get(stats::get_version))
+        .route("/youtube", get(youtube::get_youtube_info))
+        .route("/youtube/stream/{video_id}", get(youtube::youtube_stream))
+        .route("/youtube/oauth/{refresh_token}", get(youtube::youtube_oauth_refresh))
         .layer(middleware::from_fn_with_state(state.clone(), check_auth))
         .layer(middleware::from_fn(add_response_headers))
         .with_state(state)
