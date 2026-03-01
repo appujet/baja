@@ -169,11 +169,12 @@ async fn stop_current_track(player: &mut PlayerContext, session: &Session) {
         }
     }
 
+    player.stop_signal.store(true, Ordering::SeqCst);
+
     if let Some(task) = player.track_task.take() {
         task.abort();
     }
     if let Some(handle) = &player.track_handle {
-        player.stop_signal.store(true, Ordering::SeqCst);
         handle.stop();
     }
 

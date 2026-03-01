@@ -67,6 +67,11 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
 
         // -- Track ended --------------------------------------------------
         if state == PlaybackState::Stopped {
+
+            if stop_signal.load(Ordering::SeqCst) {
+                break;
+            }
+
             let reason = match err_rx.try_recv() {
                 Ok(err) => {
                     warn!("[{}] mid-playback decoder error: {}", guild_id, err);
