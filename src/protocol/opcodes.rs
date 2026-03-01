@@ -65,8 +65,6 @@ pub async fn handle_op(
                     Arc::new(tokio::sync::RwLock::new(PlayerContext::new(
                         guild_id.clone(),
                         &state.config.player,
-                        Some(state.total_players.clone()),
-                        Some(state.playing_players.clone()),
                     )))
                 })
                 .clone();
@@ -144,8 +142,6 @@ pub async fn handle_op(
                     Arc::new(tokio::sync::RwLock::new(PlayerContext::new(
                         guild_id.clone(),
                         &state.config.player,
-                        Some(state.total_players.clone()),
-                        Some(state.playing_players.clone()),
                     )))
                 })
                 .clone();
@@ -167,18 +163,34 @@ pub async fn handle_op(
         IncomingMessage::Stop { guild_id } => {
             if let Some(player_arc) = session.players.get(&guild_id).map(|kv| kv.value().clone()) {
                 let mut player = player_arc.write().await;
+                if let Some(task) = player.track_task.take() {
+                    task.abort();
+                }
                 if let Some(handle) = &player.track_handle {
+                    player
+                        .stop_signal
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
                     handle.stop();
                 }
                 player.track = None;
+                player.track_info = None;
                 player.track_handle = None;
             }
         }
         IncomingMessage::Destroy { guild_id } => {
             if let Some((_, player_arc)) = session.players.remove(&guild_id) {
                 let mut player = player_arc.write().await;
+                if let Some(task) = player.track_task.take() {
+                    task.abort();
+                }
                 if let Some(task) = player.gateway_task.take() {
                     task.abort();
+                }
+                if let Some(handle) = &player.track_handle {
+                    player
+                        .stop_signal
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                    handle.stop();
                 }
             }
         }

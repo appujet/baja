@@ -36,7 +36,6 @@ pub async fn start_playback(
     player.track_info = protocol::tracks::Track::decode(&track);
     player.track = Some(track.clone());
     player.position = 0;
-    player.paused = false;
     player.end_time = end_time;
     player.user_data = user_data.unwrap_or_else(|| serde_json::json!({}));
     player.stop_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -151,10 +150,6 @@ pub async fn start_playback(
     };
 
     player.track_task = Some(tokio::spawn(monitor_loop(ctx)));
-
-    if let Some(ref counter) = player.global_playing_players {
-        counter.fetch_add(1, Ordering::Relaxed);
-    }
 }
 
 /// Stop the currently playing track and emit `TrackEnd: Replaced` if needed.
@@ -180,11 +175,6 @@ async fn stop_current_track(player: &mut PlayerContext, session: &Session) {
     if let Some(handle) = &player.track_handle {
         player.stop_signal.store(true, Ordering::SeqCst);
         handle.stop();
-        if !player.paused {
-            if let Some(ref counter) = player.global_playing_players {
-                counter.fetch_sub(1, Ordering::Relaxed);
-            }
-        }
     }
 
     // Accumulate final frame counts into the session history before discard.

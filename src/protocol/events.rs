@@ -28,7 +28,7 @@ pub enum OutgoingMessage {
     },
 }
 
-/// Events emitted by the player.
+/// Events emitted by the player (op = "event").
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum RustalinkEvent {
@@ -92,20 +92,45 @@ pub enum RustalinkEvent {
         guild_id: crate::common::types::GuildId,
         code: u16,
         reason: String,
+        /// `true` if Discord closed the connection; `false` if Lavalink/Rustalink did.
+        #[serde(rename = "byRemote")]
         by_remote: bool,
     },
 }
 
+/// Why a track stopped playing.
+///
+/// Serialized as lowercase/camelCase to match the Lavalink v4 wire format exactly.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TrackEndReason {
+    /// Track played to the end (or ended due to an exception after starting).
+    /// `mayStartNext = true`
+    #[serde(rename = "finished")]
     Finished,
+
+    /// Track failed to start before providing any audio.
+    /// `mayStartNext = true`
+    #[serde(rename = "loadFailed")]
     LoadFailed,
+
+    /// Player was explicitly stopped via stop() or play(null).
+    /// `mayStartNext = false`
+    #[serde(rename = "stopped")]
     Stopped,
+
+    /// A new track started playing, replacing this one.
+    /// `mayStartNext = false`
+    #[serde(rename = "replaced")]
     Replaced,
+
+    /// Player cleanup threshold reached (leaked/idle player).
+    /// `mayStartNext = false`
+    #[serde(rename = "cleanup")]
     Cleanup,
 }
 
+/// Exception details for `TrackExceptionEvent`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackException {
@@ -113,4 +138,49 @@ pub struct TrackException {
     pub severity: crate::common::Severity,
     pub cause: String,
     pub cause_stack_trace: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_track_end_reason_serialization() {
+        assert_eq!(
+            serde_json::to_string(&TrackEndReason::Finished).unwrap(),
+            "\"finished\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TrackEndReason::LoadFailed).unwrap(),
+            "\"loadFailed\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TrackEndReason::Stopped).unwrap(),
+            "\"stopped\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TrackEndReason::Replaced).unwrap(),
+            "\"replaced\""
+        );
+        assert_eq!(
+            serde_json::to_string(&TrackEndReason::Cleanup).unwrap(),
+            "\"cleanup\""
+        );
+    }
+
+    #[test]
+    fn test_track_end_reason_deserialization() {
+        let r: TrackEndReason = serde_json::from_str("\"finished\"").unwrap();
+        assert!(matches!(r, TrackEndReason::Finished));
+
+        let r: TrackEndReason = serde_json::from_str("\"loadFailed\"").unwrap();
+        assert!(matches!(r, TrackEndReason::LoadFailed));
+
+        let r: TrackEndReason = serde_json::from_str("\"stopped\"").unwrap();
+        assert!(matches!(r, TrackEndReason::Stopped));
+    }
 }

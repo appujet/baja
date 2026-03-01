@@ -130,14 +130,14 @@ impl ShazamSource {
             source_name: "shazam".to_string(),
         });
 
-        track.plugin_info = crate::protocol::tracks::PluginInfo {
-            album_name: None,
-            album_url: None,
-            artist_url: None,
-            artist_artwork_url: None,
-            preview_url: None,
-            is_preview: false,
-        };
+        track.plugin_info = serde_json::json!({
+            "albumName": null,
+            "albumUrl": null,
+            "artistUrl": null,
+            "artistArtworkUrl": null,
+            "previewUrl": null,
+            "isPreview": false
+        });
 
         Some(track)
     }
@@ -210,14 +210,14 @@ impl ShazamSource {
             source_name: "shazam".to_string(),
         });
 
-        track.plugin_info = crate::protocol::tracks::PluginInfo {
-            album_name: None,
-            album_url: None,
-            artist_url: None,
-            artist_artwork_url: None,
-            preview_url: None,
-            is_preview: false,
-        };
+        track.plugin_info = serde_json::json!({
+            "albumName": null,
+            "albumUrl": null,
+            "artistUrl": null,
+            "artistArtworkUrl": null,
+            "previewUrl": null,
+            "isPreview": false
+        });
 
         LoadResult::Track(track)
     }

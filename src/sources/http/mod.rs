@@ -161,9 +161,10 @@ impl SourcePlugin for HttpSource {
             Err(e) => {
                 error!("Task join error: {}", e);
                 LoadResult::Error(LoadError {
-                    message: "Internal error during probing".to_string(),
+                    message: Some("Internal error during probing".to_string()),
                     severity: crate::common::Severity::Suspicious,
                     cause: e.to_string(),
+                    cause_stack_trace: None,
                 })
             }
         }

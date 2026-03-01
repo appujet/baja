@@ -47,7 +47,7 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<protocol::Info
             .into_iter()
             .filter(|name| state.config.filters.is_enabled(name))
             .collect(),
-        plugins: protocol::Plugins { plugins: vec![] },
+        plugins: vec![],
     })
 }
 

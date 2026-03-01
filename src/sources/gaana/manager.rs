@@ -283,9 +283,10 @@ impl GaanaSource {
             Some(d) => d,
             None => {
                 return LoadResult::Error(LoadError {
-                    message: "Gaana search failed".to_string(),
+                    message: Some("Gaana search failed".to_string()),
                     severity: crate::common::Severity::Common,
-                    cause: "".to_string(),
+                    cause: String::new(),
+                    cause_stack_trace: None,
                 });
             }
         };

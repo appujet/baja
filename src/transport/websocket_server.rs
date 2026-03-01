@@ -263,8 +263,17 @@ pub async fn handle_socket(
                 };
 
                 match msg {
-                    Message::Text(_) => {
-                        warn!("Rustalink does not support WebSocket messages. Please use the REST API.");
+                    Message::Text(text) => {
+                        match serde_json::from_str::<protocol::opcodes::IncomingMessage>(&text) {
+                            Ok(op) => {
+                                if let Err(e) = protocol::opcodes::handle_op(op, &state, &session_id).await {
+                                    warn!("Op handling error: session={} err={}", session_id, e);
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to parse WS message: session={} err={} msg={}", session_id, e, text);
+                            }
+                        }
                     }
                     Message::Ping(payload) => {
                         if ws_tx.send(Message::Pong(payload)).is_err() {

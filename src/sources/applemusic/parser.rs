@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::AppleMusicSource;
 use crate::protocol::tracks::{Track, TrackInfo};
@@ -67,18 +67,19 @@ impl AppleMusicSource {
             .pointer("/previews/0/url")
             .and_then(|v| v.as_str());
 
-        track.plugin_info = crate::protocol::tracks::PluginInfo {
-            album_name: album_name.map(|s| s.to_string()),
-            album_url: track
-                .info
-                .uri
-                .as_ref()
-                .and_then(|u| u.split('?').next().map(|s| s.to_string())),
-            artist_url: artist_url.map(|s| s.to_string()),
-            artist_artwork_url: None,
-            preview_url: preview_url.map(|s| s.to_string()),
-            is_preview: false,
-        };
+        let album_url = track
+            .info
+            .uri
+            .as_ref()
+            .and_then(|u| u.split('?').next().map(|s| s.to_string()));
+        track.plugin_info = json!({
+            "albumName": album_name,
+            "albumUrl": album_url,
+            "artistUrl": artist_url,
+            "artistArtworkUrl": null,
+            "previewUrl": preview_url,
+            "isPreview": false
+        });
 
         Some(track)
     }

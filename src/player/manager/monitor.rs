@@ -50,7 +50,10 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
     let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
     let mut tick: u64 = 0;
     let mut last_pos = handle.get_position();
-    let mut stuck_ms: u64 = 0;
+    // Wall-clock instant that the position last changed — used for stuck detection.
+    // This avoids false positives from integer truncation of position in ms.
+    let mut last_pos_changed_at = std::time::Instant::now();
+    let mut stuck_fired = false;
 
     loop {
         interval.tick().await;
@@ -108,17 +111,21 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
             break;
         }
 
-        // -- Stuck detection (only while Playing) -------------------------
         let cur_pos = handle.get_position();
+
         if state == PlaybackState::Playing {
-            if cur_pos == last_pos {
-                stuck_ms += 500;
-                let threshold = if cur_pos == 0 {
+            if cur_pos != last_pos {
+                last_pos_changed_at = std::time::Instant::now();
+                stuck_fired = false;
+            } else if !stuck_fired {
+                let effective_threshold = if cur_pos == 0 {
                     stuck_threshold_ms.max(30_000)
                 } else {
                     stuck_threshold_ms
                 };
-                if stuck_ms >= threshold {
+
+                let elapsed_ms = last_pos_changed_at.elapsed().as_millis() as u64;
+                if elapsed_ms >= effective_threshold {
                     session.send_message(&protocol::OutgoingMessage::Event {
                         event: RustalinkEvent::TrackStuck {
                             guild_id: guild_id.clone(),
@@ -126,15 +133,18 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                             threshold_ms: stuck_threshold_ms,
                         },
                     });
-                    warn!("Track {} got stuck", track.info.title);
+                    warn!(
+                        "[{}] Track stuck: position stalled at {}ms for {}ms (threshold {}ms)",
+                        guild_id, cur_pos, elapsed_ms, stuck_threshold_ms
+                    );
+                    stuck_fired = true;
                     handle.stop();
                 }
-            } else {
-                stuck_ms = 0;
             }
         } else {
-            stuck_ms = 0;
+            last_pos_changed_at = std::time::Instant::now();
         }
+
         last_pos = cur_pos;
 
         // -- PlayerUpdate --------------------------------------------------

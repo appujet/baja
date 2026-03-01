@@ -10,11 +10,7 @@ pub struct Info {
     pub lavaplayer: String,
     pub source_managers: Vec<String>,
     pub filters: Vec<String>,
-    pub plugins: Plugins,
-}
-
-#[derive(Debug, Serialize)]
-pub struct Plugins {
+    /// Flat array of loaded plugins — serializes as `[{"name":...,"version":...},...]`
     pub plugins: Vec<Plugin>,
 }
 

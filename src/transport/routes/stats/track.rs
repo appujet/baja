@@ -121,5 +121,5 @@ pub async fn decode_tracks(Json(body): Json<protocol::EncodedTracks>) -> impl In
         }
     }
 
-    (StatusCode::OK, Json(protocol::Tracks { tracks })).into_response()
+    (StatusCode::OK, Json(tracks)).into_response()
 }
