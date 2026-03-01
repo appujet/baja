@@ -207,10 +207,9 @@ impl TidalSource {
         let mut tracks = Vec::new();
         if let Some(list) = items {
             for item in list {
-                // Playlist items wrap the track in an "item" object, albums don't?
-                // this._parseTrack(item.item || item)
-                let track_obj = if item.get("item").is_some() {
-                    item.get("item").unwrap()
+                // Playlist items wrap the track in an "item" object, albums don't.
+                let track_obj = if let Some(inner) = item.get("item") {
+                    inner
                 } else {
                     item
                 };
@@ -247,8 +246,8 @@ impl TidalSource {
         let mut tracks = Vec::new();
         if let Some(list) = items {
             for item in list {
-                let track_obj = if item.get("item").is_some() {
-                    item.get("item").unwrap()
+                let track_obj = if let Some(inner) = item.get("item") {
+                    inner
                 } else {
                     item
                 };
