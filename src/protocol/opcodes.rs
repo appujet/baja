@@ -157,6 +157,7 @@ pub async fn handle_op(
                 state.config.server.player_update_interval,
                 None,
                 None, // end_time: not supplied via legacy opcode
+                None, // start_time_ms: not supplied via legacy opcode
             )
             .await;
         }

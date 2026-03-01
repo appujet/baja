@@ -131,6 +131,20 @@ pub async fn update_player(
             let mut lock = player.filter_chain.lock().await;
             *lock = new_chain;
         }
+        
+        session.send_message(&protocol::OutgoingMessage::PlayerUpdate {
+            guild_id: guild_id.clone(),
+            state: crate::player::PlayerState {
+                time: crate::common::utils::now_ms(),
+                position: player
+                    .track_handle
+                    .as_ref()
+                    .map(|h| h.get_position())
+                    .unwrap_or(player.position),
+                connected: !player.voice.token.is_empty(),
+                ping: player.ping.load(std::sync::atomic::Ordering::Relaxed),
+            },
+        });
     }
 
     // 3. Apply voice connection
@@ -228,6 +242,12 @@ pub async fn update_player(
 
     // 5. Process track update
     if let Some(track_update) = track_to_apply {
+        // Lavalink: position is applied to the new track as a start offset
+        let start_time_ms = if loading_new_track {
+            body.position
+        } else {
+            None
+        };
         apply_track_update(
             &mut player,
             track_update,
@@ -235,6 +255,7 @@ pub async fn update_player(
             &state,
             no_replace,
             body.end_time.clone(),
+            start_time_ms,
         )
         .await;
     }
@@ -264,6 +285,7 @@ async fn apply_track_update(
     state: &AppState,
     no_replace: bool,
     end_time_input: Option<crate::player::state::EndTime>,
+    start_time_ms: Option<u64>,
 ) {
     let is_replacement = track_update.encoded.is_some() || track_update.identifier.is_some();
     if !is_replacement {
@@ -325,6 +347,7 @@ async fn apply_track_update(
                     state.config.server.player_update_interval,
                     track_update.user_data,
                     end_time_val,
+                    start_time_ms,
                 )
                 .await;
             }
@@ -344,6 +367,7 @@ async fn apply_track_update(
             state.config.server.player_update_interval,
             track_update.user_data,
             end_time_val,
+            start_time_ms,
         )
         .await;
     }

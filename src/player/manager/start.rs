@@ -28,6 +28,7 @@ pub async fn start_playback(
     update_interval_secs: u64,
     user_data: Option<serde_json::Value>,
     end_time: Option<u64>,
+    start_time_ms: Option<u64>,
 ) {
     // -- 1. Tear down the current track ------------------------------------
     stop_current_track(player, &session).await;
@@ -99,6 +100,12 @@ pub async fn start_playback(
     }
 
     player.track_handle = Some(handle.clone());
+
+    if let Some(start_ms) = start_time_ms {
+        if start_ms > 0 {
+            handle.seek(start_ms);
+        }
+    }
 
     if player.paused {
         handle.pause();

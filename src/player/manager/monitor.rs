@@ -67,7 +67,6 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
 
         // -- Track ended --------------------------------------------------
         if state == PlaybackState::Stopped {
-
             if stop_signal.load(Ordering::SeqCst) {
                 break;
             }
@@ -136,6 +135,16 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
                             guild_id: guild_id.clone(),
                             track: track.clone(),
                             threshold_ms: stuck_threshold_ms,
+                        },
+                    });
+                    // sendPlayerUpdate after TrackStuck
+                    session.send_message(&protocol::OutgoingMessage::PlayerUpdate {
+                        guild_id: guild_id.clone(),
+                        state: PlayerState {
+                            time: crate::common::utils::now_ms(),
+                            position: cur_pos,
+                            connected: true,
+                            ping: ping.load(Ordering::Relaxed),
                         },
                     });
                     warn!(
