@@ -28,17 +28,7 @@ async fn main() -> AnyResult<()> {
 
     rustalink::common::logger::init(&config);
 
-    rustalink::log_println!(
-        r#"
-    [32m____            __        ___       __  [0m
-   [32m/ __ \__  _______/ /_____ _/ (_)___  / /__[0m
-  [32m/ /_/ / / / / ___/ __/ __ `/ / / __ \/ //_/[0m   v{}
- [32m/ _, _/ /_/ (__  ) /_/ /_/ / / / / / / ,<   [0m   Running on Rust
-[32m/_/ |_|\__,_/____/\__/\__,_/_/_/_/ /_/_/|_|  [0m   
-                                             
-    "#,
-        env!("CARGO_PKG_VERSION")
-    );
+    rustalink::common::banner::print_banner(&rustalink::common::banner::BannerInfo::default());
 
     info!("Rustalink Server starting...");
 
