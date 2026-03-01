@@ -29,6 +29,8 @@ pub struct MonitorCtx {
     pub lyrics_subscribed: Arc<std::sync::atomic::AtomicBool>,
     pub lyrics_data: Arc<tokio::sync::Mutex<Option<LyricsData>>>,
     pub last_lyric_index: Arc<std::sync::atomic::AtomicI64>,
+    /// endTime: stop track when position reaches this value (ms)
+    pub end_time_ms: Option<u64>,
 }
 
 pub async fn monitor_loop(ctx: MonitorCtx) {
@@ -45,6 +47,7 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
         lyrics_subscribed,
         lyrics_data,
         last_lyric_index,
+        end_time_ms,
     } = ctx;
 
     let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
@@ -117,6 +120,36 @@ pub async fn monitor_loop(ctx: MonitorCtx) {
 
         let cur_pos = handle.get_position();
 
+        // -- endTime: stop track when position reaches the marker (Lavalink TrackMarker) --
+        if let Some(end_ms) = end_time_ms {
+            if cur_pos >= end_ms && state == PlaybackState::Playing {
+                // TrackEndMarkerHandler fires FINISHED reason
+                stop_signal.store(true, Ordering::SeqCst);
+                handle.stop();
+                session.send_message(&protocol::OutgoingMessage::Event {
+                    event: RustalinkEvent::TrackEnd {
+                        guild_id: guild_id.clone(),
+                        track,
+                        reason: TrackEndReason::Finished,
+                    },
+                });
+                if let Some(player_arc) =
+                    session.players.get(&guild_id).map(|kv| kv.value().clone())
+                {
+                    let mut p = player_arc.write().await;
+                    if p.track_handle
+                        .as_ref()
+                        .map(|h| h.is_same(&handle))
+                        .unwrap_or(false)
+                    {
+                        p.track = None;
+                        p.track_info = None;
+                        p.track_handle = None;
+                    }
+                }
+                break;
+            }
+        }
         if state == PlaybackState::Playing {
             if cur_pos != last_pos {
                 last_pos_changed_at = std::time::Instant::now();

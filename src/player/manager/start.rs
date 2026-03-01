@@ -154,6 +154,7 @@ pub async fn start_playback(
         lyrics_subscribed: player.lyrics_subscribed.clone(),
         lyrics_data: player.lyrics_data.clone(),
         last_lyric_index: player.last_lyric_index.clone(),
+        end_time_ms: player.end_time,
     };
 
     player.track_task = Some(tokio::spawn(monitor_loop(ctx)));

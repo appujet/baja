@@ -131,7 +131,7 @@ pub async fn update_player(
             let mut lock = player.filter_chain.lock().await;
             *lock = new_chain;
         }
-        
+
         session.send_message(&protocol::OutgoingMessage::PlayerUpdate {
             guild_id: guild_id.clone(),
             state: crate::player::PlayerState {
@@ -242,12 +242,14 @@ pub async fn update_player(
 
     // 5. Process track update
     if let Some(track_update) = track_to_apply {
-        // Lavalink: position is applied to the new track as a start offset
+        // position is applied to the new track as a start offset
         let start_time_ms = if loading_new_track {
             body.position
         } else {
             None
         };
+        // always reset paused to false for new track unless explicitly set
+        player.paused = body.paused.unwrap_or(false);
         apply_track_update(
             &mut player,
             track_update,
