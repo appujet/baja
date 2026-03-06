@@ -12,20 +12,24 @@ use crate::{
 pub fn collect_stats(app_state: &AppState, session: Option<&Session>) -> protocol::Stats {
     let mut system = app_state.system_state.lock();
 
-    // Refresh only the necessary components
+    let pid = sysinfo::Pid::from_u32(process::id());
+
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing().with_cpu().with_memory(),
+    );
     system.refresh_specifics(
         RefreshKind::nothing()
-            .with_cpu(CpuRefreshKind::everything())
-            .with_memory(MemoryRefreshKind::everything())
-            .with_processes(ProcessRefreshKind::everything()),
+            .with_cpu(CpuRefreshKind::nothing().with_cpu_usage())
+            .with_memory(MemoryRefreshKind::nothing().with_ram()),
     );
 
-    let pid = sysinfo::Pid::from_u32(process::id());
-    let cores = processor_numbers().unwrap_or(1) as u32;
+    let cores = system.cpus().len() as u32;
+    let logical_cores = processor_numbers().unwrap_or(cores as usize) as u32;
 
     let (lavalink_load, process_used_memory) = if let Some(proc) = system.process(pid) {
-        // Normalize CPU usage by core count
-        let load = (proc.cpu_usage() as f64 / 100.0 / cores as f64).clamp(0.0, 1.0);
+        let load = (proc.cpu_usage() as f64 / 100.0 / logical_cores as f64).clamp(0.0, 1.0);
         (load, proc.memory())
     } else {
         (0.0, 0)
@@ -66,12 +70,13 @@ impl FrameMetrics {
         let mut active_player_count = 0;
 
         for entry in session.players.iter() {
-            if let Ok(player) = entry.value().try_read() {
-                if player.track.is_some() && !player.paused {
-                    active_player_count += 1;
-                    historical_sent += player.frames_sent.load(Ordering::Acquire);
-                    historical_nulled += player.frames_nulled.load(Ordering::Acquire);
-                }
+            if let Ok(player) = entry.value().try_read()
+                && player.track.is_some()
+                && !player.paused
+            {
+                active_player_count += 1;
+                historical_sent += player.frames_sent.load(Ordering::Acquire);
+                historical_nulled += player.frames_nulled.load(Ordering::Acquire);
             }
         }
 

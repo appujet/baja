@@ -1,5 +1,4 @@
 use std::{
-    fs,
     sync::Mutex as StdMutex,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
@@ -55,42 +54,44 @@ pub fn strip_ansi_escapes(s: &str) -> String {
     result
 }
 
-static RAM_CACHE: StdMutex<Option<(String, Instant)>> = StdMutex::new(None);
+static RESOURCE_CACHE: StdMutex<Option<(String, Instant)>> = StdMutex::new(None);
 
-/// Returns the current RAM usage of the process, cached for 1 second.
-pub fn get_ram_usage() -> String {
-    let mut cache = RAM_CACHE.lock().unwrap();
-    if let Some((val, _)) = cache
-        .as_ref()
-        .filter(|(_, last_update)| last_update.elapsed().as_secs() < 1)
+/// Queries the program's current memory profile.
+pub fn memory_usage_report() -> String {
+    let mut guard = RESOURCE_CACHE.lock().unwrap();
+
+    if let Some((report, timestamp)) = guard.as_ref()
+        && timestamp.elapsed().as_secs() < 1
     {
-        return val.clone();
+        return report.clone();
     }
 
-    let val = read_proc_self_status().unwrap_or_else(|| "0.00 KB".to_string());
-    *cache = Some((val.clone(), Instant::now()));
-    val
+    let mut system = sysinfo::System::new();
+    let pid = sysinfo::Pid::from_u32(std::process::id());
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::Some(&[pid]),
+        true,
+        sysinfo::ProcessRefreshKind::nothing().with_memory(),
+    );
+
+    let bytes = system.process(pid).map(|p| p.memory()).unwrap_or(0);
+    let formatted = format_byte_size(bytes);
+
+    *guard = Some((formatted.clone(), Instant::now()));
+    formatted
 }
 
-fn read_proc_self_status() -> Option<String> {
-    let status = fs::read_to_string("/proc/self/status").ok()?;
-    for line in status.lines() {
-        if let Some(rss_kb) = line
-            .strip_prefix("VmRSS:")
-            .and_then(|s| s.split_whitespace().next())
-            .and_then(|s| s.parse::<u64>().ok())
-        {
-            let rss_f = rss_kb as f64;
-            return Some(if rss_f < 1024.0 {
-                format!("{:.2} KB", rss_f)
-            } else if rss_f < 1024.0 * 1024.0 {
-                format!("{:.2} MB", rss_f / 1024.0)
-            } else {
-                format!("{:.2} GB", rss_f / (1024.0 * 1024.0))
-            });
-        }
+fn format_byte_size(bytes: u64) -> String {
+    let units = ["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    let mut index = 0;
+
+    while size >= 1024.0 && index < units.len() - 1 {
+        size /= 1024.0;
+        index += 1;
     }
-    None
+
+    format!("{:.2} {}", size, units[index])
 }
 
 pub const DEFAULT_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
