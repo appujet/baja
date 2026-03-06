@@ -1,5 +1,6 @@
-use super::sources::default_true;
 use serde::{Deserialize, Serialize};
+
+use super::sources::default_true;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FiltersConfig {

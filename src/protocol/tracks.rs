@@ -1,5 +1,6 @@
-use crate::protocol::codec::{decode_track, encode_track};
 use serde::{Deserialize, Serialize};
+
+use crate::protocol::codec::{decode_track, encode_track};
 
 /// A single audio track with encoded data and metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2,8 +2,7 @@ use std::{fs, path::Path, sync::OnceLock};
 
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
-use crate::common::utils::strip_ansi_escapes;
-use crate::config::LoggingConfig;
+use crate::{common::utils::strip_ansi_escapes, config::LoggingConfig};
 
 pub mod formatter;
 pub mod writer;

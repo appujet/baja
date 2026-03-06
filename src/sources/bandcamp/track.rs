@@ -1,4 +1,7 @@
-use std::{net::IpAddr, sync::Arc};
+use std::{
+    net::IpAddr,
+    sync::{Arc, OnceLock},
+};
 
 use flume::{Receiver, Sender};
 use regex::Regex;
@@ -8,8 +11,6 @@ use crate::{
     audio::processor::DecoderCommand,
     sources::{http::HttpTrack, plugin::PlayableTrack},
 };
-
-use std::sync::OnceLock;
 
 pub struct BandcampTrack {
     pub client: Arc<reqwest::Client>,

@@ -1,5 +1,6 @@
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Cursor, Read, Write};
+
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 pub const V1: u8 = 1;
 pub const V2: u8 = 2;

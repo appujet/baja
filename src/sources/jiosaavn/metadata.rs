@@ -1,10 +1,11 @@
+use serde_json::Value;
+
 use super::{
     JioSaavnSource,
     helpers::{clean_string, get_json},
     parser::parse_track,
 };
 use crate::protocol::tracks::{LoadError, LoadResult, PlaylistData, PlaylistInfo};
-use serde_json::Value;
 
 impl JioSaavnSource {
     pub async fn fetch_metadata(&self, id: &str) -> Option<Value> {

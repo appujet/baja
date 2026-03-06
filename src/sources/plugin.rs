@@ -3,10 +3,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use flume::{Receiver, Sender};
 
-use crate::audio::{buffer::PooledBuffer, processor::DecoderCommand};
-use crate::config::HttpProxyConfig;
-use crate::protocol::tracks::{LoadResult, SearchResult};
-use crate::routeplanner::RoutePlanner;
+use crate::{
+    audio::{buffer::PooledBuffer, processor::DecoderCommand},
+    config::HttpProxyConfig,
+    protocol::tracks::{LoadResult, SearchResult},
+    routeplanner::RoutePlanner,
+};
 
 /// Represents the output of a decoder, providing streams for audio data and control commands.
 ///

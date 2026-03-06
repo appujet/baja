@@ -4,15 +4,14 @@ pub mod player;
 pub mod server;
 pub mod sources;
 
+use std::{fs, path::Path};
+
 pub use filters::*;
 pub use lyrics::*;
 pub use player::*;
+use serde::Deserialize;
 pub use server::*;
 pub use sources::*;
-
-use serde::Deserialize;
-use std::fs;
-use std::path::Path;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AppConfig {

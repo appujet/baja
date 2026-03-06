@@ -1,11 +1,11 @@
-use flume::Receiver;
 use std::io::ErrorKind;
+
+use flume::Receiver;
 use symphonia::core::{
     audio::SampleBuffer,
     codecs::Decoder,
     errors::Error,
-    formats::FormatReader,
-    formats::{SeekMode, SeekTo},
+    formats::{FormatReader, SeekMode, SeekTo},
     io::MediaSource,
     units::Time,
 };

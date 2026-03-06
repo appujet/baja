@@ -1,6 +1,8 @@
-use std::fs;
-use std::sync::Mutex as StdMutex;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::{
+    fs,
+    sync::Mutex as StdMutex,
+    time::{Instant, SystemTime, UNIX_EPOCH},
+};
 
 // ANSI Color Codes
 pub const RESET: &str = "\x1b[0m";

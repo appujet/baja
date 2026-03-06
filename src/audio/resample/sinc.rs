@@ -1,5 +1,6 @@
-use crate::audio::buffer::PooledBuffer;
 use std::collections::VecDeque;
+
+use crate::audio::buffer::PooledBuffer;
 
 pub struct SincResampler {
     ratio: f32,

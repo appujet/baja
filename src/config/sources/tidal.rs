@@ -1,8 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use super::HttpProxyConfig;
 use crate::config::sources::{
     default_country_code, default_limit_20, default_limit_50, default_true,
 };
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct TidalConfig {

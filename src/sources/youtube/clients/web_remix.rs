@@ -91,7 +91,7 @@ impl YouTubeClient for WebRemixClient {
             .and_then(|c| c.get("visitorData"))
             .and_then(|v| v.as_str())
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
-       
+
         let body = json!({
             "context": self.config().build_context(visitor_data),
             "query": query,

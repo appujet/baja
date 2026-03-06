@@ -1,13 +1,17 @@
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use async_trait::async_trait;
 use regex::Regex;
 use serde_json::{Value, json};
 
-use crate::config::AppConfig;
-use crate::protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo};
-use crate::sources::{BoxedTrack, SourcePlugin};
+use crate::{
+    config::AppConfig,
+    protocol::tracks::{LoadResult, PlaylistData, PlaylistInfo, Track, TrackInfo},
+    sources::{BoxedTrack, SourcePlugin},
+};
 
 const BASE_URL: &str = "https://api.anghami.com/gateway.php";
 

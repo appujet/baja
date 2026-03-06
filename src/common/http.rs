@@ -4,8 +4,7 @@ use dashmap::DashMap;
 use reqwest::{Client, Proxy};
 use tracing::warn;
 
-use crate::common::utils::default_user_agent;
-use crate::config::HttpProxyConfig;
+use crate::{common::utils::default_user_agent, config::HttpProxyConfig};
 
 /// A pool of `reqwest::Client` instances shared across sources.
 pub struct HttpClientPool {

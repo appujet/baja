@@ -1,4 +1,5 @@
 use std::io::{Read, Seek};
+
 use symphonia::core::io::MediaSource;
 
 pub trait AudioSource: Read + Seek + MediaSource + Send {

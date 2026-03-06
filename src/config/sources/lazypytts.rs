@@ -1,5 +1,6 @@
-use crate::config::sources::{default_false, default_limit_3000, default_true};
 use serde::{Deserialize, Serialize};
+
+use crate::config::sources::{default_false, default_limit_3000, default_true};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct LazyPyTtsConfig {

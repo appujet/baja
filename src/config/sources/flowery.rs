@@ -1,5 +1,6 @@
-use crate::config::sources::{default_false, default_zero};
 use serde::{Deserialize, Serialize};
+
+use crate::config::sources::{default_false, default_zero};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FloweryConfig {

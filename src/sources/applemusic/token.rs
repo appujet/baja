@@ -1,5 +1,7 @@
-use std::sync::{Arc, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    sync::{Arc, OnceLock},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use regex::Regex;

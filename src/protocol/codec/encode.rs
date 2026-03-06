@@ -1,9 +1,12 @@
-use crate::protocol::codec::io::{BinaryBuffer, V3};
-use crate::protocol::{CodecError, PlaylistInfo, TrackInfo};
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
-use byteorder::{BigEndian, WriteBytesExt};
 use std::io::Write;
+
+use base64::{Engine, prelude::BASE64_STANDARD};
+use byteorder::{BigEndian, WriteBytesExt};
+
+use crate::protocol::{
+    CodecError, PlaylistInfo, TrackInfo,
+    codec::io::{BinaryBuffer, V3},
+};
 
 /// Serializes TrackInfo and optional userData into a base64 encoded token.
 pub fn encode_track(

@@ -9,8 +9,10 @@ use axum::{
 pub mod middleware;
 pub mod routes;
 
-use self::middleware::{add_response_headers, check_auth};
-use self::routes::{lyrics, player, stats, youtube};
+use self::{
+    middleware::{add_response_headers, check_auth},
+    routes::{lyrics, player, stats, youtube},
+};
 use crate::server::AppState;
 
 const API_V4: &str = "/v4";

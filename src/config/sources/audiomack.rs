@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 use super::HttpProxyConfig;
 use crate::config::sources::{default_limit_20, default_true};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AudiomackConfig {

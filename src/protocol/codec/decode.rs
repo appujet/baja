@@ -1,8 +1,10 @@
-use crate::protocol::codec::io::{BinaryBuffer, V1, V2, V3};
-use crate::protocol::{CodecError, PlaylistInfo, Track, TrackInfo};
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
+use base64::{Engine, prelude::BASE64_STANDARD};
 use byteorder::{BigEndian, ReadBytesExt};
+
+use crate::protocol::{
+    CodecError, PlaylistInfo, Track, TrackInfo,
+    codec::io::{BinaryBuffer, V1, V2, V3},
+};
 
 pub fn decode_track(encoded: &str) -> Result<Track, CodecError> {
     if encoded.is_empty() {

@@ -1,8 +1,12 @@
-use crate::protocol::models::LyricsLine;
+use std::{
+    sync::{Arc, LazyLock},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
 use regex::Regex;
-use std::sync::{Arc, LazyLock};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
+
+use crate::protocol::models::LyricsLine;
 
 static CLEAN_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [

@@ -1,7 +1,5 @@
 mod handler;
 
-pub use handler::handle_socket;
-
 use std::sync::Arc;
 
 use axum::{
@@ -9,6 +7,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
+pub use handler::handle_socket;
 use tracing::{debug, info, warn};
 
 use crate::{
