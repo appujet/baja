@@ -11,7 +11,6 @@ pub mod gaana;
 pub mod google_tts;
 pub mod http;
 pub mod jiosaavn;
-pub mod lazypytts;
 pub mod local;
 pub mod mixcloud;
 pub mod pandora;
@@ -34,7 +33,6 @@ pub use gaana::*;
 pub use google_tts::*;
 pub use http::*;
 pub use jiosaavn::*;
-pub use lazypytts::*;
 pub use local::*;
 pub use mixcloud::*;
 pub use pandora::*;
@@ -77,7 +75,6 @@ pub struct SourcesConfig {
     pub yandexmusic: Option<YandexMusicConfig>,
     pub google_tts: Option<GoogleTtsConfig>,
     pub flowery: Option<FloweryConfig>,
-    pub lazypytts: Option<LazyPyTtsConfig>,
 }
 
 pub fn default_true() -> bool {

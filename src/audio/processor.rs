@@ -9,7 +9,7 @@ use symphonia::core::{
     io::MediaSource,
     units::Time,
 };
-use tracing::{Level, debug, info, span, warn};
+use tracing::{Level, debug, span, warn};
 
 use crate::{
     audio::{
@@ -85,7 +85,7 @@ impl AudioProcessor {
             channels,
         } = open_format(source, kind)?;
 
-        info!(
+        debug!(
             "AudioProcessor: opened format — {}Hz {}ch",
             sample_rate, channels
         );
@@ -123,7 +123,7 @@ impl AudioProcessor {
     pub fn run(&mut self) -> Result<(), Error> {
         let _span = span!(Level::DEBUG, "audio_processor").entered();
 
-        info!(
+        debug!(
             "Starting transcode loop: {}Hz {}ch -> {}Hz",
             self.source_rate, self.channels, TARGET_SAMPLE_RATE
         );

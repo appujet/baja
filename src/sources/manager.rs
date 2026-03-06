@@ -12,7 +12,6 @@ use super::{
     google_tts::GoogleTtsSource,
     http::HttpSource,
     jiosaavn::JioSaavnSource,
-    lazypytts::LazyPyTtsSource,
     local::LocalSource,
     mixcloud::MixcloudSource,
     pandora::PandoraSource,
@@ -417,13 +416,6 @@ impl SourceManager {
         {
             tracing::info!("Loaded source: Flowery");
             sources.push(Box::new(FlowerySource::new(c.clone())));
-        }
-
-        if let Some(c) = config.sources.lazypytts.as_ref()
-            && c.enabled
-        {
-            tracing::info!("Loaded source: LazyPyTTS");
-            sources.push(Box::new(LazyPyTtsSource::new(c.clone())));
         }
 
         // Local Source

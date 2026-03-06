@@ -5,7 +5,11 @@ use std::sync::{
 
 use futures::{SinkExt, StreamExt};
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
-use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_tungstenite::tungstenite::{
+    Error as WsError,
+    error::ProtocolError,
+    protocol::{Message, WebSocketConfig},
+};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
@@ -147,7 +151,11 @@ impl VoiceGateway {
         let url = format!("wss://{}/?v={}", self.endpoint, VOICE_GATEWAY_VERSION);
         debug!("[{}] Connecting: {url}", self.guild_id);
 
-        let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        let mut config = WebSocketConfig::default();
+        config.max_message_size = None;
+        config.max_frame_size = None;
+
+        let (ws_stream, _) = tokio_tungstenite::connect_async_with_config(&url, Some(config), true)
             .await
             .map_err(map_boxed_err)?;
         let (mut write, mut read) = ws_stream.split();
@@ -213,8 +221,20 @@ impl VoiceGateway {
                             break out;
                         },
                         Some(Err(e)) => {
-                            warn!("[{}] WS read error: {e}", self.guild_id);
-                            self.emit_close_event(1006, format!("IO error: {e}"));
+                            let is_reset = matches!(
+                                e,
+                                WsError::Protocol(ProtocolError::ResetWithoutClosingHandshake)
+                            );
+
+                            if is_reset {
+                                debug!(
+                                    "[{}] WS connection reset by peer (handshake not closed)",
+                                    self.guild_id
+                                );
+                            } else {
+                                warn!("[{}] WS read error: {e}", self.guild_id);
+                                self.emit_close_event(1006, format!("IO error: {e}"));
+                            }
                             break SessionOutcome::Reconnect;
                         }
                         None => {

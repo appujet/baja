@@ -116,13 +116,21 @@ impl<'a> SessionState<'a> {
             Some(VoiceOp::SessionDescription) => self.handle_session_description(msg.d).await,
             Some(VoiceOp::HeartbeatAck) => self.handle_heartbeat_ack(msg.d),
             Some(VoiceOp::Resumed) => self.handle_resumed().await,
-            Some(VoiceOp::UserConnect) => self.handle_user_connect(msg.d),
-            Some(VoiceOp::UserDisconnect) => self.handle_user_disconnect(msg.d),
-            Some(VoiceOp::Speaking) => None, // Silently ignore speaking events
+            Some(VoiceOp::UserConnect | VoiceOp::ClientsConnect) => self.handle_user_connect(msg.d),
+            Some(VoiceOp::UserDisconnect | VoiceOp::ClientDisconnect) => {
+                self.handle_user_disconnect(msg.d)
+            }
+            Some(
+                VoiceOp::Speaking
+                | VoiceOp::MediaSinkWants
+                | VoiceOp::VoiceFlags
+                | VoiceOp::VoicePlatform,
+            ) => None, // Ignore informational events
             Some(VoiceOp::DavePrepareTransition) => self.handle_prepare_transition(msg.d).await,
             Some(VoiceOp::DaveExecuteTransition) => self.handle_execute_transition(msg.d).await,
             Some(VoiceOp::DavePrepareEpoch) => self.handle_prepare_epoch(msg.d).await,
-            _ => {
+            Some(_) => None, // Ignore other ops
+            None => {
                 warn!(
                     "[{}] Unhandled op {}: {:?}",
                     self.gateway.guild_id, msg.op, msg.d

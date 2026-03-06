@@ -194,13 +194,6 @@ silence = 0
 speed = 1.0
 enforce_config = false
 
-[sources.lazypytts]
-enabled = false
-service = "Cerence"
-voice = "Luciana"
-enforce_config = false
-max_text_length = 3000
-
 [lyrics]
 youtubemusic = true
 lrclib = true
