@@ -1,17 +1,18 @@
 use std::sync::Arc;
 
 use axum::{
-    Router, middleware,
+    Router,
+    middleware::{from_fn, from_fn_with_state},
     routing::{get, patch, post},
 };
 
-use crate::{
-    server::AppState,
-    transport::{
-        middleware::{add_response_headers, check_auth},
-        routes::{lyrics, player, stats, youtube},
-    },
-};
+pub mod middleware;
+pub mod routes;
+
+use self::middleware::{add_response_headers, check_auth};
+use self::routes::{lyrics, player, stats, youtube};
+use crate::server::AppState;
+
 const API_V4: &str = "/v4";
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -51,8 +52,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/version", get(stats::get_version))
         .route("/youtube", get(youtube::get_youtube_info))
         .route("/youtube/stream/{video_id}", get(youtube::youtube_stream))
-        .route("/youtube/oauth/{refresh_token}", get(youtube::youtube_oauth_refresh))
-        .layer(middleware::from_fn_with_state(state.clone(), check_auth))
-        .layer(middleware::from_fn(add_response_headers))
+        .route(
+            "/youtube/oauth/{refresh_token}",
+            get(youtube::youtube_oauth_refresh),
+        )
+        .layer(from_fn_with_state(state.clone(), check_auth))
+        .layer(from_fn(add_response_headers))
         .with_state(state)
 }

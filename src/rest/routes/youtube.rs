@@ -31,7 +31,11 @@ pub async fn get_youtube_info(State(state): State<Arc<AppState>>) -> impl IntoRe
 
     let tokens = ctx.oauth.get_refresh_tokens().await;
     tracing::debug!("GET /youtube: {} refresh token(s) configured", tokens.len());
-    (StatusCode::OK, Json(serde_json::json!({ "refreshTokens": tokens }))).into_response()
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "refreshTokens": tokens })),
+    )
+        .into_response()
 }
 
 pub async fn youtube_oauth_refresh(
@@ -68,7 +72,10 @@ pub async fn youtube_oauth_refresh(
                 )
                     .into_response();
             }
-            tracing::debug!("GET /youtube/oauth/{}: token refreshed successfully", refresh_token);
+            tracing::debug!(
+                "GET /youtube/oauth/{}: token refreshed successfully",
+                refresh_token
+            );
             (StatusCode::OK, Json(body)).into_response()
         }
         Err(e) => {
@@ -103,44 +110,23 @@ pub async fn youtube_stream(
         headers.get(header::RANGE)
     );
 
-    let ctx = match &state.youtube {
-        Some(ctx) => ctx.clone(),
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "YouTube source is not enabled"})),
-            )
-                .into_response();
-        }
+    let Some(ctx) = &state.youtube else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "YouTube source is not enabled"})),
+        )
+            .into_response();
     };
 
-    let clients: Vec<_> = if let Some(ref filter) = params.with_client {
-        let lower = filter.to_lowercase();
-        let matched: Vec<_> = ctx
-            .clients
-            .iter()
-            .filter(|c| c.name().to_lowercase() == lower)
-            .cloned()
-            .collect();
-        if matched.is_empty() {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "error": format!("No client named '{}' is configured for playback", filter)
-                })),
-            )
-                .into_response();
-        }
-        matched
-    } else {
-        ctx.clients.iter().cloned().collect()
+    let clients = match get_target_clients(ctx, params.with_client.as_deref()) {
+        Ok(c) => c,
+        Err(e) => return e.into_response(),
     };
 
-    let visitor_data_str: Option<String> = ctx.visitor_data.read().await.clone();
-    let visitor_data = visitor_data_str.as_deref();
+    let visitor_data_str = ctx.visitor_data.read().await.clone();
     let player_page_url = format!("https://www.youtube.com/watch?v={}", video_id);
 
-    let mut last_error: Option<String> = None;
+    let mut last_error = None;
     let mut found_formats = false;
     let mut last_was_exception = false;
 
@@ -157,7 +143,7 @@ pub async fn youtube_stream(
         );
 
         let body = match client
-            .get_player_body(&video_id, visitor_data, ctx.oauth.clone())
+            .get_player_body(&video_id, visitor_data_str.as_deref(), ctx.oauth.clone())
             .await
         {
             Some(b) => b,
@@ -171,25 +157,8 @@ pub async fn youtube_stream(
             }
         };
 
-        let playability = body
-            .get("playabilityStatus")
-            .and_then(|p| p.get("status"))
-            .and_then(|s| s.as_str())
-            .unwrap_or("UNKNOWN");
-
-        if playability != "OK" {
-            let reason = body
-                .get("playabilityStatus")
-                .and_then(|p| p.get("reason"))
-                .and_then(|r| r.as_str())
-                .unwrap_or("no reason provided");
-            last_error = Some(format!(
-                "Video '{}' is not playable via client '{}': status={}, reason={}",
-                video_id,
-                client.name(),
-                playability,
-                reason
-            ));
+        if let Err(e) = check_playability(&body, &video_id, client.name()) {
+            last_error = Some(e);
             tracing::warn!("{}", last_error.as_deref().unwrap());
             continue;
         }
@@ -216,26 +185,7 @@ pub async fn youtube_stream(
         last_was_exception = false;
 
         let format = if let Some(target_itag) = params.itag {
-            let all_formats: Vec<&serde_json::Value> = adaptive
-                .iter()
-                .flat_map(|v| v.iter())
-                .chain(formats.iter().flat_map(|v| v.iter()))
-                .collect();
-
-            tracing::debug!(
-                "GET /youtube/stream/{}: client '{}' searching for itag {}",
-                video_id,
-                client.name(),
-                target_itag
-            );
-
-            let found = all_formats.into_iter().find(|f| {
-                f.get("itag")
-                    .and_then(|v| v.as_u64())
-                    .map(|i| i == target_itag)
-                    .unwrap_or(false)
-            });
-
+            let found = find_format_by_itag(adaptive, formats, target_itag);
             match found {
                 Some(f) => f,
                 None => {
@@ -250,11 +200,6 @@ pub async fn youtube_stream(
                 }
             }
         } else {
-            tracing::debug!(
-                "GET /youtube/stream/{}: client '{}' selecting best audio format (opus preferred)",
-                video_id,
-                client.name()
-            );
             match select_best_audio_format(adaptive, formats) {
                 Some(f) => f,
                 None => {
@@ -270,13 +215,6 @@ pub async fn youtube_stream(
         };
 
         let selected_itag = format.get("itag").and_then(|v| v.as_i64());
-        tracing::debug!(
-            "GET /youtube/stream/{}: client '{}' selected itag={:?}, resolving URL",
-            video_id,
-            client.name(),
-            selected_itag
-        );
-
         let resolved_url =
             match resolve_format_url(format, &player_page_url, &ctx.cipher_manager).await {
                 Ok(Some(url)) => url,
@@ -313,10 +251,9 @@ pub async fn youtube_stream(
         let mime_type = format
             .get("mimeType")
             .and_then(|v| v.as_str())
-            .unwrap_or("application/octet-stream")
-            .to_string();
+            .unwrap_or("application/octet-stream");
 
-        let mut final_url: reqwest::Url = match reqwest::Url::parse(&resolved_url) {
+        let mut final_url = match reqwest::Url::parse(&resolved_url) {
             Ok(u) => u,
             Err(e) => {
                 last_error = Some(format!(
@@ -329,22 +266,7 @@ pub async fn youtube_stream(
             }
         };
 
-        // Parse range from header or use full length
-        let (start, end) = if let Some(range_val) = headers.get(header::RANGE).and_then(|v| v.to_str().ok()) {
-            if let Some(caps) = regex::Regex::new(r"bytes=(\d+)-(\d+)?")
-                .unwrap()
-                .captures(range_val)
-            {
-                let s = caps.get(1).map(|m| m.as_str().parse::<u64>().unwrap_or(0)).unwrap_or(0);
-                let e = caps.get(2).map(|m| m.as_str().parse::<u64>().unwrap_or(content_length.saturating_sub(1))).unwrap_or(content_length.saturating_sub(1));
-                (s, e)
-            } else {
-                (0, content_length.saturating_sub(1))
-            }
-        } else {
-            (0, content_length.saturating_sub(1))
-        };
-
+        let (start, end) = parse_range_header(headers.get(header::RANGE), content_length);
         final_url
             .query_pairs_mut()
             .append_pair("range", &format!("{}-{}", start, end));
@@ -385,18 +307,16 @@ pub async fn youtube_stream(
         }
 
         let mut resp_headers = HeaderMap::new();
-        if let Ok(v) = header::HeaderValue::from_str(&mime_type) {
+        if let Ok(v) = header::HeaderValue::from_str(mime_type) {
             resp_headers.insert(header::CONTENT_TYPE, v);
         }
 
-        // Return the actual headers from upstream as they are now correct for the range we requested
         if let Some(v) = upstream.headers().get(header::CONTENT_LENGTH) {
             resp_headers.insert(header::CONTENT_LENGTH, v.clone());
         }
         if let Some(v) = upstream.headers().get(header::CONTENT_RANGE) {
             resp_headers.insert(header::CONTENT_RANGE, v.clone());
         } else if start > 0 || end < content_length.saturating_sub(1) {
-            // If upstream didn't send Content-Range but it was a range request, fix it
             let cr = format!("bytes {}-{}/{}", start, end, content_length);
             if let Ok(v) = header::HeaderValue::from_str(&cr) {
                 resp_headers.insert(header::CONTENT_RANGE, v);
@@ -415,7 +335,10 @@ pub async fn youtube_stream(
         (
             StatusCode::BAD_REQUEST,
             last_error.unwrap_or_else(|| {
-                format!("No formats found with the requested itag for video '{}'", video_id)
+                format!(
+                    "No formats found with the requested itag for video '{}'",
+                    video_id
+                )
             }),
         )
     } else if last_was_exception {
@@ -433,4 +356,104 @@ pub async fn youtube_stream(
 
     tracing::warn!("GET /youtube/stream/{}: {}", video_id, error_msg);
     (status, Json(serde_json::json!({ "error": error_msg }))).into_response()
+}
+
+type ClientFilterResult = Result<
+    Vec<Arc<dyn crate::sources::youtube::clients::YouTubeClient>>,
+    (StatusCode, Json<serde_json::Value>),
+>;
+
+fn get_target_clients(
+    ctx: &crate::sources::youtube::YoutubeStreamContext,
+    filter: Option<&str>,
+) -> ClientFilterResult {
+    if let Some(filter) = filter {
+        let lower = filter.to_lowercase();
+        let matched: Vec<Arc<dyn crate::sources::youtube::clients::YouTubeClient>> = ctx
+            .clients
+            .iter()
+            .filter(|c| c.name().to_lowercase() == lower)
+            .cloned()
+            .collect();
+
+        if matched.is_empty() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("No client named '{}' is configured for playback", filter)
+                })),
+            ));
+        }
+        Ok(matched)
+    } else {
+        Ok(ctx.clients.to_vec())
+    }
+}
+
+fn check_playability(
+    body: &serde_json::Value,
+    video_id: &str,
+    client_name: &str,
+) -> Result<(), String> {
+    let status = body
+        .get("playabilityStatus")
+        .and_then(|p| p.get("status"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("UNKNOWN");
+
+    if status == "OK" {
+        return Ok(());
+    }
+
+    let reason = body
+        .get("playabilityStatus")
+        .and_then(|p| p.get("reason"))
+        .and_then(|r| r.as_str())
+        .unwrap_or("no reason provided");
+
+    Err(format!(
+        "Video '{}' is not playable via client '{}': status={}, reason={}",
+        video_id, client_name, status, reason
+    ))
+}
+
+fn find_format_by_itag<'a>(
+    adaptive: Option<&'a Vec<serde_json::Value>>,
+    formats: Option<&'a Vec<serde_json::Value>>,
+    target_itag: u64,
+) -> Option<&'a serde_json::Value> {
+    adaptive
+        .iter()
+        .flat_map(|v| v.iter())
+        .chain(formats.iter().flat_map(|v| v.iter()))
+        .find(|f| {
+            f.get("itag")
+                .and_then(|v| v.as_u64())
+                .map(|i| i == target_itag)
+                .unwrap_or(false)
+        })
+}
+
+fn parse_range_header(
+    range_header: Option<&axum::http::HeaderValue>,
+    content_length: u64,
+) -> (u64, u64) {
+    let Some(range_val) = range_header.and_then(|v| v.to_str().ok()) else {
+        return (0, content_length.saturating_sub(1));
+    };
+
+    let regex = regex::Regex::new(r"bytes=(\d+)-(\d+)?").expect("invalid regex");
+    if let Some(caps) = regex.captures(range_val) {
+        let start = caps
+            .get(1)
+            .and_then(|m| m.as_str().parse::<u64>().ok())
+            .unwrap_or(0);
+        let end = caps
+            .get(2)
+            .and_then(|m| m.as_str().parse::<u64>().ok())
+            .unwrap_or(content_length.saturating_sub(1));
+        (start, end)
+    } else {
+        (0, content_length.saturating_sub(1))
+    }
 }

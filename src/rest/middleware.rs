@@ -21,13 +21,13 @@ pub async fn check_auth(
         .and_then(|h| h.to_str().ok());
 
     match auth_header {
-        Some(auth) if auth == state.config.server.password => Ok(next.run(req).await),
+        Some(auth) if auth == state.config.server.authorization => Ok(next.run(req).await),
         Some(_) => {
-            warn!("REST Authorization failed: Invalid password");
+            warn!("REST authorization failed: invalid password");
             Err(StatusCode::UNAUTHORIZED)
         }
         None => {
-            warn!("REST Authorization failed: Missing Authorization header");
+            warn!("REST authorization failed: missing authorization header");
             Err(StatusCode::UNAUTHORIZED)
         }
     }

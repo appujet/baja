@@ -26,69 +26,68 @@ pub async fn subscribe_lyrics(
         guild_id
     );
 
-    if let Some(session) = state.sessions.get(&session_id) {
-        if let Some(player_arc) = session.players.get(&guild_id).map(|kv| kv.value().clone()) {
-            let player = player_arc.write().await;
-            player.subscribe_lyrics().await;
+    let Some(session) = state.sessions.get(&session_id) else {
+        return axum::http::StatusCode::NOT_FOUND;
+    };
 
-            if let Some(track) = &player.track_info {
-                let lyrics_data_arc = player.lyrics_data.clone();
-                let lyrics_manager_clone = state.lyrics_manager.clone();
-                let track_info_clone = track.info.clone();
-                let session_lyrics_clone = session.clone();
-                let guild_id_lyrics = player.guild_id.clone();
+    let Some(player_arc) = session.players.get(&guild_id).map(|kv| kv.value().clone()) else {
+        return axum::http::StatusCode::NOT_FOUND;
+    };
 
-                tokio::spawn(async move {
-                    let has_lyrics = lyrics_data_arc.lock().await.is_some();
-                    if !has_lyrics {
-                        if let Some(lyrics) =
-                            lyrics_manager_clone.load_lyrics(&track_info_clone).await
-                        {
-                            {
-                                let mut lock = lyrics_data_arc.lock().await;
-                                *lock = Some(lyrics.clone());
-                            }
-                            let event = crate::protocol::OutgoingMessage::Event {
-                                event: crate::protocol::RustalinkEvent::LyricsFound {
-                                    guild_id: guild_id_lyrics,
-                                    lyrics: crate::protocol::models::RustalinkLyrics {
-                                        source_name: track_info_clone.source_name.clone(),
-                                        provider: Some(lyrics.provider),
-                                        text: Some(lyrics.text),
-                                        lines: lyrics.lines.map(|lines| {
-                                            lines
-                                                .into_iter()
-                                                .map(|l| {
-                                                    crate::protocol::models::RustalinkLyricsLine {
-                                                        timestamp: l.timestamp,
-                                                        duration: Some(l.duration),
-                                                        line: l.text,
-                                                        plugin: serde_json::json!({}),
-                                                    }
-                                                })
-                                                .collect()
-                                        }),
-                                        plugin: serde_json::json!({}),
-                                    },
-                                },
-                            };
-                            session_lyrics_clone.send_message(&event);
-                        } else {
-                            let event = crate::protocol::OutgoingMessage::Event {
-                                event: crate::protocol::RustalinkEvent::LyricsNotFound {
-                                    guild_id: guild_id_lyrics,
-                                },
-                            };
-                            session_lyrics_clone.send_message(&event);
-                        }
-                    }
-                });
+    let player = player_arc.write().await;
+    player.subscribe_lyrics();
+
+    if let Some(track) = &player.track_info {
+        let lyrics_data_arc = player.lyrics_data.clone();
+        let lyrics_manager = state.lyrics_manager.clone();
+        let track_info = track.info.clone();
+        let session_clone = session.clone();
+        let guild_id = player.guild_id.clone();
+
+        tokio::spawn(async move {
+            let has_lyrics = lyrics_data_arc.lock().await.is_some();
+            if has_lyrics {
+                return;
             }
 
-            return axum::http::StatusCode::NO_CONTENT;
-        }
+            if let Some(lyrics) = lyrics_manager.load_lyrics(&track_info).await {
+                {
+                    *lyrics_data_arc.lock().await = Some(lyrics.clone());
+                }
+
+                let event = crate::protocol::OutgoingMessage::Event {
+                    event: Box::new(crate::protocol::RustalinkEvent::LyricsFound {
+                        guild_id,
+                        lyrics: crate::protocol::models::RustalinkLyrics {
+                            source_name: track_info.source_name.clone(),
+                            provider: Some(lyrics.provider),
+                            text: Some(lyrics.text),
+                            lines: lyrics.lines.map(|lines| {
+                                lines
+                                    .into_iter()
+                                    .map(|l| crate::protocol::models::RustalinkLyricsLine {
+                                        timestamp: l.timestamp,
+                                        duration: Some(l.duration),
+                                        line: l.text,
+                                        plugin: serde_json::json!({}),
+                                    })
+                                    .collect()
+                            }),
+                            plugin: serde_json::json!({}),
+                        },
+                    }),
+                };
+                session_clone.send_message(&event);
+            } else {
+                let event = crate::protocol::OutgoingMessage::Event {
+                    event: Box::new(crate::protocol::RustalinkEvent::LyricsNotFound { guild_id }),
+                };
+                session_clone.send_message(&event);
+            }
+        });
     }
-    axum::http::StatusCode::NOT_FOUND
+
+    axum::http::StatusCode::NO_CONTENT
 }
 
 pub async fn unsubscribe_lyrics(
@@ -103,14 +102,17 @@ pub async fn unsubscribe_lyrics(
         guild_id
     );
 
-    if let Some(session) = state.sessions.get(&session_id) {
-        if let Some(player_arc) = session.players.get(&guild_id).map(|kv| kv.value().clone()) {
-            let player = player_arc.write().await;
-            player.unsubscribe_lyrics().await;
-            return axum::http::StatusCode::NO_CONTENT;
-        }
-    }
-    axum::http::StatusCode::NOT_FOUND
+    let Some(session) = state.sessions.get(&session_id) else {
+        return axum::http::StatusCode::NOT_FOUND;
+    };
+
+    let Some(player_arc) = session.players.get(&guild_id).map(|kv| kv.value().clone()) else {
+        return axum::http::StatusCode::NOT_FOUND;
+    };
+
+    let player = player_arc.write().await;
+    player.unsubscribe_lyrics();
+    axum::http::StatusCode::NO_CONTENT
 }
 
 pub async fn get_lyrics(

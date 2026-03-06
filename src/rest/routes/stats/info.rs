@@ -7,24 +7,14 @@ use crate::{player::Filters, protocol, server::AppState};
 /// GET /v4/info
 pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<protocol::Info> {
     tracing::info!("GET /v4/info");
+
     let version_str = env!("CARGO_PKG_VERSION");
-    let mut parts = version_str.split('.');
-    let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let minor = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let patch = parts
-        .next()
-        .and_then(|s| {
-            s.split('-')
-                .next()
-                .and_then(|s| s.split('+').next())
-                .and_then(|s| s.parse().ok())
-        })
-        .unwrap_or(0);
+    let (major, minor, patch) = parse_semver(version_str);
 
     Json(protocol::Info {
         version: protocol::Version {
             semver: version_str.to_string(),
-            major,
+            major: if major == 0 { 4 } else { major },
             minor,
             patch,
             pre_release: None,
@@ -51,13 +41,23 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<protocol::Info
     })
 }
 
-/// GET /v4/stats
+fn parse_semver(v: &str) -> (u32, u32, u32) {
+    let mut parts = v.split('.');
+    let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(4);
+    let minor = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let patch = parts
+        .next()
+        .and_then(|s| s.split(['-', '+']).next())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    (major, minor, patch)
+}
+
 pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<protocol::Stats> {
     tracing::info!("GET /v4/stats");
     Json(crate::monitoring::collect_stats(&state, None))
 }
 
-/// GET /version
 pub async fn get_version() -> String {
     tracing::info!("GET /version");
     env!("CARGO_PKG_VERSION").to_string()

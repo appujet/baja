@@ -17,7 +17,6 @@ pub async fn routeplanner_status(State(state): State<Arc<AppState>>) -> impl Int
     }
 }
 
-/// POST /v4/routeplanner/free/address
 pub async fn routeplanner_free_address(
     State(state): State<Arc<AppState>>,
     Json(body): Json<protocol::FreeAddressRequest>,
@@ -26,31 +25,40 @@ pub async fn routeplanner_free_address(
         "POST /v4/routeplanner/free/address: address='{}'",
         body.address
     );
-    match &state.routeplanner {
-    Some(rp) => {
-      rp.free_address(&body.address);
-      StatusCode::NO_CONTENT.into_response()
-    }
-    None => (
-      StatusCode::INTERNAL_SERVER_ERROR,
-      Json(serde_json::json!({ "message": "Can't access disabled route planner", "status": 500 })),
-    )
-      .into_response(),
-  }
+
+    let Some(rp) = &state.routeplanner else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(crate::common::RustalinkError::new(
+                500,
+                "Internal Server Error",
+                "Route planner is disabled",
+                "/v4/routeplanner/free/address",
+            )),
+        )
+            .into_response();
+    };
+
+    rp.free_address(&body.address);
+    StatusCode::NO_CONTENT.into_response()
 }
 
-/// POST /v4/routeplanner/free/all
 pub async fn routeplanner_free_all(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     tracing::info!("POST /v4/routeplanner/free/all");
-    match &state.routeplanner {
-    Some(rp) => {
-      rp.free_all_addresses();
-      StatusCode::NO_CONTENT.into_response()
-    }
-    None => (
-      StatusCode::INTERNAL_SERVER_ERROR,
-      Json(serde_json::json!({ "message": "Can't access disabled route planner", "status": 500 })),
-    )
-      .into_response(),
-  }
+
+    let Some(rp) = &state.routeplanner else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(crate::common::RustalinkError::new(
+                500,
+                "Internal Server Error",
+                "Route planner is disabled",
+                "/v4/routeplanner/free/all",
+            )),
+        )
+            .into_response();
+    };
+
+    rp.free_all_addresses();
+    StatusCode::NO_CONTENT.into_response()
 }

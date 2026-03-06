@@ -31,7 +31,6 @@ pub async fn load_tracks(
     )
 }
 
-/// GET /v4/loadsearch?query=...&types=...
 pub async fn load_search(
     Query(params): Query<LoadSearchQuery>,
     State(state): State<Arc<AppState>>,
@@ -47,11 +46,13 @@ pub async fn load_search(
 
     let types: Vec<String> = types_str
         .split(',')
-        .filter(|s| !s.trim().is_empty())
         .map(|s| s.trim().to_string())
-        .filter(|s| match s.as_str() {
-            "track" | "album" | "artist" | "playlist" | "text" => true,
-            _ => false,
+        .filter(|s| !s.is_empty())
+        .filter(|s| {
+            matches!(
+                s.as_str(),
+                "track" | "album" | "artist" | "playlist" | "text"
+            )
         })
         .collect();
 
@@ -65,23 +66,19 @@ pub async fn load_search(
     }
 }
 
-/// GET /v4/decodetrack?encodedTrack=...
 pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoResponse {
-    let encoded = params.encoded_track.clone().or(params.track.clone());
+    let encoded = params.encoded_track.clone().or(params.track);
     tracing::info!("GET /v4/decodetrack: encodedTrack={:?}", encoded);
 
-    let encoded = match encoded {
-        Some(e) => e,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(crate::common::RustalinkError::bad_request(
-                    "No track to decode provided",
-                    "/v4/decodetrack",
-                )),
-            )
-                .into_response();
-        }
+    let Some(encoded) = encoded else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(crate::common::RustalinkError::bad_request(
+                "No track to decode provided",
+                "/v4/decodetrack",
+            )),
+        )
+            .into_response();
     };
 
     match Track::decode(&encoded) {
@@ -97,8 +94,6 @@ pub async fn decode_track(Query(params): Query<DecodeTrackQuery>) -> impl IntoRe
     }
 }
 
-/// POST /v4/decodetracks
-/// Body: raw JSON array of base64-encoded track strings e.g. ["enc1","enc2"]
 pub async fn decode_tracks(Json(body): Json<protocol::EncodedTracks>) -> impl IntoResponse {
     let tracks_input = body.0;
     tracing::info!("POST /v4/decodetracks: count={}", tracks_input.len());
@@ -106,35 +101,27 @@ pub async fn decode_tracks(Json(body): Json<protocol::EncodedTracks>) -> impl In
     if tracks_input.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
-            Json(
-                serde_json::to_value(crate::common::RustalinkError::bad_request(
-                    "No tracks to decode provided",
-                    "/v4/decodetracks",
-                ))
-                .unwrap(),
-            ),
+            Json(crate::common::RustalinkError::bad_request(
+                "No tracks to decode provided",
+                "/v4/decodetracks",
+            )),
         )
             .into_response();
     }
 
     let mut tracks = Vec::with_capacity(tracks_input.len());
     for encoded in &tracks_input {
-        match Track::decode(encoded) {
-            Some(t) => tracks.push(t),
-            None => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(
-                        serde_json::to_value(crate::common::RustalinkError::bad_request(
-                            format!("Invalid track encoding: {}", encoded),
-                            "/v4/decodetracks",
-                        ))
-                        .unwrap(),
-                    ),
-                )
-                    .into_response();
-            }
-        }
+        let Some(t) = Track::decode(encoded) else {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(crate::common::RustalinkError::bad_request(
+                    format!("Invalid track encoding: {}", encoded),
+                    "/v4/decodetracks",
+                )),
+            )
+                .into_response();
+        };
+        tracks.push(t);
     }
 
     (StatusCode::OK, Json(tracks)).into_response()
