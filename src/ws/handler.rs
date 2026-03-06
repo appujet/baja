@@ -116,7 +116,10 @@ pub async fn handle_socket(
                     Ok(m) => m,
                     Err(e) => {
                         let err_msg = e.to_string();
-                        if err_msg.contains("Connection reset") || err_msg.contains("Broken pipe") {
+                        if err_msg.contains("Connection reset")
+                            || err_msg.contains("Broken pipe")
+                            || err_msg.contains("close_notify")
+                        {
                             debug!("WebSocket connection closed abruptly by client: session={session_id} err={e}");
                         } else {
                             warn!("WebSocket error from client: session={session_id} err={e}");

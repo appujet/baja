@@ -31,34 +31,37 @@ Our core engine is built for efficiency, allowing thousands of concurrent stream
     - [x] Sub-millisecond player precision
     - [x] State-persistence for session recovery
     - [x] Native cross-platform support
-
-- **Audio Engine**
     - [x] Real-time hardware-accelerated filters
-    - [x] Advanced client rotation for rate-limit bypass
-    - [x] Smart metadata mirroring
-    - [x] Comprehensive lyrics resolution
+
 
 ## Supported Platforms
 
 Rustalink distinguishes between direct native playback and intelligent mirroring to ensure maximum availability.
 
-### Native Integration
+### Native
 Direct stream extraction and resolution.
 
 - [x] **YouTube**: Full playback, search, and lyrics support.
 - [x] **SoundCloud**: High-fidelity direct streaming.
 - [x] **Deezer**: Native search and track resolution.
-- [x] **Qobuz / JioSaavn / Gaana**: Regional provider support.
-- [x] **Bandcamp / MixCloud / Audiomack**: Creative platform integration.
+- [x] **Qobuz**: Native search and track resolution.
+- [x] **JioSaavn**: Native search and track resolution.
+- [x] **Gaana**: Native search and track resolution.
+- [x] **Bandcamp**: Native search and track resolution.
+- [x] **MixCloud**: Native search and track resolution.
+- [x] **Audiomack**: Native search and track resolution.
 - [x] **HTTP / Local**: Direct file and remote URL streaming.
 
-### Intelligent Mirroring
+### Mirroring
 Resolution of metadata-only sources via secondary providers.
 
 - [x] **Spotify**: Advanced matching via ISRC.
 - [x] **Apple Music**: Comprehensive search-based resolution.
-- [x] **Tidal / Yandex**: Specialty provider mirroring.
-- [x] **Shazam / Anghami / Pandora**: Discovery-focused metadata resolution.
+- [x] **Tidal**: Specialty provider mirroring.
+- [x] **Yandex**: Specialty provider mirroring.
+- [x] **Shazam**: Discovery-focused metadata resolution.
+- [x] **Anghami**: Discovery-focused metadata resolution.
+- [x] **Pandora**: Discovery-focused metadata resolution.
 
 ### Utilities
 - [x] **Text-to-Speech**: Integrated Google and Flowery TTS.

@@ -226,9 +226,12 @@ impl VoiceGateway {
                                 WsError::Protocol(ProtocolError::ResetWithoutClosingHandshake)
                             );
 
-                            if is_reset {
+                            let is_tls_eof = matches!(&e, WsError::Io(io_err)
+                                if io_err.to_string().contains("close_notify"));
+
+                            if is_reset || is_tls_eof {
                                 debug!(
-                                    "[{}] WS connection reset by peer (handshake not closed)",
+                                    "[{}] WS connection closed by peer without handshake (reset={is_reset} tls_eof={is_tls_eof})",
                                     self.guild_id
                                 );
                             } else {
