@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://pub-19903466d24c44f9a9d94c9a3b2f4932.r2.dev/rastalink.svg" alt="Rustalink Logo" width="160" height="160">
+  <img src="https://pub-19903466d24c44f9a9d94c9a3b2f4932.r2.dev/rastalink.svg" alt="Rustalink Logo" width="300" height="300">
 </p>
 
 <h1 align="center">Rustalink</h1>
