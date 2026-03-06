@@ -39,6 +39,7 @@ parking_lot = "0.12.5"
 thiserror = "2.0.18"
 sysinfo = "0.38.3"
 perf_monitor = "0.2.1"
+prometheus = "0.13"
 
 tracing-subscriber = { version = "^0.3.20", features = [
     "env-filter",
@@ -79,7 +80,6 @@ tokio = { version = "1.49.0", features = [
 ] }
 axum = { version = "0.8.1", features = ["ws"] }
 tower-http = { version = "0.6.2", features = ["trace", "cors"] }
-prometheus = "0.13"
 
 
 [profile.dev]
