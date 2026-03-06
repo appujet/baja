@@ -79,16 +79,16 @@ impl Default for GitInfo {
 fn gather_git_info() -> GitInfo {
     let mut info = GitInfo::default();
 
-    if let Ok(v) = env::var("GITHUB_REF_NAME") {
-        if !v.is_empty() {
-            info.branch = v;
-        }
+    if let Ok(v) = env::var("GITHUB_REF_NAME")
+        && !v.is_empty()
+    {
+        info.branch = v;
     }
-    if let Ok(v) = env::var("GITHUB_SHA") {
-        if !v.is_empty() {
-            info.commit = v.clone();
-            info.commit_short = v.chars().take(7).collect();
-        }
+    if let Ok(v) = env::var("GITHUB_SHA")
+        && !v.is_empty()
+    {
+        info.commit = v.clone();
+        info.commit_short = v.chars().take(7).collect();
     }
 
     if info.branch == "unknown" {
@@ -115,15 +115,15 @@ fn gather_git_info() -> GitInfo {
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false);
 
-    if info.commit == "unknown" || info.branch == "unknown" {
-        if let Some((branch, commit)) = parse_dot_git_head() {
-            if info.branch == "unknown" {
-                info.branch = branch;
-            }
-            if info.commit == "unknown" && !commit.is_empty() {
-                info.commit_short = commit.chars().take(7).collect();
-                info.commit = commit;
-            }
+    if (info.commit == "unknown" || info.branch == "unknown")
+        && let Some((branch, commit)) = parse_dot_git_head()
+    {
+        if info.branch == "unknown" {
+            info.branch = branch;
+        }
+        if info.commit == "unknown" && !commit.is_empty() {
+            info.commit_short = commit.chars().take(7).collect();
+            info.commit = commit;
         }
     }
 
@@ -152,7 +152,11 @@ fn parse_dot_git_head() -> Option<(String, String)> {
 
     if let Some(ref_path) = head.strip_prefix("ref: ") {
         // Symbolic ref — e.g. "ref: refs/heads/main"
-        let branch = ref_path.split('/').last().unwrap_or("unknown").to_owned();
+        let branch = ref_path
+            .split('/')
+            .next_back()
+            .unwrap_or("unknown")
+            .to_owned();
 
         let commit = fs::read_to_string(format!(".git/{}", ref_path))
             .ok()
@@ -176,10 +180,10 @@ fn packed_ref_lookup(ref_name: &str) -> Option<String> {
             continue;
         }
         let mut parts = line.splitn(2, ' ');
-        if let (Some(sha), Some(name)) = (parts.next(), parts.next()) {
-            if name.trim() == ref_name {
-                return Some(sha.trim().to_owned());
-            }
+        if let (Some(sha), Some(name)) = (parts.next(), parts.next())
+            && name.trim() == ref_name
+        {
+            return Some(sha.trim().to_owned());
         }
     }
     None
