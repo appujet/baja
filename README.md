@@ -78,7 +78,7 @@ docker run -d \
 ### Documentation & API
 Detailed guides, TOML configuration references, and full API documentation are available at:
 
-**[rustalink.cc](https://rustalink.cc)**
+**[soon](https://soon.gg)**
 
 ## Credits & Inspiration
 
