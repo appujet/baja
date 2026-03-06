@@ -67,7 +67,7 @@ Rustalink supports direct playback and **Mirroring**. Mirroring allows playback 
 <details>
 <summary><b>Text-to-Speech (TTS) Usage & Parameters</b></summary>
 
-Rustalink features three distinct TTS sources with unique routing parameters:
+Rustalink features two distinct TTS sources with unique routing parameters:
 
 1. **Google TTS** (`gtts:` or `speak:`)
    - Uses standard Google Translate voices based on the `config.toml` language code.
@@ -82,14 +82,6 @@ Rustalink features three distinct TTS sources with unique routing parameters:
    - Examples:
      - Basic: `ftts://Hello World`
      - All Params: `ftts://Hello World?voice=Bria&translate=false&silence=500&speed=1.5`
-
-3. **LazyPy TTS** (`lazypytts:` or `lazytts:`)
-   - Connects to various web TTS APIs. You can define the custom service and voice utilizing colon separators.
-   - You can also use the `lazypytts://` or `lazytts://` pattern.
-   - Examples:
-     - Basic: `lazypytts:Hello World`
-     - URL Style: `lazypytts://Jorge:Hello World`
-     - Custom Service & Voice: `lazypytts:Amazon:Matthew:Hello World`
 
 </details>
 
