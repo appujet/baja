@@ -116,8 +116,7 @@ dependencies = [
 [[package]]
 name = "audiopus"
 version = "0.3.0-rc.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab55eb0e56d7c6de3d59f544e5db122d7725ec33be6a276ee8241f3be6473955"
+source = "git+https://github.com/bongodevs/audiopus#701dbf9c07afba9f39e8944c9acdad46b5f921e1"
 dependencies = [
  "audiopus_sys",
 ]
@@ -641,8 +640,7 @@ checksum = "d7a1e2f27636f116493b8b860f5546edb47c8d8f8ea73e1d2a20be88e28d1fea"
 [[package]]
 name = "davey"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20e05bae3e741c249912d39c6cec28d2ef3c1a196e9acac025582182a8f9fbb7"
+source = "git+https://github.com/bongodevs/davey#9ba30823c71e7f58dc1a0be7e8f66b3efffdd39f"
 dependencies = [
  "aead",
  "aes",
