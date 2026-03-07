@@ -34,19 +34,13 @@ excluded_ips = []
 
 [sources.youtube]
 enabled = true
-refresh_tokens = []     # ["token1", "token2"]
+refresh_tokens = [] # country_code = "US"
+# refresh_token = ""
 get_oauth_token = false
 
 [sources.youtube.clients]
 search = ["MUSIC_ANDROID", "MUSIC_WEB", "ANDROID", "WEB"]
-playback = [
-    "ANDROID_VR",
-    "TV_CAST",
-    "WEB_EMBEDDED",
-    "TV",
-    "WEB",
-    "IOS",
-]
+playback = ["ANDROID_VR", "TV_CAST", "WEB_EMBEDDED", "TV", "WEB", "IOS"]
 resolve = ["WEB", "IOS", "MUSIC_WEB", "ANDROID", "TVHTML5_SIMPLY"]
 
 [sources.youtube.cipher]
@@ -102,10 +96,12 @@ enabled = false
 [sources.tidal]
 enabled = false
 country_code = "US"
+quality = "LOSSLESS" # HI_RES_LOSSLESS | LOSSLESS | HIGH | LOW
 playlist_load_limit = 50
 album_load_limit = 50
 artist_load_limit = 20
-# token = "your-token"
+get_oauth_token = false
+# refresh_token = "your-refresh-token" # required for playback 
 # proxy = { url = "http://proxy:8080", username = "user", password = "pass" }
 
 [sources.soundcloud]

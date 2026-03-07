@@ -109,3 +109,7 @@ pub fn default_zero() -> usize {
 pub fn default_five() -> usize {
     5
 }
+
+pub fn default_tidal_quality() -> String {
+    "LOSSLESS".to_string()
+}
