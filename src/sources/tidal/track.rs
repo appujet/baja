@@ -1,12 +1,8 @@
 use std::sync::Arc;
 
-use base64::{Engine as _, engine::general_purpose};
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
-use super::{
-    client::TidalClient,
-    model::{Manifest, PlaybackInfo},
-};
+use super::client::TidalClient;
 use crate::{
     audio::{
         processor::{AudioProcessor, DecoderCommand},
@@ -18,6 +14,8 @@ use crate::{
 
 pub struct TidalTrack {
     pub identifier: String,
+    pub stream_url: String,
+    pub kind: AudioFormat,
     pub client: Arc<TidalClient>,
 }
 
@@ -29,108 +27,18 @@ impl PlayableTrack for TidalTrack {
 
         let identifier = self.identifier.clone();
         let tidal = self.client.clone();
+        let stream_url = self.stream_url.clone();
+        let kind = self.kind;
 
         tokio::spawn(async move {
-            let quality = &tidal.quality;
-            let path = format!(
-                "/tracks/{}/playbackinfo?audioquality={}&playbackmode=STREAM&assetpresentation=FULL",
-                identifier, quality
-            );
-
-            debug!("TidalTrack: Fetching playback info for {}", identifier);
-
-            let token = match tidal.token_tracker.get_oauth_token().await {
-                Some(t) => t,
-                None => {
-                    let _ = err_tx.send("Tidal playback requires an OAuth login".to_string());
-                    return;
-                }
-            };
-
-            let url = format!(
-                "https://api.tidal.com/v1{path}&countryCode={}",
-                tidal.country_code
-            );
-            let resp = match tidal
-                .inner
-                .get(&url)
-                .header("Authorization", format!("Bearer {token}"))
-                .header("User-Agent", "TIDAL/3704 CFNetwork/1220.1 Darwin/20.3.0")
-                .send()
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    error!("TidalTrack: Failed to fetch playback info: {}", e);
-                    let _ = err_tx.send(format!("Failed to fetch playback info: {}", e));
-                    return;
-                }
-            };
-
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                error!("TidalTrack: API returned {}: {}", status, body);
-                let _ = err_tx.send(format!("Tidal API returned error: {}", status));
-                return;
-            }
-
-            let info: PlaybackInfo = match resp.json().await {
-                Ok(i) => i,
-                Err(e) => {
-                    error!("TidalTrack: Failed to parse playback info: {}", e);
-                    let _ = err_tx.send(format!("Failed to parse playback info: {}", e));
-                    return;
-                }
-            };
-
-            let decoded = match general_purpose::STANDARD.decode(&info.manifest) {
-                Ok(d) => d,
-                Err(e) => {
-                    error!("TidalTrack: Failed to decode manifest: {}", e);
-                    let _ = err_tx.send(format!("Failed to decode manifest: {}", e));
-                    return;
-                }
-            };
-
-            let manifest: Manifest = match serde_json::from_slice(&decoded) {
-                Ok(m) => m,
-                Err(e) => {
-                    error!("TidalTrack: Failed to parse manifest JSON: {}", e);
-                    let _ = err_tx.send(format!("Failed to parse manifest: {}", e));
-                    return;
-                }
-            };
-
-            let stream_url = match manifest.urls.first() {
-                Some(u) => u.clone(),
-                None => {
-                    error!("TidalTrack: No stream URL in manifest");
-                    let _ = err_tx.send("No stream URL in manifest".to_string());
-                    return;
-                }
-            };
-
             info!(
                 "TidalTrack: Starting playback for {} with quality {}",
-                identifier, quality
+                identifier, tidal.quality
             );
 
-            let mut kind = AudioFormat::from_url(&stream_url);
-            if kind == AudioFormat::Unknown {
-                if quality == "HI_RES_LOSSLESS" {
-                    kind = AudioFormat::Flac;
-                } else if quality == "LOSSLESS" {
-                    kind = AudioFormat::Mp4;
-                } else {
-                    kind = AudioFormat::Aac;
-                }
-            }
-
-            let stream_url_clone = stream_url.clone();
             let client_clone = (*tidal.inner).clone();
             let reader_res = tokio::task::spawn_blocking(move || {
-                HttpSource::new(client_clone, &stream_url_clone)
+                HttpSource::new(client_clone, &stream_url)
             })
             .await
             .expect("TidalTrack: reader spawn_blocking failed");
