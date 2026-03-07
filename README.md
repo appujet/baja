@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://pub-19903466d24c44f9a9d94c9a3b2f4932.r2.dev/rastalink.svg" alt="Rustalink Logo" width="160" height="160">
+  <img src="https://pub-19903466d24c44f9a9d94c9a3b2f4932.r2.dev/rastalink.svg" alt="Rustalink Logo" width="300" height="300">
 </p>
 
 <h1 align="center">Rustalink</h1>
@@ -22,7 +22,7 @@
 
 Rustalink is a standalone audio sending node optimized for modern Discord bots. It provides a robust, low-latency bridge between your bot and multiple audio providers, following the Lavalink v4 specification for seamless integration.
 
-## Capabilities
+## Features
 
 Our core engine is built for efficiency, allowing thousands of concurrent streams with minimal resource consumption.
 
@@ -31,37 +31,53 @@ Our core engine is built for efficiency, allowing thousands of concurrent stream
     - [x] Sub-millisecond player precision
     - [x] State-persistence for session recovery
     - [x] Native cross-platform support
-
-- **Audio Engine**
     - [x] Real-time hardware-accelerated filters
-    - [x] Advanced client rotation for rate-limit bypass
-    - [x] Smart metadata mirroring
-    - [x] Comprehensive lyrics resolution
+
 
 ## Supported Platforms
 
 Rustalink distinguishes between direct native playback and intelligent mirroring to ensure maximum availability.
 
-### Native Integration
+### Native
 Direct stream extraction and resolution.
 
 - [x] **YouTube**: Full playback, search, and lyrics support.
 - [x] **SoundCloud**: High-fidelity direct streaming.
 - [x] **Deezer**: Native search and track resolution.
-- [x] **Qobuz / JioSaavn / Gaana**: Regional provider support.
-- [x] **Bandcamp / MixCloud / Audiomack**: Creative platform integration.
+- [x] **Qobuz**: Native search and track resolution.
+- [x] **JioSaavn**: Native search and track resolution.
+- [x] **Gaana**: Native search and track resolution.
+- [x] **Bandcamp**: Native search and track resolution.
+- [x] **MixCloud**: Native search and track resolution.
+- [x] **Audiomack**: Native search and track resolution.
+- [x] **Reddit**: Url resolution and audio extraction.
 - [x] **HTTP / Local**: Direct file and remote URL streaming.
 
-### Intelligent Mirroring
+### Mirroring
 Resolution of metadata-only sources via secondary providers.
 
 - [x] **Spotify**: Advanced matching via ISRC.
 - [x] **Apple Music**: Comprehensive search-based resolution.
-- [x] **Tidal / Yandex**: Specialty provider mirroring.
-- [x] **Shazam / Anghami / Pandora**: Discovery-focused metadata resolution.
+- [x] **Tidal**: Specialty provider mirroring (playback support but need a Tidal-HIFI subscription and refresh token) [Inspired from](https://github.com/yaronzz/Tidal-Media-Downloader).
+- [x] **Yandex**: Specialty provider mirroring (playback support but need access token).
+- [x] **Shazam**: Discovery-focused metadata resolution.
+- [x] **Anghami**: Discovery-focused metadata resolution.
+- [x] **Pandora**: Discovery-focused metadata resolution.
 
 ### Utilities
 - [x] **Text-to-Speech**: Integrated Google and Flowery TTS.
+
+## Major Dependencies
+
+Rustalink leverages a modern Rust ecosystem to provide high-performance audio processing:
+
+- **[Tokio](https://tokio.rs/)**: High-performance asynchronous runtime.
+- **[Axum](https://github.com/tokio-rs/axum)**: Erskine web framework for the control plane.
+- **[Symphonia](https://github.com/pdeljanov/Symphonia)**: Pure Rust audio decoding and media demuxing.
+- **[Reqwest](https://github.com/seanmonstar/reqwest)**: Reliable HTTP client for metadata and stream fetching.
+- **[Davey](https://github.com/bongodevs/davey)**: Custom Discord DAVE protocol implementation.
+- **[Audiopus](https://github.com/bongodevs/audiopus)**: High-performance Opus codec bindings.
+- **[Prometheus](https://prometheus.io/)**: Real-time metrics and monitoring.
 
 ## Getting Started
 
@@ -75,10 +91,6 @@ docker run -d \
   ghcr.io/bongodevs/rustalink:latest
 ```
 
-### Documentation & API
-Detailed guides, TOML configuration references, and full API documentation are available at:
-
-**[soon](https://soon.gg)**
 
 ## Credits & Inspiration
 

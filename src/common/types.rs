@@ -162,12 +162,36 @@ impl AudioFormat {
             return Self::Mp4;
         }
 
-        url.split('?')
+        let from_path = url
+            .split('?')
             .next()
             .and_then(|path| std::path::Path::new(path).extension())
             .and_then(|ext| ext.to_str())
             .map(Self::from_ext)
-            .unwrap_or(Self::Unknown)
+            .unwrap_or(Self::Unknown);
+
+        if from_path != Self::Unknown {
+            return from_path;
+        }
+
+        // Final fallback: look for extensions anywhere in the URL (Tidal etc sometimes use it)
+        if url.contains(".mp4") || url.contains(".m4a") {
+            return Self::Mp4;
+        }
+        if url.contains(".flac") {
+            return Self::Flac;
+        }
+        if url.contains(".mp3") {
+            return Self::Mp3;
+        }
+        if url.contains(".ogg") {
+            return Self::Ogg;
+        }
+        if url.contains(".webm") {
+            return Self::Webm;
+        }
+
+        Self::Unknown
     }
 
     /// Returns true if the format can potentially be passed through without re-encoding.

@@ -19,6 +19,13 @@ pub enum SessionOutcome {
     Shutdown,
 }
 
+#[derive(Default)]
+pub struct PersistentSessionState {
+    pub ssrc: u32,
+    pub udp_addr: Option<std::net::SocketAddr>,
+    pub session_key: Option<[u8; 32]>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CloseAction {
     UnknownOpcode,
@@ -73,7 +80,7 @@ pub fn classify_close(code: u16) -> SessionOutcome {
         CloseAction::NotAuthenticated => SessionOutcome::Shutdown,
         CloseAction::AuthenticationFailed => SessionOutcome::Shutdown,
         CloseAction::AlreadyAuthenticated => SessionOutcome::Shutdown,
-        CloseAction::InvalidSession => SessionOutcome::Identify,
+        CloseAction::InvalidSession => SessionOutcome::Shutdown,
         CloseAction::SessionTimeout => SessionOutcome::Identify,
         CloseAction::ServerNotFound => SessionOutcome::Shutdown,
         CloseAction::UnknownProtocol => SessionOutcome::Shutdown,
@@ -103,11 +110,12 @@ pub enum VoiceOp {
     Resume = 7,
     Hello = 8,
     Resumed = 9,
-    UserConnect = 11,
-    ClientsConnect = 12,
-    UserDisconnect = 13,
-    ClientDisconnect = 14,
+    ClientConnect = 11,
+    Video = 12,
+    ClientDisconnect = 13,
+    Codecs = 14,
     MediaSinkWants = 15,
+    VoiceBackendVersion = 16,
     VoiceFlags = 18,
     VoicePlatform = 20,
     DavePrepareTransition = 21,
@@ -136,11 +144,12 @@ impl VoiceOp {
             7 => Self::Resume,
             8 => Self::Hello,
             9 => Self::Resumed,
-            11 => Self::UserConnect,
-            12 => Self::ClientsConnect,
-            13 => Self::UserDisconnect,
-            14 => Self::ClientDisconnect,
+            11 => Self::ClientConnect,
+            12 => Self::Video,
+            13 => Self::ClientDisconnect,
+            14 => Self::Codecs,
             15 => Self::MediaSinkWants,
+            16 => Self::VoiceBackendVersion,
             18 => Self::VoiceFlags,
             20 => Self::VoicePlatform,
             21 => Self::DavePrepareTransition,

@@ -6,7 +6,7 @@ use std::{
 
 use parking_lot::{Condvar, Mutex};
 use symphonia::core::io::MediaSource;
-use tracing::{debug, info};
+use tracing::debug;
 
 use super::AudioSource;
 use crate::common::types::AnyResult;
@@ -40,7 +40,7 @@ impl HttpSource {
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
 
-        info!("HttpSource opened: {} (len={:?})", url, len);
+        debug!("HttpSource opened: {} (len={:?})", url, len);
 
         let shared = Arc::new((Mutex::new(SharedState::new()), Condvar::new()));
         let shared_clone = Arc::clone(&shared);

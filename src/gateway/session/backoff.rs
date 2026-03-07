@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::gateway::constants::{BACKOFF_BASE_MS, MAX_RECONNECT_ATTEMPTS};
 
-pub(super) struct Backoff {
+pub struct Backoff {
     attempt: u32,
 }
 
@@ -19,5 +19,9 @@ impl Backoff {
 
     pub(super) fn is_exhausted(&self) -> bool {
         self.attempt >= MAX_RECONNECT_ATTEMPTS
+    }
+
+    pub(super) fn reset(&mut self) {
+        self.attempt = 0;
     }
 }

@@ -97,9 +97,8 @@ impl Session {
     pub async fn destroy_player(&self, guild_id: &GuildId, state: &AppState) -> bool {
         if let Some((_, player_arc)) = self.players.remove(guild_id) {
             let mut player = player_arc.write().await;
-            let was_playing = player.is_playing();
             player.destroy().await;
-            state.player_destroyed(was_playing);
+            state.player_destroyed();
             true
         } else {
             false

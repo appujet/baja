@@ -15,6 +15,7 @@ pub mod local;
 pub mod mixcloud;
 pub mod pandora;
 pub mod qobuz;
+pub mod reddit;
 pub mod shazam;
 pub mod soundcloud;
 pub mod spotify;
@@ -37,6 +38,7 @@ pub use local::*;
 pub use mixcloud::*;
 pub use pandora::*;
 pub use qobuz::*;
+pub use reddit::*;
 pub use shazam::*;
 pub use soundcloud::*;
 pub use spotify::*;
@@ -75,6 +77,7 @@ pub struct SourcesConfig {
     pub yandexmusic: Option<YandexMusicConfig>,
     pub google_tts: Option<GoogleTtsConfig>,
     pub flowery: Option<FloweryConfig>,
+    pub reddit: Option<RedditConfig>,
 }
 
 pub fn default_true() -> bool {
@@ -108,4 +111,8 @@ pub fn default_zero() -> usize {
 }
 pub fn default_five() -> usize {
     5
+}
+
+pub fn default_tidal_quality() -> String {
+    "LOSSLESS".to_string()
 }

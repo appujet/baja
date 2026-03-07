@@ -63,6 +63,8 @@ impl AndroidVrClient {
                 referer: None,
                 origin: None,
                 po_token: None,
+                encrypted_host_flags: None,
+                serialized_third_party_embed_config: false,
             },
         )
         .await

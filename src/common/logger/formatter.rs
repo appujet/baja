@@ -10,7 +10,8 @@ use tracing_subscriber::{
 };
 
 use crate::common::utils::{
-    BOLD, COLOR_DEBUG, COLOR_ERROR, COLOR_INFO, COLOR_TRACE, COLOR_WARN, DIM, RESET, get_ram_usage,
+    BOLD, COLOR_DEBUG, COLOR_ERROR, COLOR_INFO, COLOR_TRACE, COLOR_WARN, DIM, RESET,
+    memory_usage_report,
 };
 
 pub struct CustomFormatter {
@@ -75,7 +76,7 @@ where
         };
 
         // RAM Usage
-        write!(writer, "{dim}[{}]{reset} ", get_ram_usage())?;
+        write!(writer, "{dim}[{}]{reset} ", memory_usage_report())?;
 
         // Timestamp
         self.write_timestamp(&mut writer)?;

@@ -12,11 +12,13 @@ use tokio::sync::{Mutex, mpsc::UnboundedSender};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
+use uuid::Uuid;
 
 use super::{
     VoiceGateway,
+    backoff::Backoff,
     heartbeat::HeartbeatTracker,
-    types::{SessionOutcome, VoiceGatewayMessage, VoiceOp},
+    types::{PersistentSessionState, SessionOutcome, VoiceGatewayMessage, VoiceOp},
     voice::{SpeakConfig, discover_ip, speak_loop},
 };
 use crate::{
@@ -43,6 +45,8 @@ pub struct SessionState<'a> {
     speaking_tx: UnboundedSender<bool>,
     session_key: Option<[u8; 32]>,
     speak_task: Option<tokio::task::JoinHandle<()>>,
+    persistent_state: Arc<tokio::sync::Mutex<PersistentSessionState>>,
+    backoff: &'a mut Backoff,
 }
 
 impl<'a> SessionState<'a> {
@@ -52,6 +56,8 @@ impl<'a> SessionState<'a> {
         seq_ack: Arc<AtomicI64>,
         conn_token: CancellationToken,
         speaking_tx: UnboundedSender<bool>,
+        persistent_state: Arc<tokio::sync::Mutex<PersistentSessionState>>,
+        backoff: &'a mut Backoff,
     ) -> Result<Self, std::io::Error> {
         let mut users = HashSet::new();
         users.insert(gateway.user_id);
@@ -79,6 +85,8 @@ impl<'a> SessionState<'a> {
             speaking_tx,
             session_key: None,
             speak_task: None,
+            persistent_state,
+            backoff,
         })
     }
 
@@ -116,13 +124,14 @@ impl<'a> SessionState<'a> {
             Some(VoiceOp::SessionDescription) => self.handle_session_description(msg.d).await,
             Some(VoiceOp::HeartbeatAck) => self.handle_heartbeat_ack(msg.d),
             Some(VoiceOp::Resumed) => self.handle_resumed().await,
-            Some(VoiceOp::UserConnect | VoiceOp::ClientsConnect) => self.handle_user_connect(msg.d),
-            Some(VoiceOp::UserDisconnect | VoiceOp::ClientDisconnect) => {
-                self.handle_user_disconnect(msg.d)
-            }
+            Some(VoiceOp::ClientConnect) => self.handle_user_connect(msg.d),
+            Some(VoiceOp::ClientDisconnect) => self.handle_user_disconnect(msg.d),
             Some(
                 VoiceOp::Speaking
+                | VoiceOp::Video
+                | VoiceOp::Codecs
                 | VoiceOp::MediaSinkWants
+                | VoiceOp::VoiceBackendVersion
                 | VoiceOp::VoiceFlags
                 | VoiceOp::VoicePlatform,
             ) => None, // Ignore informational events
@@ -238,6 +247,7 @@ impl<'a> SessionState<'a> {
         self.heartbeat_handle = Some(self.heartbeat.spawn(
             self.tx.clone(),
             self.seq_ack.clone(),
+            self.conn_token.clone(),
             interval,
         ));
         None
@@ -265,13 +275,48 @@ impl<'a> SessionState<'a> {
             self.gateway.guild_id, self.ssrc, self.selected_mode
         );
 
+        {
+            let mut state = self.persistent_state.lock().await;
+            state.ssrc = self.ssrc;
+        }
+
         match discover_ip(&self.udp_socket, addr, self.ssrc).await {
             Ok((my_ip, my_port)) => {
+                let rtc_connection_id = Uuid::new_v4().to_string();
                 self.send_json(
                     1,
                     serde_json::json!({
                         "protocol": "udp",
-                        "data": { "address": my_ip, "port": my_port, "mode": self.selected_mode }
+                        "rtc_connection_id": rtc_connection_id,
+                        "codecs": [
+                            {
+                                "name": "opus",
+                                "type": "audio",
+                                "priority": 1000,
+                                "payload_type": 120
+                            }
+                        ],
+                        "data": { "address": my_ip, "port": my_port, "mode": self.selected_mode },
+                        "address": my_ip,
+                        "port": my_port,
+                        "mode": self.selected_mode
+                    }),
+                );
+
+                self.send_json(
+                    12,
+                    serde_json::json!({
+                        "audio_ssrc": self.ssrc,
+                        "video_ssrc": 0,
+                        "rtx_ssrc": 0,
+                    }),
+                );
+                self.send_json(
+                    5,
+                    serde_json::json!({
+                        "speaking": 0,
+                        "delay": 0,
+                        "ssrc": self.ssrc,
                     }),
                 );
             }
@@ -280,6 +325,9 @@ impl<'a> SessionState<'a> {
                 return Some(SessionOutcome::Reconnect);
             }
         }
+
+        self.backoff.reset();
+
         None
     }
 
@@ -309,6 +357,14 @@ impl<'a> SessionState<'a> {
 
         if let Some(addr) = self.udp_addr {
             self.session_key = Some(key);
+
+            {
+                let mut state = self.persistent_state.lock().await;
+                state.udp_addr = Some(addr);
+                state.session_key = Some(key);
+                state.ssrc = self.ssrc;
+            }
+
             self.launch_speak_loop(addr, key).await;
             self.send_json(
                 5,
@@ -328,8 +384,19 @@ impl<'a> SessionState<'a> {
     async fn handle_resumed(&mut self) -> Option<SessionOutcome> {
         info!("[{}] Resumed", self.gateway.guild_id);
 
-        match (self.udp_addr, self.session_key) {
+        self.backoff.reset();
+
+        let (addr, key, ssrc) = {
+            let state = self.persistent_state.lock().await;
+            (state.udp_addr, state.session_key, state.ssrc)
+        };
+
+        match (addr, key) {
             (Some(addr), Some(key)) => {
+                self.udp_addr = Some(addr);
+                self.session_key = Some(key);
+                self.ssrc = ssrc;
+
                 self.launch_speak_loop(addr, key).await;
                 self.send_json(
                     5,
@@ -337,7 +404,10 @@ impl<'a> SessionState<'a> {
                 );
             }
             _ => {
-                warn!("[{}] Resume failed: missing state", self.gateway.guild_id);
+                warn!(
+                    "[{}] Resume failed: missing persistent state",
+                    self.gateway.guild_id
+                );
                 return Some(SessionOutcome::Identify);
             }
         }
@@ -348,6 +418,7 @@ impl<'a> SessionState<'a> {
         let nonce = d["t"].as_u64().unwrap_or(0);
         if let Some(rtt) = self.heartbeat.validate_ack(nonce) {
             self.gateway.ping.store(rtt as i64, Ordering::Relaxed);
+            self.heartbeat.missed_acks.store(0, Ordering::Relaxed);
         }
         None
     }

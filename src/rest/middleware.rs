@@ -37,6 +37,6 @@ pub async fn add_response_headers(req: Request, next: Next) -> Response {
     let mut response = next.run(req).await;
     response
         .headers_mut()
-        .insert("Rustalink-Api-Version", HeaderValue::from_static("4"));
+        .insert("Lavalink-Major-Version", HeaderValue::from_static("4"));
     response
 }

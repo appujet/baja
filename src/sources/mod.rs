@@ -21,6 +21,7 @@ pub mod local;
 pub mod mixcloud;
 pub mod pandora;
 pub mod qobuz;
+pub mod reddit;
 pub mod shazam;
 pub mod soundcloud;
 pub mod spotify;

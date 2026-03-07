@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{
     Router,
     middleware::{from_fn, from_fn_with_state},
-    routing::{get, patch, post},
+    routing::{get, post},
 };
 
 pub mod middleware;
@@ -32,7 +32,10 @@ pub fn router(state: Arc<AppState>) -> Router {
                 .patch(player::update_player)
                 .delete(player::destroy_player),
         )
-        .route("/sessions/{session_id}", patch(player::update_session))
+        .route(
+            "/sessions/{session_id}",
+            get(player::get_session).patch(player::update_session),
+        )
         .route("/lyrics", get(lyrics::get_lyrics))
         .route(
             "/sessions/{session_id}/players/{guild_id}/lyrics/subscribe",

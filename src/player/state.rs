@@ -177,6 +177,7 @@ define_filters! {
     phonograph: PhonographFilter => "phonograph",
     reverb: ReverbFilter => "reverb",
     spatial: SpatialFilter => "spatial",
+    plugin_filters: std::collections::HashMap<String, serde_json::Value> => "pluginFilters",
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -245,18 +245,41 @@ pub fn extract_thumbnail(renderer: &Value, video_id: Option<&str>) -> Option<Str
                 .and_then(|t| t.get("thumbnails"))
         });
 
-    if let Some(thumbnails) = thumbnails.and_then(|t| t.as_array())
-        && !thumbnails.is_empty()
-        && let Some(url) = thumbnails
-            .last()
-            .and_then(|t| t.get("url"))
-            .and_then(|u| u.as_str())
+    if let Some(list) = thumbnails.and_then(|t| t.as_array())
+        && !list.is_empty()
     {
-        return Some(url.split('?').next().unwrap_or(url).to_string());
+        // Prefer any lh3.googleusercontent.com URL (YT Music album art) over ytimg thumbnails.
+        let lh3 = list.iter().rev().find_map(|t| {
+            t.get("url")
+                .and_then(|u| u.as_str())
+                .filter(|u| u.contains("lh3.googleusercontent.com"))
+                .map(|u| u.split('?').next().unwrap_or(u).to_string())
+        });
+        if let Some(url) = lh3 {
+            return Some(url);
+        }
+
+        // For ytimg, pick the entry with the largest declared width, falling back to last.
+        let best = list
+            .iter()
+            .max_by_key(|t| t.get("width").and_then(|w| w.as_u64()).unwrap_or(0));
+
+        if let Some(url) = best.and_then(|t| t.get("url")).and_then(|u| u.as_str()) {
+            // Upgrade small thumbnails to maxresdefault when possible.
+            let clean = url.split('?').next().unwrap_or(url);
+            if clean.contains("i.ytimg.com") {
+                let upgraded = clean
+                    .replace("mqdefault", "maxresdefault")
+                    .replace("sddefault", "maxresdefault")
+                    .replace("hqdefault", "maxresdefault");
+                return Some(upgraded);
+            }
+            return Some(clean.to_string());
+        }
     }
 
     if let Some(id) = video_id {
-        return Some(format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id));
+        return Some(format!("https://i.ytimg.com/vi/{}/maxresdefault.jpg", id));
     }
 
     None
@@ -273,6 +296,8 @@ pub struct PlayerRequestOptions<'a> {
     pub referer: Option<&'a str>,
     pub origin: Option<&'a str>,
     pub po_token: Option<&'a str>,
+    pub encrypted_host_flags: Option<String>,
+    pub serialized_third_party_embed_config: bool,
 }
 
 pub async fn make_player_request(opts: PlayerRequestOptions<'_>) -> AnyResult<Value> {
@@ -282,6 +307,15 @@ pub async fn make_player_request(opts: PlayerRequestOptions<'_>) -> AnyResult<Va
         "contentCheckOk": true,
         "racyCheckOk": true
     });
+
+    if opts.serialized_third_party_embed_config
+        && let Some(obj) = body.as_object_mut()
+    {
+        obj.insert(
+            "serializedThirdPartyEmbedConfig".to_string(),
+            "{\"hideInfoBar\":true,\"disableRelatedVideos\":true}".into(),
+        );
+    }
 
     if let Some(token) = opts.po_token
         && let Some(obj) = body.as_object_mut()
@@ -309,6 +343,23 @@ pub async fn make_player_request(opts: PlayerRequestOptions<'_>) -> AnyResult<Va
                 }
             }),
         );
+    }
+
+    if let Some(flags) = opts.encrypted_host_flags
+        && let Some(obj) = body.as_object_mut()
+    {
+        let playback_context = obj
+            .entry("playbackContext".to_string())
+            .or_insert_with(|| json!({}));
+        let content_playback_context = playback_context
+            .as_object_mut()
+            .unwrap()
+            .entry("contentPlaybackContext".to_string())
+            .or_insert_with(|| json!({}));
+        content_playback_context
+            .as_object_mut()
+            .unwrap()
+            .insert("encryptedHostFlags".to_string(), flags.into());
     }
 
     let url = format!("{}/youtubei/v1/player?prettyPrint=false", INNERTUBE_API);

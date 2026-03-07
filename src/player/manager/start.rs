@@ -184,10 +184,15 @@ pub async fn start_playback(player: &mut PlayerContext, config: PlaybackStartCon
 
 /// Stop the currently playing track and emit `TrackEnd: Replaced` if needed.
 async fn stop_current_track(player: &mut PlayerContext, session: &Session) {
+    let was_playing = player.is_playing();
     if let Some(handle) = &player.track_handle
         && handle.get_state() != PlaybackState::Stopped
         && let Some(track) = player.to_player_response().track
     {
+        if was_playing {
+            player.state.playing_players.fetch_sub(1, Ordering::Relaxed);
+        }
+
         session.send_message(&protocol::OutgoingMessage::Event {
             event: Box::new(RustalinkEvent::TrackEnd {
                 guild_id: player.guild_id.clone(),

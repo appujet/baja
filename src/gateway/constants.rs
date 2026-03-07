@@ -7,7 +7,9 @@ pub const DEFAULT_VOICE_MODE: &str = "xsalsa20_poly1305";
 // --- Connection & Reconnect ---
 pub const MAX_RECONNECT_ATTEMPTS: u32 = 5;
 pub const BACKOFF_BASE_MS: u64 = 1_000;
-pub const RECONNECT_DELAY_FRESH_MS: u64 = 500;
+pub const RECONNECT_DELAY_FRESH_MS: u64 = 2000;
+
+pub const UDP_KEEPALIVE_GAP_MS: u64 = 5000;
 pub const WRITE_TASK_SHUTDOWN_MS: u64 = 500;
 
 // --- Audio & RTP ---
@@ -25,6 +27,8 @@ pub const MAX_SILENCE_FRAMES: u32 = 5;
 pub const UDP_PACKET_BUF_CAPACITY: usize = 1500;
 pub const DISCOVERY_PACKET_SIZE: usize = 74;
 pub const IP_DISCOVERY_TIMEOUT_SECS: u64 = 2;
+pub const IP_DISCOVERY_RETRIES: u32 = 10;
+pub const IP_DISCOVERY_RETRY_INTERVAL_MS: u64 = 1000;
 
 // --- Protocol Specifics ---
 pub const OP_HEARTBEAT: u8 = 3;

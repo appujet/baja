@@ -6,7 +6,7 @@ use axum::{
     response::{IntoResponse, Json},
 };
 
-use crate::{player::Players, server::AppState};
+use crate::{player::Players, protocol, server::AppState};
 
 /// GET /v4/sessions/{sessionId}/players
 pub async fn get_players(
@@ -31,7 +31,37 @@ pub async fn get_players(
         players.push(arc.read().await.to_player_response());
     }
 
+    players.sort_by(|a, b| a.guild_id.cmp(&b.guild_id));
+
     (StatusCode::OK, Json(Players { players })).into_response()
+}
+
+/// GET /v4/sessions/{sessionId}
+pub async fn get_session(
+    Path(session_id): Path<crate::common::types::SessionId>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    tracing::info!("GET /v4/sessions/{}", session_id);
+
+    let Some(session) = state.sessions.get(&session_id) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(crate::common::RustalinkError::not_found(
+                format!("Session not found: {}", session_id),
+                format!("/v4/sessions/{}", session_id),
+            )),
+        )
+            .into_response();
+    };
+
+    let info = protocol::SessionInfo {
+        resuming: session.resumable.load(std::sync::atomic::Ordering::Relaxed),
+        timeout: session
+            .resume_timeout
+            .load(std::sync::atomic::Ordering::Relaxed),
+    };
+
+    (StatusCode::OK, Json(info)).into_response()
 }
 
 pub async fn get_player(

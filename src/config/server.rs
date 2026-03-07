@@ -82,3 +82,10 @@ pub struct RoutePlannerConfig {
 pub struct MirrorsConfig {
     pub providers: Vec<String>,
 }
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct ConfigServerConfig {
+    pub url: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}

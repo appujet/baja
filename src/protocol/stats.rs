@@ -4,8 +4,8 @@ use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Stats {
-    pub players: i32,
-    pub playing_players: i32,
+    pub players: u64,
+    pub playing_players: u64,
     pub uptime: u64,
     pub memory: Memory,
     pub cpu: Cpu,

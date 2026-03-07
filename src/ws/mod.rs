@@ -40,10 +40,6 @@ pub async fn websocket_handler(
         .and_then(std::num::NonZeroU64::new)
         .map(|n| UserId(n.get()));
 
-    let Some(user_id) = user_id else {
-        return Err((StatusCode::BAD_REQUEST, "Missing or invalid User-Id header"));
-    };
-
     // 3. Client-Name Check
     if let Some(name) = headers.get("client-name").and_then(|h| h.to_str().ok()) {
         info!("Incoming connection from client: {name}");

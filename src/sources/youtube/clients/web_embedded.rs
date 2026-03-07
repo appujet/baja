@@ -18,9 +18,8 @@ use crate::{
 
 const CLIENT_NAME: &str = "WEB_EMBEDDED_PLAYER";
 const CLIENT_ID: &str = "56";
-const CLIENT_VERSION: &str = "1.20250219.01.00";
-const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
-     AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
+const CLIENT_VERSION: &str = "1.20260128.01.00";
+const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36,gzip(gfe)";
 
 pub struct WebEmbeddedClient {
     http: Arc<reqwest::Client>,
@@ -38,9 +37,34 @@ impl WebEmbeddedClient {
             client_id: CLIENT_ID,
             user_agent: USER_AGENT,
             platform: Some("DESKTOP"),
-            third_party_embed_url: Some("https://www.youtube.com"),
+            third_party_embed_url: Some("https://www.google.com/"),
             ..Default::default()
         }
+    }
+
+    async fn fetch_encrypted_host_flags(&self, video_id: &str) -> Option<String> {
+        let url = format!("https://www.youtube.com/embed/{}", video_id);
+        let res = self
+            .http
+            .get(&url)
+            .header("Referer", "https://www.google.com")
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            )
+            .send()
+            .await
+            .ok()?;
+
+        if !res.status().is_success() {
+            return None;
+        }
+
+        let body = res.text().await.ok()?;
+        let re = regex::Regex::new(r#""encryptedHostFlags":"([^"]+)""#).ok()?;
+        re.captures(&body)
+            .and_then(|caps| caps.get(1))
+            .map(|m| m.as_str().to_string())
     }
 
     async fn player_request(
@@ -49,6 +73,7 @@ impl WebEmbeddedClient {
         visitor_data: Option<&str>,
         signature_timestamp: Option<u32>,
         _oauth: &Arc<YouTubeOAuth>,
+        encrypted_host_flags: Option<String>,
     ) -> AnyResult<Value> {
         crate::sources::youtube::clients::common::make_player_request(
             crate::sources::youtube::clients::common::PlayerRequestOptions {
@@ -62,6 +87,8 @@ impl WebEmbeddedClient {
                 referer: Some("https://www.youtube.com"),
                 origin: None,
                 po_token: None,
+                encrypted_host_flags,
+                serialized_third_party_embed_config: true,
             },
         )
         .await
@@ -98,7 +125,7 @@ impl YouTubeClient for WebEmbeddedClient {
         let body = json!({
             "context": self.config().build_context(visitor_data),
             "query": query,
-            "params": "EgIQAQ%3D%3D"
+            "params": "EgVo2aDSNQ=="
         });
 
         let url = format!("{}/youtubei/v1/search?prettyPrint=false", INNERTUBE_API);
@@ -195,8 +222,16 @@ impl YouTubeClient for WebEmbeddedClient {
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
         let signature_timestamp = cipher_manager.get_signature_timestamp().await.ok();
+        let encrypted_host_flags = self.fetch_encrypted_host_flags(track_id).await;
+
         let body = self
-            .player_request(track_id, visitor_data, signature_timestamp, &oauth)
+            .player_request(
+                track_id,
+                visitor_data,
+                signature_timestamp,
+                &oauth,
+                encrypted_host_flags,
+            )
             .await?;
 
         let playability = body
@@ -257,7 +292,8 @@ impl YouTubeClient for WebEmbeddedClient {
         visitor_data: Option<&str>,
         oauth: Arc<YouTubeOAuth>,
     ) -> Option<serde_json::Value> {
-        self.player_request(track_id, visitor_data, None, &oauth)
+        let encrypted_host_flags = self.fetch_encrypted_host_flags(track_id).await;
+        self.player_request(track_id, visitor_data, None, &oauth, encrypted_host_flags)
             .await
             .ok()
     }

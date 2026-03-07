@@ -17,6 +17,7 @@ use super::{
     pandora::PandoraSource,
     plugin::{BoxedSource, BoxedTrack},
     qobuz::QobuzSource,
+    reddit::RedditSource,
     shazam::ShazamSource,
     soundcloud::SoundCloudSource,
     spotify::SpotifySource,
@@ -288,6 +289,17 @@ impl SourceManager {
             BandcampSource::new(
                 config.sources.bandcamp.clone(),
                 http_pool.get(bandcamp_proxy.clone())
+            )
+        );
+
+        let reddit_proxy = config.sources.reddit.as_ref().and_then(|c| c.proxy.clone());
+        register!(
+            config.sources.reddit.as_ref().is_some_and(|c| c.enabled),
+            "Reddit",
+            reddit_proxy,
+            RedditSource::new(
+                config.sources.reddit.clone(),
+                http_pool.get(reddit_proxy.clone())
             )
         );
 

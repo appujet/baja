@@ -1,9 +1,10 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicI32, Ordering},
+    atomic::{AtomicU64, Ordering},
 };
 
 use dashmap::DashMap;
+use sysinfo::System;
 
 use crate::{
     common::types::SessionId,
@@ -23,8 +24,9 @@ pub struct AppState {
     pub lyrics_manager: Arc<crate::lyrics::LyricsManager>,
     pub config: crate::config::AppConfig,
     pub youtube: Option<Arc<YoutubeStreamContext>>,
-    pub total_players: AtomicI32,
-    pub playing_players: AtomicI32,
+    pub total_players: AtomicU64,
+    pub playing_players: AtomicU64,
+    pub system_state: parking_lot::Mutex<System>,
 }
 
 impl AppState {
@@ -32,11 +34,8 @@ impl AppState {
         self.total_players.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn player_destroyed(&self, was_playing: bool) {
+    pub fn player_destroyed(&self) {
         self.total_players.fetch_sub(1, Ordering::Relaxed);
-        if was_playing {
-            self.playing_players.fetch_sub(1, Ordering::Relaxed);
-        }
     }
 
     pub fn playback_started(&self) {
