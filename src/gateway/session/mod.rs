@@ -239,6 +239,10 @@ impl VoiceGateway {
             tokio::select! {
                 biased;
                 _ = self.outer_token.cancelled() => break SessionOutcome::Shutdown,
+                _ = conn_token.cancelled() => {
+                    warn!("[{}] Connection token cancelled (heartbeat timeout?)", self.guild_id);
+                    break SessionOutcome::Reconnect;
+                }
                 Some(is_speaking) = speaking_rx.recv() => {
                     self.send_speaking_notification(&ws_tx, state.ssrc(), is_speaking);
                 }

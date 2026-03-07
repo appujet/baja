@@ -1,10 +1,11 @@
 use std::sync::{
     Arc,
-    atomic::{AtomicI64, AtomicU64, Ordering},
+    atomic::{AtomicI64, AtomicU32, AtomicU64, Ordering},
 };
 
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::{
@@ -17,6 +18,7 @@ const JS_SAFE_MAX: u64 = (1u64 << 53) - 1;
 pub struct HeartbeatTracker {
     pub last_nonce: Arc<AtomicU64>,
     pub sent_at: Arc<AtomicU64>,
+    pub missed_acks: Arc<AtomicU32>,
 }
 
 impl Default for HeartbeatTracker {
@@ -24,6 +26,7 @@ impl Default for HeartbeatTracker {
         Self {
             last_nonce: Arc::new(AtomicU64::new(0)),
             sent_at: Arc::new(AtomicU64::new(0)),
+            missed_acks: Arc::new(AtomicU32::new(0)),
         }
     }
 }
@@ -46,10 +49,12 @@ impl HeartbeatTracker {
         &self,
         tx: UnboundedSender<Message>,
         seq_ack: Arc<AtomicI64>,
+        conn_token: CancellationToken,
         interval_ms: u64,
     ) -> tokio::task::JoinHandle<()> {
         let last_nonce = self.last_nonce.clone();
         let sent_at = self.sent_at.clone();
+        let missed_acks = self.missed_acks.clone();
 
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(tokio::time::Duration::from_millis(interval_ms));
@@ -57,6 +62,13 @@ impl HeartbeatTracker {
 
             loop {
                 ticker.tick().await;
+
+                let missed = missed_acks.fetch_add(1, Ordering::Relaxed);
+                if missed >= 2 {
+                    warn!("Heartbeat timeout: {missed} missed ACKs. Reconnecting...");
+                    conn_token.cancel();
+                    break;
+                }
 
                 let nonce = rand::random::<u64>() & JS_SAFE_MAX;
                 last_nonce.store(nonce, Ordering::Relaxed);

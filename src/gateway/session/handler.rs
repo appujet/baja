@@ -12,6 +12,7 @@ use tokio::sync::{Mutex, mpsc::UnboundedSender};
 use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
+use uuid::Uuid;
 
 use super::{
     VoiceGateway,
@@ -123,13 +124,14 @@ impl<'a> SessionState<'a> {
             Some(VoiceOp::SessionDescription) => self.handle_session_description(msg.d).await,
             Some(VoiceOp::HeartbeatAck) => self.handle_heartbeat_ack(msg.d),
             Some(VoiceOp::Resumed) => self.handle_resumed().await,
-            Some(VoiceOp::UserConnect | VoiceOp::ClientsConnect) => self.handle_user_connect(msg.d),
-            Some(VoiceOp::UserDisconnect | VoiceOp::ClientDisconnect) => {
-                self.handle_user_disconnect(msg.d)
-            }
+            Some(VoiceOp::ClientConnect) => self.handle_user_connect(msg.d),
+            Some(VoiceOp::ClientDisconnect) => self.handle_user_disconnect(msg.d),
             Some(
                 VoiceOp::Speaking
+                | VoiceOp::Video
+                | VoiceOp::Codecs
                 | VoiceOp::MediaSinkWants
+                | VoiceOp::VoiceBackendVersion
                 | VoiceOp::VoiceFlags
                 | VoiceOp::VoicePlatform,
             ) => None, // Ignore informational events
@@ -245,6 +247,7 @@ impl<'a> SessionState<'a> {
         self.heartbeat_handle = Some(self.heartbeat.spawn(
             self.tx.clone(),
             self.seq_ack.clone(),
+            self.conn_token.clone(),
             interval,
         ));
         None
@@ -279,10 +282,20 @@ impl<'a> SessionState<'a> {
 
         match discover_ip(&self.udp_socket, addr, self.ssrc).await {
             Ok((my_ip, my_port)) => {
+                let rtc_connection_id = Uuid::new_v4().to_string();
                 self.send_json(
                     1,
                     serde_json::json!({
                         "protocol": "udp",
+                        "rtc_connection_id": rtc_connection_id,
+                        "codecs": [
+                            {
+                                "name": "opus",
+                                "type": "audio",
+                                "priority": 1000,
+                                "payload_type": 120
+                            }
+                        ],
                         "data": { "address": my_ip, "port": my_port, "mode": self.selected_mode }
                     }),
                 );
@@ -385,6 +398,7 @@ impl<'a> SessionState<'a> {
         let nonce = d["t"].as_u64().unwrap_or(0);
         if let Some(rtt) = self.heartbeat.validate_ack(nonce) {
             self.gateway.ping.store(rtt as i64, Ordering::Relaxed);
+            self.heartbeat.missed_acks.store(0, Ordering::Relaxed);
         }
         None
     }
