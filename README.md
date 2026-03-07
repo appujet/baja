@@ -41,32 +41,32 @@ Rustalink distinguishes between direct native playback and intelligent mirroring
 ### Native
 Direct stream extraction and resolution.
 
-- [x] **YouTube**:
-- [x] **SoundCloud**:
-- [x] **Deezer**:
-- [x] **Qobuz**:
-- [x] **JioSaavn**:
-- [x] **Gaana**:
-- [x] **Bandcamp**:
-- [x] **MixCloud**:
-- [x] **Audiomack**:
-- [x] **Reddit**:
-- [x] **HTTP / Local**:
+- [x] **YouTube**
+- [x] **SoundCloud**
+- [x] **Deezer**
+- [x] **Qobuz**
+- [x] **JioSaavn**
+- [x] **Gaana**
+- [x] **Bandcamp**
+- [x] **MixCloud**
+- [x] **Audiomack**
+- [x] **Reddit**
+- [x] **HTTP / Local**
 
 ### Mirroring
 Resolution of metadata-only sources via secondary providers.
 
-- [x] **Spotify**:
-- [x] **Apple Music**:
-- [x] **Tidal**:
-- [x] **Yandex**:
-- [x] **Shazam**:
-- [x] **Anghami**:
-- [x] **Pandora**:
-- [ ] **Last.fm**:
+- [x] **Spotify**
+- [x] **Apple Music**
+- [x] **Tidal**
+- [x] **Yandex**
+- [x] **Shazam**
+- [x] **Anghami**
+- [x] **Pandora**
+- [ ] **Last.fm**
 
 ### Utilities
-- [x] **Text-to-Speech**:
+- [x] **Text-to-Speech**
 
 ## Major Dependencies
 
