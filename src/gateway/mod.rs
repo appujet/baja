@@ -7,4 +7,4 @@ pub mod udp_link;
 pub use encryption::DaveHandler;
 pub use engine::VoiceEngine;
 pub use session::VoiceGateway;
-pub use udp_link::UdpBackend;
+pub use udp_link::VoiceTransport;
