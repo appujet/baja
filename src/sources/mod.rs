@@ -17,6 +17,7 @@ pub mod gaana;
 pub mod google_tts;
 pub mod http;
 pub mod jiosaavn;
+pub mod lastfm;
 pub mod local;
 pub mod mixcloud;
 pub mod pandora;

@@ -12,6 +12,7 @@ use super::{
     google_tts::GoogleTtsSource,
     http::HttpSource,
     jiosaavn::JioSaavnSource,
+    lastfm::LastFMSource,
     local::LocalSource,
     mixcloud::MixcloudSource,
     pandora::PandoraSource,
@@ -301,6 +302,13 @@ impl SourceManager {
                 config.sources.reddit.clone(),
                 http_pool.get(reddit_proxy.clone())
             )
+        );
+
+        register!(
+            config.sources.lastfm.as_ref().is_some_and(|c| c.enabled),
+            "Last.fm",
+            None::<crate::config::HttpProxyConfig>,
+            LastFMSource::new(config.sources.lastfm.clone(), http_pool.get(None))
         );
 
         let audius_proxy = config.sources.audius.as_ref().and_then(|c| c.proxy.clone());

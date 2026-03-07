@@ -192,6 +192,12 @@ enforce_config = false
 enabled = false
 # proxy = { url = "http://proxy:8080", username = "user", password = "pass" }
 
+[sources.lastfm]
+enabled = false
+search_limit = 10
+# Create your API key here: https://www.last.fm/api/account/create
+# api_key = "your-lastfm-api-key"
+
 [lyrics]
 youtubemusic = true
 lrclib = true

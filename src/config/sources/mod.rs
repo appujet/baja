@@ -11,6 +11,7 @@ pub mod gaana;
 pub mod google_tts;
 pub mod http;
 pub mod jiosaavn;
+pub mod lastfm;
 pub mod local;
 pub mod mixcloud;
 pub mod pandora;
@@ -34,6 +35,7 @@ pub use gaana::*;
 pub use google_tts::*;
 pub use http::*;
 pub use jiosaavn::*;
+pub use lastfm::*;
 pub use local::*;
 pub use mixcloud::*;
 pub use pandora::*;
@@ -78,6 +80,7 @@ pub struct SourcesConfig {
     pub google_tts: Option<GoogleTtsConfig>,
     pub flowery: Option<FloweryConfig>,
     pub reddit: Option<RedditConfig>,
+    pub lastfm: Option<LastFmConfig>,
 }
 
 pub fn default_true() -> bool {
