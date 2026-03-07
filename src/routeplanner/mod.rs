@@ -8,6 +8,7 @@ use std::{
 use async_trait::async_trait;
 use ipnet::IpNet;
 use rand::Rng;
+use tracing::{debug, info};
 
 use crate::protocol::{
     BalancingIpDetails,
@@ -36,6 +37,7 @@ impl BalancingIpRoutePlanner {
         let mut ip_blocks = Vec::with_capacity(cidrs.len());
         let mut parsed_blocks = Vec::with_capacity(cidrs.len());
 
+        let mut total_ips = 0;
         for cidr in cidrs.iter() {
             let parsed = IpNet::from_str(cidr).unwrap_or_else(|_| {
                 let suffix = if cidr.contains(':') { "/128" } else { "/32" };
@@ -50,11 +52,54 @@ impl BalancingIpRoutePlanner {
             }
             .to_string();
 
+            let size = match parsed {
+                IpNet::V4(net) => {
+                    let prefix_len = net.prefix_len();
+                    if prefix_len >= 32 {
+                        1
+                    } else {
+                        2u128.pow(32 - prefix_len as u32)
+                    }
+                }
+                IpNet::V6(net) => {
+                    let prefix_len = net.prefix_len();
+                    if prefix_len >= 128 {
+                        1
+                    } else if prefix_len <= 64 {
+                        // For large blocks like /64, we don't want to calculate the full 2^64
+                        // because it's huge, but we can show it as a string or limit it.
+                        // Lavalink usually just shows the block.
+                        u128::MAX // placeholder for "too many"
+                    } else {
+                        2u128.pow(128 - prefix_len as u32)
+                    }
+                }
+            };
+
+            if size == u128::MAX {
+                info!(
+                    "Added {} block: {} (virtually unlimited addresses)",
+                    block_type, cidr
+                );
+            } else {
+                info!("Added {} block: {} ({} addresses)", block_type, cidr, size);
+                total_ips += size;
+            }
+
             ip_blocks.push(IpBlock {
                 block_type,
                 size: cidr.clone(),
             });
             parsed_blocks.push(parsed);
+        }
+
+        if total_ips > 0 && total_ips != u128::MAX {
+            info!(
+                "Route planner initialized with {} total addresses",
+                total_ips
+            );
+        } else if total_ips == u128::MAX {
+            info!("Route planner initialized with virtually unlimited addresses");
         }
 
         Self {
@@ -120,7 +165,9 @@ impl BalancingIpRoutePlanner {
 
         *b_idx = (*b_idx + 1) % self.parsed_blocks.len();
 
-        Self::calculate_ip(block, final_index)
+        let ip = Self::calculate_ip(block, final_index);
+        debug!("Route planner picked IP: {}", ip);
+        ip
     }
 
     fn get_address_internal(&self) -> Option<IpAddr> {
