@@ -27,6 +27,8 @@ pub const MAX_SILENCE_FRAMES: u32 = 5;
 pub const UDP_PACKET_BUF_CAPACITY: usize = 1500;
 pub const DISCOVERY_PACKET_SIZE: usize = 74;
 pub const IP_DISCOVERY_TIMEOUT_SECS: u64 = 2;
+pub const IP_DISCOVERY_RETRIES: u32 = 10;
+pub const IP_DISCOVERY_RETRY_INTERVAL_MS: u64 = 1000;
 
 // --- Protocol Specifics ---
 pub const OP_HEARTBEAT: u8 = 3;

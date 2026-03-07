@@ -349,6 +349,7 @@ impl VoiceGateway {
                 "user_id": self.user_id.to_string(),
                 "session_id": self.session_id,
                 "token": self.token,
+                "video": true,
                 "max_dave_protocol_version": if self.channel_id.0 > 0 { 1 } else { 0 },
             }),
         }
@@ -361,6 +362,7 @@ impl VoiceGateway {
                 "server_id": self.guild_id,
                 "session_id": self.session_id,
                 "token": self.token,
+                "video": true,
                 "seq_ack": seq_ack,
             }),
         }

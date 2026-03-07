@@ -296,7 +296,27 @@ impl<'a> SessionState<'a> {
                                 "payload_type": 120
                             }
                         ],
-                        "data": { "address": my_ip, "port": my_port, "mode": self.selected_mode }
+                        "data": { "address": my_ip, "port": my_port, "mode": self.selected_mode },
+                        "address": my_ip,
+                        "port": my_port,
+                        "mode": self.selected_mode
+                    }),
+                );
+
+                self.send_json(
+                    12,
+                    serde_json::json!({
+                        "audio_ssrc": self.ssrc,
+                        "video_ssrc": 0,
+                        "rtx_ssrc": 0,
+                    }),
+                );
+                self.send_json(
+                    5,
+                    serde_json::json!({
+                        "speaking": 0,
+                        "delay": 0,
+                        "ssrc": self.ssrc,
                     }),
                 );
             }

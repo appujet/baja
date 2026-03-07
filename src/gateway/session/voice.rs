@@ -15,8 +15,9 @@ use crate::{
     gateway::{
         DaveHandler,
         constants::{
-            DISCOVERY_PACKET_SIZE, FRAME_DURATION_MS, IP_DISCOVERY_TIMEOUT_SECS,
-            MAX_OPUS_FRAME_SIZE, MAX_SILENCE_FRAMES, PCM_FRAME_SAMPLES, UDP_KEEPALIVE_GAP_MS,
+            DISCOVERY_PACKET_SIZE, FRAME_DURATION_MS, IP_DISCOVERY_RETRIES,
+            IP_DISCOVERY_RETRY_INTERVAL_MS, IP_DISCOVERY_TIMEOUT_SECS, MAX_OPUS_FRAME_SIZE,
+            MAX_SILENCE_FRAMES, PCM_FRAME_SAMPLES, UDP_KEEPALIVE_GAP_MS,
         },
         udp_link::VoiceTransport,
     },
@@ -30,30 +31,48 @@ pub async fn discover_ip(
     addr: SocketAddr,
     ssrc: u32,
 ) -> AnyResult<(String, u16)> {
+
     let mut packet = [0u8; DISCOVERY_PACKET_SIZE];
     packet[0..2].copy_from_slice(&1u16.to_be_bytes());
     packet[2..4].copy_from_slice(&70u16.to_be_bytes());
     packet[4..8].copy_from_slice(&ssrc.to_be_bytes());
 
-    socket.send_to(&packet, addr).await.map_err(map_boxed_err)?;
-
-    let mut buf = [0u8; DISCOVERY_PACKET_SIZE];
-    match tokio::time::timeout(
-        Duration::from_secs(IP_DISCOVERY_TIMEOUT_SECS),
-        socket.recv(&mut buf),
-    )
-    .await
-    {
-        Ok(Ok(n)) if n >= DISCOVERY_PACKET_SIZE => {
-            let ip = std::str::from_utf8(&buf[8..72])
-                .map_err(map_boxed_err)?
-                .trim_matches('\0')
-                .to_string();
-            let port = u16::from_be_bytes([buf[72], buf[73]]);
-            Ok((ip, port))
+    for attempt in 1..=IP_DISCOVERY_RETRIES {
+        if attempt > 1 {
+            tokio::time::sleep(Duration::from_millis(IP_DISCOVERY_RETRY_INTERVAL_MS)).await;
         }
-        _ => Err(map_boxed_err("IP discovery failed")),
+
+        if let Err(e) = socket.send_to(&packet, addr).await {
+            if attempt == IP_DISCOVERY_RETRIES {
+                return Err(map_boxed_err(format!("IP discovery send failed: {e}")));
+            }
+            continue;
+        }
+
+        let mut buf = [0u8; DISCOVERY_PACKET_SIZE];
+        match tokio::time::timeout(
+            Duration::from_secs(IP_DISCOVERY_TIMEOUT_SECS),
+            socket.recv(&mut buf),
+        )
+        .await
+        {
+            Ok(Ok(n)) if n >= DISCOVERY_PACKET_SIZE => {
+                let ip = std::str::from_utf8(&buf[8..72])
+                    .map_err(map_boxed_err)?
+                    .trim_matches('\0')
+                    .to_string();
+                let port = u16::from_be_bytes([buf[72], buf[73]]);
+                return Ok((ip, port));
+            }
+            _ => {
+                if attempt == IP_DISCOVERY_RETRIES {
+                    return Err(map_boxed_err("IP discovery timeout or invalid response"));
+                }
+            }
+        }
     }
+
+    Err(map_boxed_err("IP discovery exhausted all retries"))
 }
 
 pub struct SpeakConfig {
