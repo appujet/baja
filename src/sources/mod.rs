@@ -6,6 +6,7 @@ pub use manager::SourceManager;
 pub use plugin::{BoxedSource, BoxedTrack, SourcePlugin};
 
 // Individual source implementations
+pub mod amazonmusic;
 pub mod anghami;
 pub mod applemusic;
 pub mod audiomack;

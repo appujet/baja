@@ -67,6 +67,7 @@ Resolution of metadata-only sources via secondary providers.
 - [x] **Shazam**: Discovery-focused metadata resolution.
 - [x] **Anghami**: Discovery-focused metadata resolution.
 - [x] **Pandora**: Discovery-focused metadata resolution.
+- [x] **Amazon Music**: Full metadata resolution (tracks, albums, artists, playlists, community playlists) via mirror playback.
 
 ### Utilities
 - [x] **Text-to-Speech**: Integrated Google and Flowery TTS.
@@ -101,3 +102,5 @@ docker run -d \
 Rustalink is an independent reimplementation in Rust and does not copy source code from the following projects. We acknowledge their design and architectural influence:
 
 - **[Lavalink](https://github.com/lavalink-devs/Lavalink)** *(MIT License)* — The original standalone audio node. Rustalink implements the Lavalink v4 protocol and draws inspiration from its player management, session handling, and event emission design.
+- **[Amazon-Music-API](https://github.com/notdeltaxd/Amazon-Music-API)** — Our own reverse-engineered Amazon Music API wrapper. The Rustalink Amazon Music source is built directly on top of it.
+

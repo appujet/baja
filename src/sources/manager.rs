@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use super::{
+    amazonmusic::AmazonMusicSource,
     anghami::AnghamiSource,
     applemusic::AppleMusicSource,
     audiomack::AudiomackSource,
@@ -330,6 +331,8 @@ impl SourceManager {
 
         Self::register_twitch(sources, config, http_pool);
 
+        Self::register_amazonmusic(sources, config, http_pool);
+
         if config.sources.http.as_ref().is_some_and(|c| c.enabled) {
             tracing::info!("Loaded source: http");
             sources.push(Box::new(HttpSource::new()));
@@ -464,6 +467,26 @@ impl SourceManager {
             let client = http_pool.get(proxy.clone());
             tracing::info!("Loaded source: Twitch");
             sources.push(Box::new(TwitchSource::new(c.clone(), client)));
+        }
+    }
+
+    fn register_amazonmusic(
+        sources: &mut Vec<BoxedSource>,
+        config: &crate::config::AppConfig,
+        http_pool: &Arc<HttpClientPool>,
+    ) {
+        if let Some(c) = config.sources.amazonmusic.as_ref() && c.enabled {
+            let proxy = c.proxy.clone();
+            let client = http_pool.get(proxy.clone());
+            match AmazonMusicSource::new(c.clone(), client) {
+                Ok(src) => {
+                    tracing::info!("Loaded source: Amazon Music");
+                    sources.push(Box::new(src));
+                }
+                Err(e) => {
+                    tracing::error!("Amazon Music source failed to initialize: {}", e);
+                }
+            }
         }
     }
 

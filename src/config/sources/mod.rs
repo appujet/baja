@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+pub mod amazonmusic;
 pub mod anghami;
 pub mod applemusic;
 pub mod audiomack;
@@ -26,6 +27,7 @@ pub mod vkmusic;
 pub mod yandexmusic;
 pub mod youtube;
 
+pub use amazonmusic::*;
 pub use anghami::*;
 pub use applemusic::*;
 pub use audiomack::*;
@@ -64,6 +66,7 @@ pub struct HttpProxyConfig {
 pub struct SourcesConfig {
     pub youtube: Option<YouTubeConfig>,
     pub spotify: Option<SpotifyConfig>,
+    pub amazonmusic: Option<AmazonMusicConfig>,
     pub http: Option<HttpSourceConfig>,
     pub local: Option<LocalSourceConfig>,
     pub jiosaavn: Option<JioSaavnConfig>,
