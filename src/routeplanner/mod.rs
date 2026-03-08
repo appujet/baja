@@ -66,10 +66,7 @@ impl BalancingIpRoutePlanner {
                     if prefix_len >= 128 {
                         1
                     } else if prefix_len <= 64 {
-                        // For large blocks like /64, we don't want to calculate the full 2^64
-                        // because it's huge, but we can show it as a string or limit it.
-                        // Lavalink usually just shows the block.
-                        u128::MAX // placeholder for "too many"
+                        u128::MAX
                     } else {
                         2u128.pow(128 - prefix_len as u32)
                     }
