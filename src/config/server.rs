@@ -48,10 +48,10 @@ fn default_player_update_interval() -> u64 {
     5
 }
 fn default_stats_interval() -> u64 {
-    60
+    30
 }
 fn default_websocket_ping_interval() -> u64 {
-    30
+    20
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

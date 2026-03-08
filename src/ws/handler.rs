@@ -72,7 +72,7 @@ pub async fn handle_socket(
                     }
                 }
 
-                match ws_tx.try_send(Message::Ping(b"heartbeat".to_vec().into())) {
+                match ws_tx.try_send(Message::Ping(Vec::new().into())) {
                     Ok(()) => {
                         if !watchdog_armed.load(Relaxed) {
                             last_pong_ms.store(now_ms(), Relaxed);
