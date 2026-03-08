@@ -204,7 +204,7 @@ impl AmazonMusicSource {
         let mut duration_map: std::collections::HashMap<String, u64> =
             std::collections::HashMap::new();
 
-        for (album_id, album_resp) in unique_album_ids.iter().zip(album_responses.into_iter()) {
+        for (album_id, album_resp) in unique_album_ids.iter().zip(album_responses) {
             let album_resp = match album_resp {
                 Some(v) => v,
                 None => continue,
@@ -381,7 +381,7 @@ impl AmazonMusicSource {
 
             let results = futures::future::join_all(futures).await;
 
-            for (album_id, album_resp) in batch.iter().zip(results.into_iter()) {
+            for (album_id, album_resp) in batch.iter().zip(results) {
                 let album_resp = match album_resp {
                     Some(v) => v,
                     None => continue,
