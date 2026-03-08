@@ -378,6 +378,8 @@ impl<'a> SessionState<'a> {
                 self.send_binary(26, &kp);
             }
         }
+
+        self.backoff.reset();
         None
     }
 
