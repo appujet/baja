@@ -21,6 +21,7 @@ pub mod shazam;
 pub mod soundcloud;
 pub mod spotify;
 pub mod tidal;
+pub mod twitch;
 pub mod vkmusic;
 pub mod yandexmusic;
 pub mod youtube;
@@ -46,6 +47,7 @@ pub use shazam::*;
 pub use soundcloud::*;
 pub use spotify::*;
 pub use tidal::*;
+pub use twitch::*;
 pub use vkmusic::*;
 pub use yandexmusic::*;
 pub use youtube::*;
@@ -78,6 +80,7 @@ pub struct SourcesConfig {
     pub shazam: Option<ShazamConfig>,
     pub mixcloud: Option<MixcloudConfig>,
     pub bandcamp: Option<BandcampConfig>,
+    pub twitch: Option<TwitchConfig>,
     pub vkmusic: Option<VkMusicConfig>,
     pub yandexmusic: Option<YandexMusicConfig>,
     pub google_tts: Option<GoogleTtsConfig>,

@@ -23,8 +23,9 @@ use super::{
     soundcloud::SoundCloudSource,
     spotify::SpotifySource,
     tidal::TidalSource,
-    vkmusic::VkMusicSource,
+    twitch::TwitchSource,
     yandexmusic::YandexMusicSource,
+    vkmusic::VkMusicSource,
     youtube::{YouTubeSource, YoutubeStreamContext, cipher::YouTubeCipherManager},
 };
 use crate::common::HttpClientPool;
@@ -327,6 +328,8 @@ impl SourceManager {
 
         Self::register_vkmusic(sources, config, http_pool);
 
+        Self::register_twitch(sources, config, http_pool);
+
         if config.sources.http.as_ref().is_some_and(|c| c.enabled) {
             tracing::info!("Loaded source: http");
             sources.push(Box::new(HttpSource::new()));
@@ -446,6 +449,19 @@ impl SourceManager {
                     tracing::error!("VK Music source failed to initialize: {}", e);
                 }
             }
+        }
+    }
+
+    fn register_twitch(
+        sources: &mut Vec<BoxedSource>,
+        config: &crate::config::AppConfig,
+        http_pool: &Arc<HttpClientPool>,
+    ) {
+        if let Some(c) = config.sources.twitch.as_ref() && c.enabled {
+            let proxy = c.proxy.clone();
+            let client = http_pool.get(proxy.clone());
+            tracing::info!("Loaded source: Twitch");
+            sources.push(Box::new(TwitchSource::new(c.clone(), client)));
         }
     }
 
