@@ -4,10 +4,10 @@ export default defineConfig({
   title: "Rustalink",
   description: "High-performance Rust audio server documentation",
   srcDir: './src',
-  base: '/',
+  base: '/Rustalink/',
   cleanUrls: true,
   themeConfig: {
-    logo: '/logo.svg', // Assuming a logo is or will be placed in public/
+    logo: '/logo.svg',
     nav: [
       { text: 'Docs', link: '/' }
     ],
