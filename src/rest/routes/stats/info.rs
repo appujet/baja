@@ -9,7 +9,7 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<protocol::Info
     tracing::info!("GET /v4/info");
 
     let version_str = env!("CARGO_PKG_VERSION");
-    let (major, minor, patch) = parse_semver(version_str);
+    let (major, minor, patch, pre_release) = parse_semver(version_str);
 
     Json(protocol::Info {
         version: protocol::Version {
@@ -17,8 +17,7 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<protocol::Info
             major: if major == 0 { 4 } else { major },
             minor,
             patch,
-            pre_release: None,
-            build: None,
+            pre_release,
         },
         build_time: option_env!("BUILD_TIME")
             .and_then(|s| s.parse().ok())
@@ -41,16 +40,21 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<protocol::Info
     })
 }
 
-fn parse_semver(v: &str) -> (u32, u32, u32) {
+fn parse_semver(v: &str) -> (u32, u32, u32, Option<String>) {
     let mut parts = v.split('.');
     let major = parts.next().and_then(|s| s.parse().ok()).unwrap_or(4);
     let minor = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let patch = parts
-        .next()
-        .and_then(|s| s.split(['-', '+']).next())
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-    (major, minor, patch)
+
+    let patch_raw = parts.next().unwrap_or("0");
+    let (patch_str, pre_release) = if let Some(idx) = patch_raw.find('-') {
+        (&patch_raw[..idx], Some(patch_raw[idx + 1..].to_string()))
+    } else {
+        (patch_raw, None)
+    };
+
+    let patch = patch_str.parse().ok().unwrap_or(0);
+
+    (major, minor, patch, pre_release)
 }
 
 pub async fn get_stats(State(state): State<Arc<AppState>>) -> Json<protocol::Stats> {
