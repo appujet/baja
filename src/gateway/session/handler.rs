@@ -42,7 +42,7 @@ pub struct SessionState<'a> {
     heartbeat: HeartbeatTracker,
     heartbeat_handle: Option<tokio::task::JoinHandle<()>>,
     conn_token: CancellationToken,
-    speaking_tx: UnboundedSender<bool>,
+    speaking_tx: Option<UnboundedSender<bool>>,
     session_key: Option<[u8; 32]>,
     speak_task: Option<tokio::task::JoinHandle<()>>,
     persistent_state: Arc<tokio::sync::Mutex<PersistentSessionState>>,
@@ -50,21 +50,27 @@ pub struct SessionState<'a> {
 }
 
 impl<'a> SessionState<'a> {
-    pub fn new(
+    pub async fn new_v8(
         gateway: &'a VoiceGateway,
         tx: UnboundedSender<Message>,
         seq_ack: Arc<AtomicI64>,
         conn_token: CancellationToken,
-        speaking_tx: UnboundedSender<bool>,
         persistent_state: Arc<tokio::sync::Mutex<PersistentSessionState>>,
         backoff: &'a mut Backoff,
     ) -> Result<Self, std::io::Error> {
         let mut users = HashSet::new();
         users.insert(gateway.user_id);
 
-        let udp = std::net::UdpSocket::bind("0.0.0.0:0")?;
-        udp.set_nonblocking(true)?;
-        let udp_socket = Arc::new(tokio::net::UdpSocket::from_std(udp)?);
+        let mut socket_guard = gateway.udp_socket.lock().await;
+        let udp_socket = if let Some(existing) = &*socket_guard {
+            existing.clone()
+        } else {
+            let udp = std::net::UdpSocket::bind("0.0.0.0:0")?;
+            udp.set_nonblocking(true)?;
+            let socket = Arc::new(tokio::net::UdpSocket::from_std(udp)?);
+            *socket_guard = Some(socket.clone());
+            socket
+        };
 
         Ok(Self {
             gateway,
@@ -82,12 +88,16 @@ impl<'a> SessionState<'a> {
             heartbeat: HeartbeatTracker::new(),
             heartbeat_handle: None,
             conn_token,
-            speaking_tx,
+            speaking_tx: None,
             session_key: None,
             speak_task: None,
             persistent_state,
             backoff,
         })
+    }
+
+    pub fn set_speaking_tx(&mut self, tx: UnboundedSender<bool>) {
+        self.speaking_tx = Some(tx);
     }
 
     pub fn ssrc(&self) -> u32 {
@@ -238,6 +248,11 @@ impl<'a> SessionState<'a> {
 
         if let Some(h) = self.heartbeat_handle.take() {
             h.abort();
+            warn!(
+                "[{}] Received unexpected mid-session HELLO. Forcing re-identify.",
+                self.gateway.guild_id
+            );
+            return Some(SessionOutcome::Identify);
         }
         trace!(
             "[{}] Heartbeat interval: {interval}ms",
@@ -367,6 +382,10 @@ impl<'a> SessionState<'a> {
 
             self.launch_speak_loop(addr, key).await;
             self.send_json(
+                12,
+                serde_json::json!({"audio_ssrc": self.ssrc, "video_ssrc": 0, "rtx_ssrc": 0}),
+            );
+            self.send_json(
                 5,
                 serde_json::json!({"speaking": 0, "delay": 0, "ssrc": self.ssrc}),
             );
@@ -400,6 +419,10 @@ impl<'a> SessionState<'a> {
                 self.ssrc = ssrc;
 
                 self.launch_speak_loop(addr, key).await;
+                self.send_json(
+                    12,
+                    serde_json::json!({"audio_ssrc": self.ssrc, "video_ssrc": 0, "rtx_ssrc": 0}),
+                );
                 self.send_json(
                     5,
                     serde_json::json!({"speaking": 0, "delay": 0, "ssrc": self.ssrc}),
@@ -446,6 +469,12 @@ impl<'a> SessionState<'a> {
     async fn handle_prepare_transition(&mut self, d: Value) -> Option<SessionOutcome> {
         let tid = d["transition_id"].as_u64().unwrap_or(0) as u16;
         let ver = d["protocol_version"].as_u64().unwrap_or(0) as u16;
+
+        debug!(
+            "[{}] DAVE Prepare Transition: id={}, version={}",
+            self.gateway.guild_id, tid, ver
+        );
+
         if self.dave.lock().await.prepare_transition(tid, ver) {
             self.send_json(23, serde_json::json!({ "transition_id": tid }));
         }
@@ -454,6 +483,10 @@ impl<'a> SessionState<'a> {
 
     async fn handle_execute_transition(&mut self, d: Value) -> Option<SessionOutcome> {
         let tid = d["transition_id"].as_u64().unwrap_or(0) as u16;
+        debug!(
+            "[{}] DAVE Execute Transition: id={}",
+            self.gateway.guild_id, tid
+        );
         self.dave.lock().await.execute_transition(tid);
         None
     }
@@ -461,6 +494,10 @@ impl<'a> SessionState<'a> {
     async fn handle_prepare_epoch(&mut self, d: Value) -> Option<SessionOutcome> {
         let epoch = d["epoch"].as_u64().unwrap_or(0);
         let ver = d["protocol_version"].as_u64().unwrap_or(0) as u16;
+        debug!(
+            "[{}] DAVE Prepare Epoch: epoch={}, version={}",
+            self.gateway.guild_id, epoch, ver
+        );
         self.dave.lock().await.prepare_epoch(epoch, ver);
         None
     }
@@ -484,7 +521,7 @@ impl<'a> SessionState<'a> {
             frames_sent: self.gateway.frames_sent.clone(),
             frames_nulled: self.gateway.frames_nulled.clone(),
             cancel_token: self.conn_token.clone(),
-            speaking_tx: self.speaking_tx.clone(),
+            speaking_tx: self.speaking_tx.clone().unwrap(), // Internal error if None
         };
 
         self.speak_task = Some(tokio::spawn(async move {

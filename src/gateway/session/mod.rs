@@ -46,6 +46,7 @@ pub struct VoiceGateway {
     event_tx: Option<UnboundedSender<RustalinkEvent>>,
     pub frames_sent: Arc<std::sync::atomic::AtomicU64>,
     pub frames_nulled: Arc<std::sync::atomic::AtomicU64>,
+    pub udp_socket: Shared<Option<Arc<tokio::net::UdpSocket>>>,
     outer_token: CancellationToken,
 }
 
@@ -85,6 +86,7 @@ impl VoiceGateway {
             event_tx: config.event_tx,
             frames_sent: config.frames_sent,
             frames_nulled: config.frames_nulled,
+            udp_socket: Arc::new(tokio::sync::Mutex::new(None)),
             outer_token: CancellationToken::new(),
         }
     }
@@ -137,6 +139,7 @@ impl VoiceGateway {
                         state.udp_addr = None;
                         state.session_key = None;
                     }
+                    *self.udp_socket.lock().await = None;
                     let delay = std::time::Duration::from_millis(RECONNECT_DELAY_FRESH_MS);
                     debug!(
                         "[{}] Session invalid; identifying fresh in {:?}",
@@ -194,29 +197,6 @@ impl VoiceGateway {
             .map_err(map_boxed_err)?;
         let (mut write, mut read) = ws_stream.split();
 
-        let handshake = if is_resume {
-            trace!(
-                "[{}] Sending voice RESUME: {:?}",
-                self.guild_id, self.session_id
-            );
-            self.resume_message(seq_ack.load(Ordering::Relaxed))
-        } else {
-            trace!(
-                "[{}] Sending voice IDENTIFY: {:?}",
-                self.guild_id, self.session_id
-            );
-            self.identify_message()
-        };
-
-        write
-            .send(Message::Text(
-                serde_json::to_string(&handshake)
-                    .map_err(map_boxed_err)?
-                    .into(),
-            ))
-            .await
-            .map_err(map_boxed_err)?;
-
         let conn_token = CancellationToken::new();
         let (ws_tx, mut ws_rx) = unbounded_channel::<Message>();
 
@@ -235,22 +215,66 @@ impl VoiceGateway {
             }
         });
 
-        let (speaking_tx, mut speaking_rx) = unbounded_channel::<bool>();
-
-        let mut state = handler::SessionState::new(
+        let mut state = handler::SessionState::new_v8(
             self,
             ws_tx.clone(),
             seq_ack.clone(),
             conn_token.clone(),
-            speaking_tx,
             persistent_state,
             backoff,
         )
+        .await
         .map_err(|e| {
             warn!("[{}] Init session failed: {e}", self.guild_id);
             conn_token.cancel();
             e
         })?;
+
+        // V8 Handshake: Wait for Op 8 HELLO before identifying
+        let msg = read.next().await;
+        match msg {
+            Some(Ok(m)) => {
+                if let Some(out) = self.handle_ws_message(&mut state, m).await {
+                    conn_token.cancel();
+                    return Ok(out);
+                }
+            }
+            Some(Err(e)) => {
+                warn!("[{}] Initial read error: {e}", self.guild_id);
+                conn_token.cancel();
+                return Ok(SessionOutcome::Reconnect);
+            }
+            None => {
+                warn!("[{}] WS closed before HELLO", self.guild_id);
+                conn_token.cancel();
+                return Ok(SessionOutcome::Reconnect);
+            }
+        }
+
+        let handshake = if is_resume {
+            trace!(
+                "[{}] Sending voice RESUME: {:?}",
+                self.guild_id, self.session_id
+            );
+            self.resume_message(seq_ack.load(Ordering::Relaxed))
+        } else {
+            trace!(
+                "[{}] Sending voice IDENTIFY: {:?}",
+                self.guild_id, self.session_id
+            );
+            self.identify_message()
+        };
+
+        ws_tx
+            .send(Message::Text(
+                serde_json::to_string(&handshake)
+                    .map_err(map_boxed_err)?
+                    .into(),
+            ))
+            .map_err(|_| map_boxed_err("failed to send handshake"))?;
+
+        let (speaking_tx, mut speaking_rx) = unbounded_channel::<bool>();
+        state.set_speaking_tx(speaking_tx);
 
         let outcome = loop {
             tokio::select! {
