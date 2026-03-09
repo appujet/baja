@@ -38,7 +38,7 @@
         "installation": {
             "container": "debian:bookworm-slim",
             "entrypoint": "bash",
-            "script": "#!/bin/bash\n# Installation script for Rustalink\n\napt update\napt install -y curl\n\nif [ ! -f config.toml ]; then\n    echo \"Downloading default config...\"\n    curl -sSL https://raw.githubusercontent.com/bongodevs/Rustalink/main/config.example.toml -o config.toml\nfi"
+            "script": "#!/bin/bash\n# Installation script for Rustalink\n\napt update\napt install -y curl\n\nif [ ! -f config.toml ]; then\n    echo \"Downloading default config...\"\n    curl -sSL https://raw.githubusercontent.com/bongodevs/Rustalink/HEAD/config.example.toml -o config.toml\nfi"
         }
     },
     "variables": [
