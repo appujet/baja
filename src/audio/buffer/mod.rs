@@ -23,6 +23,18 @@ pub fn cast_from_bytes(v: Vec<u8>) -> PooledBuffer {
     }
 }
 
+/// Returns a byte-slice view of the pooled buffer.
+#[inline]
+pub fn as_byte_slice(v: &[i16]) -> &[u8] {
+    unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, v.len() * 2) }
+}
+
+/// Returns an i16-slice view of a byte slice.
+#[inline]
+pub fn as_i16_slice(v: &[u8]) -> &[i16] {
+    unsafe { std::slice::from_raw_parts(v.as_ptr() as *const i16, v.len() / 2) }
+}
+
 /// Releases a buffer back to the global pool.
 #[inline]
 pub fn release_buffer(v: PooledBuffer) {

@@ -63,10 +63,7 @@ impl CrossfadeController {
 
         while !rx.is_empty() {
             if let Ok(pooled) = rx.try_recv() {
-                let bytes = unsafe {
-                    std::slice::from_raw_parts(pooled.as_ptr() as *const u8, pooled.len() * 2)
-                };
-                ring.write(bytes);
+                ring.write(crate::audio::buffer::as_byte_slice(&pooled));
             } else {
                 break;
             }
@@ -128,10 +125,8 @@ impl CrossfadeController {
             return false;
         };
 
-        // Safety: cast u8 vec back to i16 slice
-        let next_samples = unsafe {
-            std::slice::from_raw_parts(next_bytes.as_ptr() as *const i16, next_bytes.len() / 2)
-        };
+        // Read next track samples
+        let next_samples_raw = crate::audio::buffer::as_i16_slice(&next_bytes);
 
         let chunk_ms =
             (sample_count as f32 / self.channels as f32 / self.sample_rate as f32) * 1000.0;
@@ -156,10 +151,9 @@ impl CrossfadeController {
         let mut g_out = out_start;
         let mut g_in = in_start;
 
-        for (i, sample) in frame.iter_mut().enumerate() {
-            let next_val = next_samples.get(i).copied().unwrap_or(0);
+        for (sample, &next_val) in frame.iter_mut().zip(next_samples_raw.iter()) {
             let mixed = (*sample as f32 * g_out) + (next_val as f32 * g_in);
-            *sample = mixed.clamp(INT16_MIN_F, INT16_MAX_F).round() as i16;
+            *sample = mixed.clamp(INT16_MIN_F, INT16_MAX_F) as i16;
             g_out += step_out;
             g_in += step_in;
         }

@@ -24,7 +24,7 @@ pub struct Session {
     pub session_id: SessionId,
     pub user_id: Option<UserId>,
     pub players: PlayerMap,
-    pub sender: Mutex<flume::Sender<Message>>,
+    pub sender: parking_lot::RwLock<flume::Sender<Message>>,
     pub resumable: AtomicBool,
     pub resume_timeout: AtomicU64,
     /// True when WS is disconnected but session is kept for resume.
@@ -53,7 +53,7 @@ impl Session {
             session_id,
             user_id,
             players: DashMap::new(),
-            sender: Mutex::new(sender),
+            sender: parking_lot::RwLock::new(sender),
             resumable: AtomicBool::new(false),
             resume_timeout: AtomicU64::new(60),
             paused: AtomicBool::new(false),
@@ -111,9 +111,8 @@ impl Session {
             }
             queue.push_back(json.into());
         } else {
-            let sender = self.sender.lock().clone();
             let msg = Message::Text(json.into().into());
-            let _ = sender.send(msg);
+            let _ = self.sender.read().send(msg);
         }
     }
 

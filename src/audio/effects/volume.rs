@@ -30,6 +30,8 @@ pub struct VolumeEffect {
     threshold_value: f32,
     limit_headroom: f32,
 
+    limiter_lut: [f32; 1024],
+
     _sample_rate: u32,
     channels: usize,
 }
@@ -40,6 +42,12 @@ impl VolumeEffect {
         let limiter_softness = 0.4_f32;
         let threshold_value = limiter_threshold * INT16_MAX_F;
         let limit_headroom = INT16_MAX_F - threshold_value;
+
+        let mut limiter_lut = [0.0_f32; 1024];
+        for (i, val) in limiter_lut.iter_mut().enumerate() {
+            let overshoot = i as f32 / 1023.0 * 2.5; // Max overshoot factor 2.5x headroom
+            *val = 1.0 - (-overshoot * limiter_softness).exp();
+        }
 
         let fade_frames_total = (sample_rate as usize * 1000) / 1000;
 
@@ -55,6 +63,7 @@ impl VolumeEffect {
             limiter_softness,
             threshold_value,
             limit_headroom,
+            limiter_lut,
             _sample_rate: sample_rate,
             channels,
         }
@@ -86,13 +95,24 @@ impl VolumeEffect {
         }
     }
 
+    #[inline(always)]
     fn apply_limiter(&self, value: f32) -> f32 {
         let abs = value.abs();
         if abs <= self.threshold_value || self.limit_headroom <= 0.0 {
             return value;
         }
-        let overshoot = (abs - self.threshold_value) / self.limit_headroom;
-        let softened = 1.0 - (-overshoot * self.limiter_softness).exp();
+
+        let overshoot_raw = (abs - self.threshold_value) / self.limit_headroom;
+        // Normalize overshoot to LUT range [0, 2.5]
+        let lut_idx = (overshoot_raw * 1023.0 / 2.5) as usize;
+
+        let softened = if lut_idx < 1024 {
+            self.limiter_lut[lut_idx]
+        } else {
+            // Beyond LUT, effectively fully softened (approaches 1.0)
+            1.0 - (-overshoot_raw * self.limiter_softness).exp()
+        };
+
         let limited = self.threshold_value + self.limit_headroom * softened;
         value.signum() * limited.min(INT16_MAX_F)
     }
@@ -138,8 +158,12 @@ impl VolumeEffect {
 
         for s in frame.iter_mut() {
             let scaled = *s as f32 * gain;
-            let limited = self.apply_limiter(scaled);
-            *s = limited.clamp(INT16_MIN_F, INT16_MAX_F).round() as i16;
+            if scaled.abs() > self.threshold_value {
+                let limited = self.apply_limiter(scaled);
+                *s = limited.clamp(INT16_MIN_F, INT16_MAX_F) as i16;
+            } else {
+                *s = scaled as i16;
+            }
             gain += step;
         }
     }

@@ -183,7 +183,7 @@ fn resolve_session(
     {
         info!("Resuming session: {sid}");
         existing.paused.store(false, Relaxed);
-        *existing.sender.lock() = tx;
+        *existing.sender.write() = tx;
         state.sessions.insert(sid.clone(), existing.clone());
         return (existing, true);
     }
@@ -251,7 +251,7 @@ async fn handle_session_close(
     if session.resumable.load(Relaxed) {
         session.paused.store(true, Relaxed);
 
-        if !session.sender.lock().same_channel(tx) {
+        if !session.sender.read().same_channel(tx) {
             info!(
                 "Session {session_id} replaced by a new connection; closing the old connection for cleanup."
             );

@@ -115,7 +115,6 @@ struct MixerTrack {
     position: Arc<AtomicU64>,
     config: PlayerConfig,
     finished: bool,
-    slice_buf: Vec<i16>,
 }
 
 impl Mixer {
@@ -151,7 +150,6 @@ impl Mixer {
             position,
             config,
             finished: false,
-            slice_buf: Vec::with_capacity(1920),
         });
     }
 
@@ -229,33 +227,42 @@ impl Mixer {
                 );
             }
 
-            if track.slice_buf.len() != out_len {
-                track.slice_buf.resize(out_len, 0);
-            }
             let mut filled = 0usize;
 
+            // 1. Drain pending buffer
             if track.pending_pos < track.pending.len() {
                 let n = (out_len - filled).min(track.pending.len() - track.pending_pos);
-                track.slice_buf[filled..filled + n]
-                    .copy_from_slice(&track.pending[track.pending_pos..track.pending_pos + n]);
+                for (acc, &s) in self.mix_buf[filled..filled + n]
+                    .iter_mut()
+                    .zip(&track.pending[track.pending_pos..track.pending_pos + n])
+                {
+                    *acc += s as i32;
+                }
                 track.pending_pos += n;
                 filled += n;
+
                 if track.pending_pos >= track.pending.len() {
                     track.pending.clear();
                     track.pending_pos = 0;
                 }
             }
 
+            // 2. Pull new frames from flow
             'pull: while filled < out_len && !track.finished {
                 match track.flow.try_pop_frame() {
                     Ok(Some(frame)) => {
-                        let can = frame.len().min(out_len - filled);
-                        track.slice_buf[filled..filled + can].copy_from_slice(&frame[..can]);
-                        if can < frame.len() {
-                            track.pending.extend_from_slice(&frame[can..]);
+                        let n = frame.len().min(out_len - filled);
+                        for (acc, &s) in
+                            self.mix_buf[filled..filled + n].iter_mut().zip(&frame[..n])
+                        {
+                            *acc += s as i32;
+                        }
+
+                        if n < frame.len() {
+                            track.pending.extend_from_slice(&frame[n..]);
                             track.pending_pos = 0;
                         }
-                        filled += can;
+                        filled += n;
                     }
                     Ok(None) => break 'pull,
                     Err(_) => {
@@ -266,13 +273,6 @@ impl Mixer {
             }
 
             if filled > 0 {
-                for (mix_acc, &sample) in self
-                    .mix_buf
-                    .iter_mut()
-                    .zip(track.slice_buf.iter().take(filled))
-                {
-                    *mix_acc += sample as i32;
-                }
                 has_audio = true;
                 track
                     .position
