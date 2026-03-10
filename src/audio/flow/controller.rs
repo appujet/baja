@@ -28,12 +28,18 @@ impl FlowController {
         frame_tx: Sender<AudioFrame>,
         sample_rate: u32,
         channels: usize,
+        volume: f32,
     ) -> Self {
-        Self::build(frame_rx, Some(frame_tx), sample_rate, channels)
+        Self::build(frame_rx, Some(frame_tx), sample_rate, channels, volume)
     }
 
-    pub fn for_mixer(frame_rx: Receiver<AudioFrame>, sample_rate: u32, channels: usize) -> Self {
-        Self::build(frame_rx, None, sample_rate, channels)
+    pub fn for_mixer(
+        frame_rx: Receiver<AudioFrame>,
+        sample_rate: u32,
+        channels: usize,
+        volume: f32,
+    ) -> Self {
+        Self::build(frame_rx, None, sample_rate, channels, volume)
     }
 
     fn build(
@@ -41,10 +47,11 @@ impl FlowController {
         frame_tx: Option<Sender<AudioFrame>>,
         sample_rate: u32,
         channels: usize,
+        volume: f32,
     ) -> Self {
         Self {
             tape: TapeEffect::new(sample_rate, channels),
-            volume: VolumeEffect::new(1.0, sample_rate, channels),
+            volume: VolumeEffect::new(volume, sample_rate, channels),
             fade: FadeEffect::new(1.0, channels),
             crossfade: CrossfadeController::new(sample_rate, channels),
             pending_pcm: Vec::with_capacity(FRAME_SIZE_SAMPLES * 2),

@@ -138,8 +138,8 @@ impl Mixer {
         sample_rate: u32,
     ) {
         let vol_raw = f32::from_bits(volume.load(Ordering::Acquire));
-        let mut flow = FlowController::for_mixer(rx, sample_rate, MIXER_CHANNELS);
-        flow.volume.set_volume(vol_raw);
+        let mut flow = FlowController::for_mixer(rx, sample_rate, MIXER_CHANNELS, vol_raw);
+        flow.volume.set_volume_instant(vol_raw);
 
         self.tracks.push(MixerTrack {
             flow,

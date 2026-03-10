@@ -83,6 +83,15 @@ impl VolumeEffect {
         }
     }
 
+    /// Set the volume immediately without any fade.
+    pub fn set_volume_instant(&mut self, volume: f32) {
+        self.current_volume = volume;
+        self.target_volume = volume;
+        self.start_volume = volume;
+        self.fade_active = false;
+        self.fade_frames_elapsed = self.fade_frames_total;
+    }
+
     /// Get current gain (after any ongoing fade step).
     pub fn current_volume(&self) -> f32 {
         self.current_volume
