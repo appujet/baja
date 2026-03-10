@@ -27,6 +27,7 @@ pub struct PersistentSessionState {
     pub udp_addr: Option<std::net::SocketAddr>,
     pub session_key: Option<[u8; 32]>,
     pub rtp_state: Option<crate::gateway::udp_link::RtpState>,
+    pub selected_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

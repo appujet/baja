@@ -312,6 +312,7 @@ impl<'a> SessionState<'a> {
         {
             let mut state = self.persistent_state.lock().await;
             state.ssrc = self.ssrc;
+            state.selected_mode = Some(self.selected_mode.clone());
         }
 
         if self.gateway.channel_id.0 > 0 {
@@ -413,6 +414,7 @@ impl<'a> SessionState<'a> {
                 state.udp_addr = Some(addr);
                 state.session_key = Some(key);
                 state.ssrc = self.ssrc;
+                state.selected_mode = Some(self.selected_mode.clone());
             }
 
             self.launch_speak_loop(addr, key).await;
@@ -456,9 +458,9 @@ impl<'a> SessionState<'a> {
 
         self.backoff.reset();
 
-        let (addr, key, ssrc) = {
+        let (addr, key, ssrc, mode) = {
             let state = self.persistent_state.lock().await;
-            (state.udp_addr, state.session_key, state.ssrc)
+            (state.udp_addr, state.session_key, state.ssrc, state.selected_mode.clone())
         };
 
         match (addr, key) {
@@ -466,6 +468,9 @@ impl<'a> SessionState<'a> {
                 self.udp_addr = Some(addr);
                 self.session_key = Some(key);
                 self.ssrc = ssrc;
+                if let Some(m) = mode {
+                    self.selected_mode = m;
+                }
 
                 self.launch_speak_loop(addr, key).await;
                 self.send_json(

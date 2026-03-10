@@ -11,7 +11,7 @@ use tokio_tungstenite::tungstenite::{
     protocol::{Message, WebSocketConfig},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 use crate::{
     audio::{Mixer, filters::FilterChain},
@@ -373,7 +373,7 @@ impl VoiceGateway {
                     .map(|cf| (cf.code.into(), cf.reason.to_string()))
                     .unwrap_or((1000u16, "No reason".into()));
 
-                info!(
+                debug!(
                     "[{}] WS close: code={code} reason='{reason}'",
                     self.guild_id
                 );

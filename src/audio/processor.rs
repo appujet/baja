@@ -49,6 +49,7 @@ pub struct AudioProcessor {
     source_rate: u32,
     channels: usize,
     config: PlayerConfig,
+    recoverable_errors: u32,
 }
 
 impl AudioProcessor {
@@ -119,6 +120,7 @@ impl AudioProcessor {
             source_rate: sample_rate,
             channels,
             config,
+            recoverable_errors: 0,
         })
     }
 
@@ -152,6 +154,7 @@ impl AudioProcessor {
 
             match self.decoder.decode(&packet) {
                 Ok(decoded) => {
+                    self.recoverable_errors = 0;
                     let spec = *decoded.spec();
                     let mut buf = self.sample_buf.take().unwrap_or_else(|| {
                         SampleBuffer::<i16>::new(decoded.capacity() as u64, spec)
@@ -260,7 +263,14 @@ impl AudioProcessor {
                     self.sample_buf = Some(buf);
                 }
                 Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => break,
-                Err(Error::DecodeError(e)) => warn!("Decode error (recoverable): {e}"),
+                Err(Error::DecodeError(e)) => {
+                    self.recoverable_errors += 1;
+                    if self.recoverable_errors == 1 {
+                        warn!("Decode error (recoverable): {e}");
+                    } else if self.recoverable_errors % 100 == 0 {
+                        warn!("Decode error (recoverable, x{}): {e}", self.recoverable_errors);
+                    }
+                }
                 Err(e) => {
                     self.send_error(format!("Decode error: {e}"));
                     return Err(e);
