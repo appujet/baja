@@ -14,7 +14,7 @@ pub fn create_client(
     let mut builder = Client::builder()
         .user_agent(user_agent)
         .connect_timeout(Duration::from_secs(5))
-        .read_timeout(Duration::from_secs(12))
+        .read_timeout(Duration::from_secs(8))
         .tcp_nodelay(true)
         .tcp_keepalive(Duration::from_secs(25))
         .pool_max_idle_per_host(64)
