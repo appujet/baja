@@ -7,6 +7,7 @@ use crate::{
 
 mod registration;
 mod resolver;
+mod best_match;
 
 /// Source Manager handles the lifecycle and coordination of all audio sources.
 pub struct SourceManager {

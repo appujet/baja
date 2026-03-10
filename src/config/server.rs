@@ -77,11 +77,25 @@ pub struct RoutePlannerConfig {
     pub excluded_ips: Vec<String>,
 }
 
-
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct MirrorsConfig {
     pub providers: Vec<String>,
+    pub best_match: BestMatchConfig,
+}
+
+impl Default for MirrorsConfig {
+    fn default() -> Self {
+        Self {
+            providers: Vec::new(),
+            best_match: BestMatchConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct BestMatchConfig {
     pub scoring: bool,
     pub throttled_prefixes: Vec<String>,
     pub min_similarity: f64,
@@ -93,10 +107,9 @@ pub struct MirrorsConfig {
     pub duration_tolerance_ms: u64,
 }
 
-impl Default for MirrorsConfig {
+impl Default for BestMatchConfig {
     fn default() -> Self {
         Self {
-            providers: Vec::new(),
             scoring: true,
             throttled_prefixes: vec!["ytmsearch:".into(), "ytsearch:".into()],
             min_similarity: 0.50,
