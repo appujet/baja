@@ -9,7 +9,7 @@ This guide explains how to host your own Rustalink node on a Pterodactyl panel.
 
 ## Importing the Egg
 
-1. Download the `egg-rustalink.json` file from the [pterodactyl/](https://github.com/bongodevs/Rustalink/tree/main/pterodactyl) directory in our repository.
+1. Download the `egg-rustalink.json` file from <a href="/Rustalink/egg-rustalink.json" download>here</a>.
 2. Log in to your Pterodactyl panel as an administrator.
 3. Go to **Nests** in the admin sidebar.
 4. Select a nest (e.g., "Generic") or create a new one.
