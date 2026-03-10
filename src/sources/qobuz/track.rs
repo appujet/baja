@@ -33,7 +33,7 @@ impl PlayableTrack for QobuzTrack {
         let client = self.client.to_owned();
 
         let handle = tokio::runtime::Handle::current();
-        std::thread::spawn(move || {
+        tokio::task::spawn_blocking(move || {
             let _guard = handle.enter();
             handle.block_on(async move {
                 let url = switch_media_url(&client, &token_tracker, &info.identifier).await;
@@ -49,22 +49,22 @@ impl PlayableTrack for QobuzTrack {
 
                     // Proxy commands
                     let cmd_tx_clone = inner_cmd_tx.clone();
-                    std::thread::spawn(move || {
-                        while let Ok(cmd) = cmd_rx.recv() {
+                    tokio::spawn(async move {
+                        while let Ok(cmd) = cmd_rx.recv_async().await {
                             let _ = cmd_tx_clone.send(cmd);
                         }
                     });
 
                     // Proxy errors
                     let err_tx_clone = err_tx.clone();
-                    std::thread::spawn(move || {
-                        while let Ok(err) = inner_err_rx.recv() {
+                    tokio::spawn(async move {
+                        while let Ok(err) = inner_err_rx.recv_async().await {
                             let _ = err_tx_clone.send(err);
                         }
                     });
 
                     // Proxy samples
-                    while let Ok(sample) = inner_rx.recv() {
+                    while let Ok(sample) = inner_rx.recv_async().await {
                         if tx.send(sample).is_err() {
                             break;
                         }

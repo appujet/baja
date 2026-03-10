@@ -37,7 +37,7 @@ impl PlayableTrack for DeezerTrack {
         let proxy = self.proxy.clone();
 
         let handle = tokio::runtime::Handle::current();
-        std::thread::spawn(move || {
+        tokio::task::spawn_blocking(move || {
             let _guard = handle.enter();
             let track_id_for_log = track_id.clone();
 

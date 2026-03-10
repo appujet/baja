@@ -29,7 +29,7 @@ impl PlayableTrack for MixcloudTrack {
         let local_addr = self.local_addr;
 
         let handle = tokio::runtime::Handle::current();
-        std::thread::spawn(move || {
+        tokio::task::spawn_blocking(move || {
             let _guard = handle.enter();
             handle.block_on(async move {
                 let (hls_url, stream_url) = if hls_url_opt.is_some() || stream_url_opt.is_some() {

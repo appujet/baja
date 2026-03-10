@@ -43,13 +43,11 @@ impl LiveHlsReader {
     ) -> Self {
         let (chunk_tx, chunk_rx) = flume::bounded::<Vec<u8>>(16);
 
-        std::thread::Builder::new()
-            .name("twitch-live-hls".into())
-            .spawn(move || {
-                let _guard = handle.enter();
+        tokio::task::spawn_blocking(move || {
+            let _guard = handle.enter();
 
-                let mut builder =
-                    reqwest::Client::builder().timeout(std::time::Duration::from_secs(15));
+            let mut builder =
+                reqwest::Client::builder().timeout(std::time::Duration::from_secs(15));
 
                 if let Some(ip) = local_addr {
                     builder = builder.local_address(ip);
@@ -223,7 +221,7 @@ impl PlayableTrack for TwitchTrack {
         let proxy = self.proxy.clone();
         let handle = tokio::runtime::Handle::current();
 
-        std::thread::spawn(move || {
+        tokio::task::spawn_blocking(move || {
             let _guard = handle.enter();
             let reader = Box::new(LiveHlsReader::new(url, local_addr, proxy, handle.clone()))
                 as Box<dyn MediaSource>;
