@@ -131,9 +131,19 @@ impl<'a> SessionState<'a> {
             Some(VoiceOp::Resumed) => self.handle_resumed().await,
             Some(VoiceOp::ClientConnect) => self.handle_user_connect(msg.d).await,
             Some(VoiceOp::ClientDisconnect) => self.handle_user_disconnect(msg.d).await,
-            Some(VoiceOp::Speaking | VoiceOp::Video | VoiceOp::Codecs | VoiceOp::VoiceFlags | VoiceOp::VoicePlatform | VoiceOp::DaveTransitionReady) => None, // Ignore informational events
+            Some(
+                VoiceOp::Speaking
+                | VoiceOp::Video
+                | VoiceOp::Codecs
+                | VoiceOp::VoiceFlags
+                | VoiceOp::VoicePlatform
+                | VoiceOp::DaveTransitionReady,
+            ) => None, // Ignore informational events
             Some(VoiceOp::VoiceBackendVersion) => {
-                info!("[{}] Voice Backend Version: {:?}", self.gateway.guild_id, msg.d);
+                info!(
+                    "[{}] Voice Backend Version: {:?}",
+                    self.gateway.guild_id, msg.d
+                );
                 None
             }
             Some(VoiceOp::MediaSinkWants) => {
@@ -245,10 +255,10 @@ impl<'a> SessionState<'a> {
     async fn reset_dave_session(&self, dave: &mut DaveHandler, tid: u16) {
         dave.reset();
         self.send_json(31, serde_json::json!({ "transition_id": tid }));
-        if let Ok(kp) = dave.setup_session(DAVE_INITIAL_VERSION) {
-            if !kp.is_empty() {
-                self.send_binary(26, &kp);
-            }
+        if let Ok(kp) = dave.setup_session(DAVE_INITIAL_VERSION)
+            && !kp.is_empty()
+        {
+            self.send_binary(26, &kp);
         }
     }
 
@@ -308,7 +318,7 @@ impl<'a> SessionState<'a> {
             let protocol_version = d["dave_protocol_version"]
                 .as_u64()
                 .unwrap_or(DAVE_INITIAL_VERSION as u64) as u16;
-            
+
             let mut dave = self.dave.lock().await;
             if protocol_version > 0 {
                 dave.set_protocol_version(protocol_version);
@@ -543,16 +553,16 @@ impl<'a> SessionState<'a> {
             "[{}] DAVE Prepare Epoch: epoch={}, version={}",
             self.gateway.guild_id, epoch, ver
         );
-        if let Some(kp) = self.dave.lock().await.prepare_epoch(epoch, ver) {
-            if !kp.is_empty() {
-                self.send_binary(26, &kp);
-            }
+        if let Some(kp) = self.dave.lock().await.prepare_epoch(epoch, ver)
+            && !kp.is_empty()
+        {
+            self.send_binary(26, &kp);
         }
         None
     }
 
     async fn handle_mls_commit_transition(&mut self, d: Value) -> Option<SessionOutcome> {
-       let tid = d["transition_id"].as_u64().unwrap_or(0) as u16;
+        let tid = d["transition_id"].as_u64().unwrap_or(0) as u16;
         debug!(
             "[{}] DAVE MLS Announce Commit Transition: tid={}",
             self.gateway.guild_id, tid
@@ -598,11 +608,7 @@ impl<'a> SessionState<'a> {
     }
 
     fn send_json(&self, op: u8, d: Value) {
-        let msg = VoiceGatewayMessage {
-            op,
-            seq: None,
-            d,
-        };
+        let msg = VoiceGatewayMessage { op, seq: None, d };
         if let Ok(json) = serde_json::to_string(&msg) {
             let _ = self.tx.send(Message::Text(json.into()));
         }

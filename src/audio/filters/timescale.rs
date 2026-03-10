@@ -49,7 +49,7 @@ impl TimescaleFilter {
 
         let num_input_samples = self.input_buffer.len();
         let num_input_frames = num_input_samples / 2;
-        
+
         if num_input_frames < 4 {
             return Vec::new();
         }
@@ -87,7 +87,7 @@ impl TimescaleFilter {
 
         let consumed_frames = self.position.floor() as usize;
         let keep_from_frame = consumed_frames.saturating_sub(1);
-        
+
         if keep_from_frame > 0 {
             let samples_to_drain = keep_from_frame * 2;
             if samples_to_drain < self.input_buffer.len() {

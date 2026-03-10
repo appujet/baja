@@ -133,10 +133,7 @@ impl DaveHandler {
         None
     }
 
-    pub fn process_external_sender(
-        &mut self,
-        data: &[u8],
-    ) -> AnyResult<Vec<Vec<u8>>> {
+    pub fn process_external_sender(&mut self, data: &[u8]) -> AnyResult<Vec<Vec<u8>>> {
         let mut responses = Vec::new();
 
         if let Some(session) = &mut self.session {
@@ -177,11 +174,8 @@ impl DaveHandler {
 
         let transition_id = u16::from_be_bytes([data[0], data[1]]);
         if let Some(session) = &mut self.session {
-
             if is_welcome {
-                session
-                    .process_welcome(&data[2..])
-                    .map_err(map_boxed_err)?;
+                session.process_welcome(&data[2..]).map_err(map_boxed_err)?;
             } else {
                 session.process_commit(&data[2..]).map_err(map_boxed_err)?;
             }
@@ -195,10 +189,7 @@ impl DaveHandler {
         Ok(transition_id)
     }
 
-    pub fn process_proposals(
-        &mut self,
-        data: &[u8],
-    ) -> AnyResult<Option<Vec<u8>>> {
+    pub fn process_proposals(&mut self, data: &[u8]) -> AnyResult<Option<Vec<u8>>> {
         if data.is_empty() {
             return Err(short_payload_err("DAVE proposals"));
         }

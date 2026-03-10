@@ -143,7 +143,12 @@ impl VoiceSession {
             interval.tick().await;
             self.tick(encoder, &mut pcm, &mut opus, &mut ts_pcm).await?;
 
-            if self.config.frames_sent.load(Ordering::Relaxed) % 100 == 0 {
+            if self
+                .config
+                .frames_sent
+                .load(Ordering::Relaxed)
+                .is_multiple_of(100)
+            {
                 let mut state = self.config.persistent_state.lock().await;
                 state.rtp_state = Some(self.transport.rtp);
             }

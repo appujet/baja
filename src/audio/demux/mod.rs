@@ -15,7 +15,6 @@ pub use webm_opus::WebmOpusDemuxer;
 use crate::audio::constants::{MIXER_CHANNELS, TARGET_SAMPLE_RATE};
 pub use crate::common::types::AudioFormat;
 
-
 pub enum DemuxResult {
     Transcode {
         format: Box<dyn FormatReader>,

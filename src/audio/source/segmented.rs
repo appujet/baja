@@ -274,7 +274,10 @@ async fn fetch_worker(
                 claimed
             }
             .map(|(idx, retries)| {
-                debug!("Worker {}: claiming chunk {} (retry={})", worker_id, idx, retries);
+                debug!(
+                    "Worker {}: claiming chunk {} (retry={})",
+                    worker_id, idx, retries
+                );
                 state.chunks.insert(idx, ChunkState::Downloading);
                 (idx, retries, total_len)
             })
