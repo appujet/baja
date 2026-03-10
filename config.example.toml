@@ -16,8 +16,39 @@ opus_encoding_quality = 10                                                     #
 tape = { tape_stop = true, tape_stop_duration_ms = 500, curve = "sinusoidal" } # curve: linear | exponential | sinusoidal
 
 [player.mirrors]
-# List of mirror provider patterns. %ISRC% or %QUERY%
+# Provider patterns tried when the primary source fails to resolve a track.
+# Placeholders: %ISRC% (track ISRC code) and %QUERY% (title + artist).
+# Providers without %ISRC% in their pattern are always tried; those with %ISRC%
+# are skipped automatically when the track has no ISRC.
 providers = ["ytsearch:%ISRC%", "ytsearch:%QUERY%", "scsearch:%QUERY%"]
+
+# Enable weighted scoring to find the best-matching candidate.
+# When false, the first resolvable result from each provider is accepted immediately.
+# Default: true
+scoring = true
+
+# Prefixes treated as throttled (rate-sensitive) — these providers are run
+# sequentially and only after all parallel free providers have been exhausted.
+# Default: ["ytmsearch:", "ytsearch:"]
+throttled_prefixes = ["ytmsearch:", "ytsearch:"]
+
+# ── Confidence thresholds (only used when scoring = true)
+#
+# immediate_use  — accept instantly, cancel remaining parallel searches.
+# high_confidence — try up to 2 candidates instead of 3.
+# min_similarity  — discard anything below this score entirely.
+# All values are in the range [0.0, 1.0].
+immediate_use   = 0.88
+high_confidence = 0.75
+min_similarity  = 0.50
+
+# ── Scoring weights (should sum to 1.0)
+weight_title    = 0.50
+weight_artist   = 0.30
+weight_duration = 0.20
+
+# Milliseconds within which two track durations are considered identical.
+duration_tolerance_ms = 3000
 
 [logging]
 level = "info"              # trace | debug | info | warn | error | off
