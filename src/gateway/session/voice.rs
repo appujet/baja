@@ -2,7 +2,7 @@ use std::{
     net::SocketAddr,
     sync::{
         Arc,
-        atomic::{AtomicU32, Ordering},
+        atomic::Ordering,
     },
     time::{Duration, Instant},
 };
@@ -107,32 +107,6 @@ pub async fn speak_loop(config: SpeakConfig) -> AnyResult<()> {
         &config.mode,
         rtp_state,
     )?;
-
-    let keepalive_counter = Arc::new(AtomicU32::new(0));
-
-    {
-        let socket = config.socket.clone();
-        let addr = config.addr;
-        let counter = keepalive_counter.clone();
-        let cancel = config.cancel_token.clone();
-        let gap = Duration::from_millis(UDP_KEEPALIVE_GAP_MS);
-
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(gap);
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            loop {
-                tokio::select! {
-                    _ = cancel.cancelled() => break,
-                    _ = interval.tick() => {
-                        let n = counter.fetch_add(1, Ordering::Relaxed);
-                        if let Err(e) = socket.send_to(&n.to_be_bytes(), addr).await {
-                            error!("UDP keepalive send failed: {e}");
-                        }
-                    }
-                }
-            }
-        });
-    }
 
     let mut encoder = Encoder::new().map_err(map_boxed_err)?;
     let mut session = VoiceSession::new(config, transport);
@@ -242,7 +216,10 @@ impl VoiceSession {
                     self.update_speaking_status(true);
                 } else {
                     self.update_speaking_status(false);
-                    return self.send_opus_silence().await;
+                    if self.last_tx_time.elapsed() >= Duration::from_millis(UDP_KEEPALIVE_GAP_MS) {
+                        return self.send_opus_silence().await;
+                    }
+                    return Ok(());
                 }
             }
 
