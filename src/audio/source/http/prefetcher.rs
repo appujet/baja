@@ -252,7 +252,6 @@ pub fn prefetch_loop(
                 state.buffered += n;
                 state.chunks.push_back(chunk);
                 cvar.notify_all();
-                retry_count = 0;
             }
             Ok(None) => {
                 response = None;
@@ -274,7 +273,7 @@ pub fn prefetch_loop(
                 retry_count += 1;
 
                 if retry_count > MAX_FETCH_RETRIES {
-                    warn!("prefetch: read failed fatally: {}", e);
+                    warn!("prefetch: read failed fatally after {} retries: {}", MAX_FETCH_RETRIES, e);
                     let (lock, cvar) = &*shared;
                     let mut state = lock.lock();
                     state.error = Some(e.to_string());
