@@ -50,6 +50,7 @@ pub struct AudioProcessor {
     channels: usize,
     config: PlayerConfig,
     recoverable_errors: u32,
+    downmix_buf: Vec<i16>,
 }
 
 impl AudioProcessor {
@@ -121,6 +122,7 @@ impl AudioProcessor {
             channels,
             config,
             recoverable_errors: 0,
+            downmix_buf: Vec::with_capacity(1920),
         })
     }
 
@@ -200,8 +202,6 @@ impl AudioProcessor {
                             };
                         }
 
-                        let mut pooled = Vec::with_capacity(samples.len());
-
                         let pcm_data = if frame_channels == MIXER_CHANNELS {
                             samples
                         } else {
@@ -214,7 +214,8 @@ impl AudioProcessor {
                                 );
                             }
                             let num_frames = samples.len() / frame_channels;
-                            let mut downmixed = Vec::with_capacity(num_frames * MIXER_CHANNELS);
+                            self.downmix_buf.clear();
+                            self.downmix_buf.reserve(num_frames * MIXER_CHANNELS);
 
                             for i in 0..num_frames {
                                 let frame = &samples[i * frame_channels..(i + 1) * frame_channels];
@@ -232,16 +233,15 @@ impl AudioProcessor {
                                 let left_count = frame_channels.div_ceil(2);
                                 let right_count = frame_channels / 2;
 
-                                downmixed.push((l / left_count as i32) as i16);
+                                self.downmix_buf.push((l / left_count as i32) as i16);
                                 if right_count > 0 {
-                                    downmixed.push((r / right_count as i32) as i16);
+                                    self.downmix_buf.push((r / right_count as i32) as i16);
                                 } else {
                                     // Upmix mono to stereo
-                                    downmixed.push((l / left_count as i32) as i16);
+                                    self.downmix_buf.push((l / left_count as i32) as i16);
                                 }
                             }
-                            pooled.extend(downmixed);
-                            &pooled[..]
+                            &self.downmix_buf[..]
                         };
 
                         let capacity = (pcm_data.len() as f64 * TARGET_SAMPLE_RATE as f64

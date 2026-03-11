@@ -263,6 +263,7 @@ impl Mixer {
                             track.pending_pos = 0;
                         }
                         filled += n;
+                        crate::audio::buffer::release_buffer(frame);
                     }
                     Ok(None) => break 'pull,
                     Err(_) => {

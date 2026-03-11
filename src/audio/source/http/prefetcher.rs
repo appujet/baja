@@ -231,6 +231,17 @@ pub fn prefetch_loop(
             }
         }
 
+        {
+            let (lock, cvar) = &*shared;
+            let mut state = lock.lock();
+            while state.buffered >= MAX_HTTP_BUF_BYTES && matches!(state.command, PrefetchCommand::Continue) && !state.done {
+                cvar.wait_for(&mut state, Duration::from_millis(100));
+            }
+            if !matches!(state.command, PrefetchCommand::Continue) {
+                continue;
+            }
+        }
+
         let res = response.as_mut().unwrap();
         match handle.block_on(res.chunk()) {
             Ok(Some(chunk)) => {
@@ -239,12 +250,6 @@ pub fn prefetch_loop(
                 let mut state = lock.lock();
 
                 if !matches!(state.command, PrefetchCommand::Continue) {
-                    continue;
-                }
-
-                if state.buffered >= MAX_HTTP_BUF_BYTES {
-                    drop(state);
-                    std::thread::sleep(Duration::from_millis(10));
                     continue;
                 }
 

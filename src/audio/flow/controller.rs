@@ -101,7 +101,10 @@ impl FlowController {
                         self.pending_pcm.clear();
                         self.decoder_done = false;
                     }
-                    Ok(AudioFrame::Pcm(chunk)) => self.pending_pcm.extend_from_slice(&chunk),
+                    Ok(AudioFrame::Pcm(chunk)) => {
+                        self.pending_pcm.extend_from_slice(&chunk);
+                        crate::audio::buffer::release_buffer(chunk);
+                    }
                     Ok(AudioFrame::Opus(packet)) => {
                         self.latest_opus = Some(packet);
                     }

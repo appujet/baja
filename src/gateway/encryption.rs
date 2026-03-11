@@ -31,6 +31,7 @@ pub struct DaveHandler {
     pending_handshake: Vec<(Vec<u8>, bool)>,
     was_ready: bool,
     recognized_users: HashSet<UserId>,
+    cached_user_ids: Vec<u64>,
 }
 
 impl DaveHandler {
@@ -49,6 +50,7 @@ impl DaveHandler {
             pending_handshake: Vec::new(),
             was_ready: false,
             recognized_users,
+            cached_user_ids: vec![user_id.0],
         }
     }
 
@@ -56,12 +58,19 @@ impl DaveHandler {
         for &uid in uids {
             self.recognized_users.insert(UserId(uid));
         }
+        self.update_user_cache();
         debug!("DAVE adding users: {:?}", uids);
     }
 
     pub fn remove_user(&mut self, uid: u64) {
-        self.recognized_users.remove(&UserId(uid));
+        if self.recognized_users.remove(&UserId(uid)) {
+            self.update_user_cache();
+        }
         debug!("DAVE removing user: {}", uid);
+    }
+
+    fn update_user_cache(&mut self) {
+        self.cached_user_ids = self.recognized_users.iter().map(|u| u.0).collect();
     }
 
     pub fn protocol_version(&self) -> u16 {
@@ -174,10 +183,9 @@ impl DaveHandler {
                     "DAVE processing {} buffered proposals",
                     self.pending_proposals.len()
                 );
-                let user_ids: Vec<u64> = self.recognized_users.iter().map(|u| u.0).collect();
                 for prop_data in std::mem::take(&mut self.pending_proposals) {
                     if let Ok(Some(res)) =
-                        Self::do_process_proposals(session, &prop_data, &user_ids)
+                        Self::do_process_proposals(session, &prop_data, &self.cached_user_ids)
                     {
                         responses.push(res);
                     }
@@ -271,8 +279,7 @@ impl DaveHandler {
             Some(s) => s,
             None => return Ok(None),
         };
-        let user_ids: Vec<u64> = self.recognized_users.iter().map(|u| u.0).collect();
-        Self::do_process_proposals(session, data, &user_ids)
+        Self::do_process_proposals(session, data, &self.cached_user_ids)
     }
 
     fn do_process_proposals(
