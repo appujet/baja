@@ -355,7 +355,7 @@ mod tests {
     #[test]
     fn test_handshake_buffering_logic() {
         let mut handler = DaveHandler::new(UserId(1), ChannelId(1));
-        
+
         // Buffering should happen if external_sender_set is false
         let welcome_data = vec![0, 42, 1, 2, 3]; // tid 42
         let res = handler.process_welcome(&welcome_data);

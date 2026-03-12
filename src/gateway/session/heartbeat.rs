@@ -8,10 +8,8 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-use crate::{
-    common::utils::now_ms,
-    gateway::{constants::OP_HEARTBEAT, session::types::VoiceGatewayMessage},
-};
+use super::protocol::{GatewayPayload, OpCode};
+use crate::common::utils::now_ms;
 
 pub struct HeartbeatTracker {
     pub last_nonce: Arc<AtomicU64>,
@@ -63,7 +61,7 @@ impl HeartbeatTracker {
 
                 let missed = missed_acks.fetch_add(1, Ordering::Relaxed);
                 if missed >= 2 {
-                    warn!("Heartbeat timeout: {missed} missed ACKs. Reconnecting...");
+                    warn!("Heartbeat timeout: {missed} missed ACKs.");
                     conn_token.cancel();
                     break;
                 }
@@ -72,10 +70,13 @@ impl HeartbeatTracker {
                 last_nonce.store(nonce, Ordering::Relaxed);
                 sent_at.store(nonce, Ordering::Relaxed);
 
-                let hb = VoiceGatewayMessage {
-                    op: OP_HEARTBEAT,
+                let hb = GatewayPayload {
+                    op: OpCode::Heartbeat as u8,
                     seq: None,
-                    d: serde_json::json!({ "t": nonce, "seq_ack": seq_ack.load(Ordering::Relaxed) }),
+                    d: serde_json::json!({
+                        "t": nonce,
+                        "seq_ack": seq_ack.load(Ordering::Relaxed)
+                    }),
                 };
 
                 if let Ok(json) = serde_json::to_string(&hb)

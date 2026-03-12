@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, sync::Arc};
 
 use davey::{AeadInPlace, Aes256Gcm, KeyInit};
+use serde::{Deserialize, Serialize};
 use tokio::net::UdpSocket;
 use xsalsa20poly1305::XSalsa20Poly1305;
 
@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Handles RTP encryption and packet construction for Discord voice.
-pub struct VoiceTransport {
+pub struct UDPVoiceTransport {
     socket: Arc<UdpSocket>,
     address: SocketAddr,
     pub ssrc: u32,
@@ -37,7 +37,7 @@ pub struct RtpState {
     pub nonce: u32,
 }
 
-impl VoiceTransport {
+impl UDPVoiceTransport {
     pub fn new(
         socket: Arc<UdpSocket>,
         address: SocketAddr,
