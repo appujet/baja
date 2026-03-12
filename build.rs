@@ -280,3 +280,94 @@ fn days_to_ymd(mut days: u32) -> (u32, u32, u32) {
     let y = if m <= 2 { y + 1 } else { y };
     (y, m, d)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_timestamp_zero() {
+        assert_eq!(format_timestamp(0), "unknown");
+    }
+
+    #[test]
+    fn test_format_timestamp_epoch() {
+        // January 1, 1970 00:00:00 UTC
+        assert_eq!(format_timestamp(1000), "01.01.1970 00:00:01 UTC");
+    }
+
+    #[test]
+    fn test_format_timestamp_known_date() {
+        // Test a known timestamp: 2024-01-15 12:30:45 UTC = 1705323045000 ms
+        let result = format_timestamp(1705323045000);
+        assert!(result.contains("2024"));
+        assert!(result.contains("12:30:45"));
+    }
+
+    #[test]
+    fn test_days_to_ymd_epoch() {
+        // Day 0 in Unix epoch
+        let (y, m, d) = days_to_ymd(0);
+        assert_eq!((y, m, d), (1970, 1, 1));
+    }
+
+    #[test]
+    fn test_days_to_ymd_various_dates() {
+        // Test leap year date
+        let (y, m, d) = days_to_ymd(365); // 1971-01-01
+        assert_eq!((y, m, d), (1971, 1, 1));
+
+        // Test known date
+        let (y, m, d) = days_to_ymd(19723); // 2024-01-01
+        assert_eq!((y, m, d), (2024, 1, 1));
+    }
+
+    #[test]
+    fn test_is_numeric() {
+        assert!(is_numeric("123"));
+        assert!(is_numeric("0"));
+        assert!(!is_numeric(""));
+        assert!(!is_numeric("abc"));
+        assert!(!is_numeric("12a"));
+        assert!(!is_numeric("1.2"));
+    }
+
+    #[test]
+    fn test_is_main_branch() {
+        assert!(is_main_branch("main"));
+        assert!(is_main_branch("master"));
+        assert!(!is_main_branch("develop"));
+        assert!(!is_main_branch("feature/test"));
+        assert!(!is_main_branch(""));
+    }
+
+    #[test]
+    fn test_git_info_default() {
+        let info = GitInfo::default();
+        assert_eq!(info.branch, "");
+        assert_eq!(info.commit, "");
+        assert_eq!(info.commit_short, "");
+        assert_eq!(info.commit_time_ms, 0);
+        assert!(!info.dirty);
+    }
+
+    #[test]
+    fn test_format_timestamp_formatting() {
+        // Test that formatting is correct for various timestamps
+        let ts = 1609459200000; // 2021-01-01 00:00:00 UTC
+        let result = format_timestamp(ts);
+        assert!(result.contains("UTC"));
+        assert!(result.contains("2021"));
+    }
+
+    #[test]
+    fn test_format_timestamp_boundary() {
+        // Test very small timestamp
+        let result = format_timestamp(1);
+        assert!(result.contains("1970"));
+
+        // Test large timestamp (year 2099)
+        let result = format_timestamp(4102444800000);
+        assert!(result.contains("UTC"));
+    }
+}

@@ -136,3 +136,137 @@ impl RtpState {
         (seq, ts, n)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rtp_state_randomize() {
+        let state1 = RtpState::randomize();
+        let state2 = RtpState::randomize();
+
+        // Random states should be different (very high probability)
+        assert!(
+            state1.sequence != state2.sequence
+                || state1.timestamp != state2.timestamp
+                || state1.nonce != state2.nonce
+        );
+    }
+
+    #[test]
+    fn test_rtp_state_next() {
+        let mut state = RtpState {
+            sequence: 100,
+            timestamp: 1000,
+            nonce: 50,
+        };
+
+        let (seq, ts, n) = state.next();
+        assert_eq!(seq, 100);
+        assert_eq!(ts, 1000);
+        assert_eq!(n, 50);
+
+        // State should be incremented
+        assert_eq!(state.sequence, 101);
+        assert_eq!(state.timestamp, 1000 + RTP_TIMESTAMP_STEP);
+        assert_eq!(state.nonce, 51);
+    }
+
+    #[test]
+    fn test_rtp_state_next_wrapping() {
+        let mut state = RtpState {
+            sequence: u16::MAX,
+            timestamp: u32::MAX,
+            nonce: u32::MAX,
+        };
+
+        let (seq, ts, n) = state.next();
+        assert_eq!(seq, u16::MAX);
+        assert_eq!(ts, u32::MAX);
+        assert_eq!(n, u32::MAX);
+
+        // Should wrap around
+        assert_eq!(state.sequence, 0);
+        assert_eq!(state.timestamp, u32::MAX.wrapping_add(RTP_TIMESTAMP_STEP));
+        assert_eq!(state.nonce, 0);
+    }
+
+    #[test]
+    fn test_rtp_state_multiple_calls() {
+        let mut state = RtpState {
+            sequence: 0,
+            timestamp: 0,
+            nonce: 0,
+        };
+
+        for i in 0..10 {
+            let (seq, ts, n) = state.next();
+            assert_eq!(seq, i as u16);
+            assert_eq!(ts, i * RTP_TIMESTAMP_STEP);
+            assert_eq!(n, i as u32);
+        }
+
+        assert_eq!(state.sequence, 10);
+        assert_eq!(state.timestamp, 10 * RTP_TIMESTAMP_STEP);
+        assert_eq!(state.nonce, 10);
+    }
+
+    #[test]
+    fn test_rtp_state_serialization() {
+        let state = RtpState {
+            sequence: 12345,
+            timestamp: 987654321,
+            nonce: 555,
+        };
+
+        let json = serde_json::to_string(&state).unwrap();
+        let deserialized: RtpState = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(state.sequence, deserialized.sequence);
+        assert_eq!(state.timestamp, deserialized.timestamp);
+        assert_eq!(state.nonce, deserialized.nonce);
+    }
+
+    #[test]
+    fn test_rtp_state_clone() {
+        let state = RtpState {
+            sequence: 100,
+            timestamp: 2000,
+            nonce: 300,
+        };
+
+        let cloned = state.clone();
+        assert_eq!(state.sequence, cloned.sequence);
+        assert_eq!(state.timestamp, cloned.timestamp);
+        assert_eq!(state.nonce, cloned.nonce);
+    }
+
+    #[test]
+    fn test_rtp_state_copy() {
+        let state = RtpState {
+            sequence: 100,
+            timestamp: 2000,
+            nonce: 300,
+        };
+
+        let copied = state;
+        assert_eq!(state.sequence, copied.sequence);
+        assert_eq!(state.timestamp, copied.timestamp);
+        assert_eq!(state.nonce, copied.nonce);
+    }
+
+    #[test]
+    fn test_rtp_state_debug() {
+        let state = RtpState {
+            sequence: 100,
+            timestamp: 2000,
+            nonce: 300,
+        };
+
+        let debug_str = format!("{:?}", state);
+        assert!(debug_str.contains("100"));
+        assert!(debug_str.contains("2000"));
+        assert!(debug_str.contains("300"));
+    }
+}
