@@ -1,8 +1,9 @@
+use serde_json::json;
+
 use super::api::*;
 use crate::protocol::tracks::{
     LoadResult, PlaylistData, PlaylistInfo, SearchResult, Track, TrackInfo,
 };
-use serde_json::json;
 
 pub fn parse_track(song: &NeteaseSong) -> Option<Track> {
     let id = song.id.to_string();

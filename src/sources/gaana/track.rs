@@ -73,7 +73,8 @@ impl PlayableTrack for GaanaTrack {
                             cmd_rx,
                             Some(err_tx_for_setup),
                             config,
-                        ).map_err(|e| e.to_string())
+                        )
+                        .map_err(|e| e.to_string())
                     } else {
                         Err("GaanaTrack: Failed to create reader".to_string())
                     }
@@ -87,13 +88,21 @@ impl PlayableTrack for GaanaTrack {
                             .name(format!("gaana-decoder-{}", track_id_for_log))
                             .spawn(move || {
                                 if let Err(e) = processor.run() {
-                                    tracing::error!("GaanaTrack audio processor error for {}: {}", track_id_for_log, e);
+                                    tracing::error!(
+                                        "GaanaTrack audio processor error for {}: {}",
+                                        track_id_for_log,
+                                        e
+                                    );
                                 }
                             })
                             .expect("failed to spawn gaana decoder thread");
                     }
                     Err(e) => {
-                        tracing::error!("GaanaTrack failed to initialize processor for {}: {}", track_id_for_log, e);
+                        tracing::error!(
+                            "GaanaTrack failed to initialize processor for {}: {}",
+                            track_id_for_log,
+                            e
+                        );
                         let _ = err_tx.send(format!("Failed to initialize processor: {e}"));
                     }
                 }

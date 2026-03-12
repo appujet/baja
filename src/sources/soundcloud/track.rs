@@ -204,7 +204,10 @@ fn run_processor(
                 .expect("failed to spawn soundcloud decoder thread");
         }
         Err(e) => {
-            error!("SoundCloud: failed to init AudioProcessor for {} (kind={:?}): {}", identifier, kind, e);
+            error!(
+                "SoundCloud: failed to init AudioProcessor for {} (kind={:?}): {}",
+                identifier, kind, e
+            );
             let _ = err_tx.send(format!("Failed to initialize processor: {e}"));
         }
     }

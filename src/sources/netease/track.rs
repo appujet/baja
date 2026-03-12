@@ -1,8 +1,9 @@
+use std::net::IpAddr;
+
 use crate::sources::{
     http::HttpTrack,
     plugin::{DecoderOutput, PlayableTrack},
 };
-use std::net::IpAddr;
 
 pub struct NeteaseTrack {
     pub stream_url: String,

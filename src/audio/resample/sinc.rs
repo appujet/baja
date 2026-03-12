@@ -20,7 +20,7 @@ impl SincResampler {
 
         for i in 0..taps {
             let offset = i as f32 - half_taps;
-            
+
             let a0 = 0.42;
             let a1 = 0.5;
             let a2 = 0.08;

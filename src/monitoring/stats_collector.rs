@@ -34,10 +34,7 @@ pub fn collect_stats(app_state: &AppState, session: Option<&Session>) -> protoco
 
     let lavalink_load = {
         let mut stat = app_state.process_stat.lock();
-        stat.cpu()
-            .unwrap_or(0.0)
-            .clamp(0.0, logical_cores as f64)
-            / logical_cores as f64
+        stat.cpu().unwrap_or(0.0).clamp(0.0, logical_cores as f64) / logical_cores as f64
     };
 
     let process_used_memory = system.process(pid).map(|p| p.memory()).unwrap_or(0);
@@ -47,7 +44,6 @@ pub fn collect_stats(app_state: &AppState, session: Option<&Session>) -> protoco
     } else {
         (system.global_cpu_usage() as f64 / 100.0).clamp(0.0, 1.0)
     };
-
 
     let mut total_players = 0;
     let mut playing_players = 0;

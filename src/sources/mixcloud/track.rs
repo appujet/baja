@@ -91,7 +91,11 @@ impl PlayableTrack for MixcloudTrack {
                         .name(format!("mixcloud-decoder-{}", uri))
                         .spawn(move || {
                             if let Err(e) = processor.run() {
-                                tracing::error!("Mixcloud audio processor error for {}: {}", uri, e);
+                                tracing::error!(
+                                    "Mixcloud audio processor error for {}: {}",
+                                    uri,
+                                    e
+                                );
                             }
                         })
                         .expect("failed to spawn mixcloud decoder thread");

@@ -183,26 +183,27 @@ impl PlayableTrack for DeezerTrack {
             if let Some(url) = playback_url {
                 let err_tx_for_setup = err_tx.clone();
                 let setup_res = tokio::task::spawn_blocking(move || {
-                    let custom_reader = if let Some(stripped) = url.strip_prefix("deezer_encrypted:") {
-                        let parts: Vec<&str> = stripped.splitn(2, ':').collect();
-                        if parts.len() == 2 {
-                            let track_id = parts[0];
-                            let media_url = parts[1];
-                            DeezerReader::new(
-                                media_url,
-                                track_id,
-                                &master_key,
-                                local_addr,
-                                proxy.clone(),
-                            )
-                            .ok()
-                            .map(|r| Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
+                    let custom_reader =
+                        if let Some(stripped) = url.strip_prefix("deezer_encrypted:") {
+                            let parts: Vec<&str> = stripped.splitn(2, ':').collect();
+                            if parts.len() == 2 {
+                                let track_id = parts[0];
+                                let media_url = parts[1];
+                                DeezerReader::new(
+                                    media_url,
+                                    track_id,
+                                    &master_key,
+                                    local_addr,
+                                    proxy.clone(),
+                                )
+                                .ok()
+                                .map(|r| Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
+                            } else {
+                                None
+                            }
                         } else {
                             None
-                        }
-                    } else {
-                        None
-                    };
+                        };
 
                     let reader = custom_reader.unwrap_or_else(|| {
                         Box::new(
@@ -231,13 +232,19 @@ impl PlayableTrack for DeezerTrack {
                             .name(format!("deezer-decoder-{}", track_id_for_log))
                             .spawn(move || {
                                 if let Err(e) = processor.run() {
-                                    error!("DeezerTrack audio processor error for {}: {}", track_id_for_log, e);
+                                    error!(
+                                        "DeezerTrack audio processor error for {}: {}",
+                                        track_id_for_log, e
+                                    );
                                 }
                             })
                             .expect("failed to spawn deezer decoder thread");
                     }
                     Err(e) => {
-                        error!("DeezerTrack failed to initialize processor for {}: {}", track_id_for_log, e);
+                        error!(
+                            "DeezerTrack failed to initialize processor for {}: {}",
+                            track_id_for_log, e
+                        );
                         let _ = err_tx.send(format!("Failed to initialize processor: {e}"));
                     }
                 }

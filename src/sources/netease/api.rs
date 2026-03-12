@@ -1,5 +1,7 @@
-use aes::Aes128;
-use aes::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
+use aes::{
+    Aes128,
+    cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray},
+};
 use md5::{Digest, Md5};
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::Value;

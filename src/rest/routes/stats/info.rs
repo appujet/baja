@@ -12,11 +12,11 @@ pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<protocol::Info
     let (major, minor, patch, mut pre_release) = parse_semver(version_str);
 
     let mut semver = version_str.to_string();
-    if pre_release.is_none() {
-        if let Some(pre) = option_env!("RUSTALINK_PRE_RELEASE") {
-            pre_release = Some(pre.to_string());
-            semver = format!("{}-{}", version_str, pre);
-        }
+    if pre_release.is_none()
+        && let Some(pre) = option_env!("RUSTALINK_PRE_RELEASE")
+    {
+        pre_release = Some(pre.to_string());
+        semver = format!("{}-{}", version_str, pre);
     }
 
     Json(protocol::Info {

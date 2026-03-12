@@ -234,7 +234,10 @@ pub fn prefetch_loop(
         {
             let (lock, cvar) = &*shared;
             let mut state = lock.lock();
-            while state.buffered >= MAX_HTTP_BUF_BYTES && matches!(state.command, PrefetchCommand::Continue) && !state.done {
+            while state.buffered >= MAX_HTTP_BUF_BYTES
+                && matches!(state.command, PrefetchCommand::Continue)
+                && !state.done
+            {
                 cvar.wait_for(&mut state, Duration::from_millis(100));
             }
             if !matches!(state.command, PrefetchCommand::Continue) {
@@ -278,7 +281,10 @@ pub fn prefetch_loop(
                 retry_count += 1;
 
                 if retry_count > MAX_FETCH_RETRIES {
-                    warn!("prefetch: read failed fatally after {} retries: {}", MAX_FETCH_RETRIES, e);
+                    warn!(
+                        "prefetch: read failed fatally after {} retries: {}",
+                        MAX_FETCH_RETRIES, e
+                    );
                     let (lock, cvar) = &*shared;
                     let mut state = lock.lock();
                     state.error = Some(e.to_string());

@@ -17,11 +17,7 @@ use tracing::{debug, error};
 
 use super::client::TidalClient;
 use crate::{
-    audio::{
-        AudioFrame,
-        processor::AudioProcessor,
-        source::HttpSource,
-    },
+    audio::{AudioFrame, processor::AudioProcessor, source::HttpSource},
     common::types::AudioFormat,
     sources::plugin::{DecoderOutput, PlayableTrack},
 };
@@ -54,16 +50,15 @@ impl PlayableTrack for TidalTrack {
             let setup_res = tokio::task::spawn_blocking(move || {
                 let client_clone = (*tidal.inner).clone();
                 match HttpSource::new(client_clone, &stream_url) {
-                    Ok(reader) => {
-                        AudioProcessor::new(
-                            Box::new(reader),
-                            Some(kind),
-                            tx,
-                            cmd_rx,
-                            Some(err_tx_for_setup),
-                            config,
-                        ).map_err(|e| e.to_string())
-                    }
+                    Ok(reader) => AudioProcessor::new(
+                        Box::new(reader),
+                        Some(kind),
+                        tx,
+                        cmd_rx,
+                        Some(err_tx_for_setup),
+                        config,
+                    )
+                    .map_err(|e| e.to_string()),
                     Err(e) => {
                         error!("TidalTrack: Failed to initialize HttpSource: {}", e);
                         Err(format!("Failed to initialize source: {}", e))
@@ -79,13 +74,19 @@ impl PlayableTrack for TidalTrack {
                         .name(format!("tidal-decoder-{}", identifier))
                         .spawn(move || {
                             if let Err(e) = processor.run() {
-                                error!("TidalTrack audio processor error for {}: {}", identifier, e);
+                                error!(
+                                    "TidalTrack audio processor error for {}: {}",
+                                    identifier, e
+                                );
                             }
                         })
                         .expect("failed to spawn tidal decoder thread");
                 }
                 Err(e) => {
-                    error!("TidalTrack failed to initialize processor for {}: {}", identifier, e);
+                    error!(
+                        "TidalTrack failed to initialize processor for {}: {}",
+                        identifier, e
+                    );
                     let _ = err_tx.send(format!("Failed to initialize processor: {e}"));
                 }
             }

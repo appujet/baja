@@ -1,12 +1,14 @@
+use std::sync::{Arc, OnceLock};
+
+use async_trait::async_trait;
+use rand::Rng;
+use regex::Regex;
+use tracing::debug;
+
 use crate::{
     protocol::tracks::{LoadResult, SearchResult},
     sources::{SourcePlugin, plugin::BoxedTrack},
 };
-use async_trait::async_trait;
-use rand::Rng;
-use regex::Regex;
-use std::sync::{Arc, OnceLock};
-use tracing::debug;
 
 pub mod api;
 pub mod manager;

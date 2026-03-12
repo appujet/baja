@@ -75,7 +75,8 @@ impl GitInfo {
 
         // 2. Fetch from git command if still unknown
         if info.branch.is_empty() || info.branch == "unknown" {
-            info.branch = git_output(&["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|| "unknown".into());
+            info.branch = git_output(&["rev-parse", "--abbrev-ref", "HEAD"])
+                .unwrap_or_else(|| "unknown".into());
         }
 
         if info.commit.is_empty() || info.commit == "unknown" {
@@ -100,13 +101,15 @@ impl GitInfo {
             .unwrap_or(false);
 
         // 4. Fallback to manual file parsing if git command failed
-        if info.commit == "unknown" || info.branch == "unknown" {
-            if let Some((branch, commit)) = parse_dot_git_head() {
-                if info.branch == "unknown" { info.branch = branch; }
-                if info.commit == "unknown" && !commit.is_empty() {
-                    info.commit = commit.clone();
-                    info.commit_short = commit.chars().take(7).collect();
-                }
+        if (info.commit == "unknown" || info.branch == "unknown")
+            && let Some((branch, commit)) = parse_dot_git_head()
+        {
+            if info.branch == "unknown" {
+                info.branch = branch;
+            }
+            if info.commit == "unknown" && !commit.is_empty() {
+                info.commit = commit.clone();
+                info.commit_short = commit.chars().take(7).collect();
             }
         }
 
@@ -123,11 +126,17 @@ impl GitInfo {
         emit_env("GIT_COMMIT", &self.commit);
         emit_env("GIT_COMMIT_SHORT", &self.commit_short);
         emit_env("GIT_COMMIT_TIME", self.commit_time_ms);
-        emit_env("GIT_COMMIT_TIME_HUMAN", format_timestamp(self.commit_time_ms));
+        emit_env(
+            "GIT_COMMIT_TIME_HUMAN",
+            format_timestamp(self.commit_time_ms),
+        );
         emit_env("GIT_DIRTY", self.dirty);
-        
+
         let dirty_suffix = if self.dirty { "-dirty" } else { "" };
-        emit_env("GIT_VERSION_STRING", format!("{}@{}{}", self.branch, self.commit_short, dirty_suffix));
+        emit_env(
+            "GIT_VERSION_STRING",
+            format!("{}@{}{}", self.branch, self.commit_short, dirty_suffix),
+        );
     }
 }
 
@@ -144,31 +153,35 @@ fn detect_pre_release() -> Option<String> {
     }
 
     // Priority 2: GITHUB_REF (standard tag format)
-    if let Ok(v) = env::var("GITHUB_REF") {
-        if let Some(idx) = v.rfind('-') {
-            return Some(v[idx + 1..].to_string());
-        }
+    if let Ok(v) = env::var("GITHUB_REF")
+        && let Some(idx) = v.rfind('-')
+    {
+        return Some(v[idx + 1..].to_string());
     }
 
     // Priority 3: Git describe
-    if let Some(desc) = git_output(&["describe", "--tags", "--always", "--dirty"]) {
-        if let Some(idx) = desc.find('-') {
-            let part = &desc[idx + 1..];
-            // Handle cases like v1.0.8-beta.1-2-gabc123
-            if let Some(next_dash) = part.find('-') {
-                let pre = &part[..next_dash];
-                if !is_numeric(pre) { return Some(pre.to_string()); }
-            } else if !is_numeric(part) {
-                return Some(part.to_string());
+    if let Some(desc) = git_output(&["describe", "--tags", "--always", "--dirty"])
+        && let Some(idx) = desc.find('-')
+    {
+        let part = &desc[idx + 1..];
+        // Handle cases like v1.0.8-beta.1-2-gabc123
+        if let Some(next_dash) = part.find('-') {
+            let pre = &part[..next_dash];
+            if !is_numeric(pre) {
+                return Some(pre.to_string());
             }
+        } else if !is_numeric(part) {
+            return Some(part.to_string());
         }
     }
 
     // Priority 4: Local branch name
-    if let Some(branch) = git_output(&["rev-parse", "--abbrev-ref", "HEAD"]) {
-        if !is_main_branch(&branch) && branch != "HEAD" && !branch.is_empty() {
-            return Some(branch);
-        }
+    if let Some(branch) = git_output(&["rev-parse", "--abbrev-ref", "HEAD"])
+        && !is_main_branch(&branch)
+        && branch != "HEAD"
+        && !branch.is_empty()
+    {
+        return Some(branch);
     }
 
     None
@@ -195,7 +208,11 @@ fn parse_dot_git_head() -> Option<(String, String)> {
     let head = fs::read_to_string(".git/HEAD").ok()?.trim().to_owned();
 
     if let Some(ref_path) = head.strip_prefix("ref: ") {
-        let branch = ref_path.split('/').next_back().unwrap_or("unknown").to_owned();
+        let branch = ref_path
+            .split('/')
+            .next_back()
+            .unwrap_or("unknown")
+            .to_owned();
         let commit = fs::read_to_string(format!(".git/{}", ref_path))
             .ok()
             .map(|s| s.trim().to_owned())
@@ -211,10 +228,10 @@ fn packed_ref_lookup(ref_name: &str) -> Option<String> {
     let packed = fs::read_to_string(".git/packed-refs").ok()?;
     for line in packed.lines().filter(|l| !l.starts_with('#')) {
         let mut parts = line.splitn(2, ' ');
-        if let (Some(sha), Some(name)) = (parts.next(), parts.next()) {
-            if name.trim() == ref_name {
-                return Some(sha.trim().to_owned());
-            }
+        if let (Some(sha), Some(name)) = (parts.next(), parts.next())
+            && name.trim() == ref_name
+        {
+            return Some(sha.trim().to_owned());
         }
     }
     None
@@ -231,7 +248,9 @@ fn file_mtime_ms(path: &str) -> Option<u64> {
 }
 
 fn format_timestamp(ms: u64) -> String {
-    if ms == 0 { return "unknown".into(); }
+    if ms == 0 {
+        return "unknown".into();
+    }
     let secs = ms / 1000;
     let days_since_epoch = (secs / 86400) as u32;
     let time_of_day = secs % 86400;
@@ -239,7 +258,9 @@ fn format_timestamp(ms: u64) -> String {
     let (year, month, day) = days_to_ymd(days_since_epoch);
     format!(
         "{:02}.{:02}.{} {:02}:{:02}:{:02} UTC",
-        day, month, year,
+        day,
+        month,
+        year,
         time_of_day / 3600,
         (time_of_day % 3600) / 60,
         time_of_day % 60

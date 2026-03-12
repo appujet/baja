@@ -268,7 +268,10 @@ impl AudioProcessor {
                     if self.recoverable_errors == 1 {
                         warn!("Decode error (recoverable): {e}");
                     } else if self.recoverable_errors.is_multiple_of(100) {
-                        warn!("Decode error (recoverable, x{}): {e}", self.recoverable_errors);
+                        warn!(
+                            "Decode error (recoverable, x{}): {e}",
+                            self.recoverable_errors
+                        );
                     }
                 }
                 Err(e) => {

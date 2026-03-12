@@ -91,7 +91,7 @@ impl CircularFileWriter {
 impl io::Write for CircularFileWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut state = self.state.lock();
-        
+
         let file = self.ensure_file_open(&mut state)?;
         file.write_all(buf)?;
 

@@ -155,7 +155,8 @@ impl TapeEffect {
         if self.read_pos > (self.sample_rate as f64 * channels as f64 * 2.0) {
             let integral = (self.read_pos.floor() as usize / channels) * channels;
             self.input_buffer.copy_within(integral.., 0);
-            self.input_buffer.truncate(self.input_buffer.len() - integral);
+            self.input_buffer
+                .truncate(self.input_buffer.len() - integral);
             self.read_pos -= integral as f64;
         }
     }

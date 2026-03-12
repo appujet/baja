@@ -49,67 +49,66 @@ impl LiveHlsReader {
             let mut builder =
                 reqwest::Client::builder().timeout(std::time::Duration::from_secs(15));
 
-                if let Some(ip) = local_addr {
-                    builder = builder.local_address(ip);
-                }
+            if let Some(ip) = local_addr {
+                builder = builder.local_address(ip);
+            }
 
-                if let Some(ref cfg) = proxy
-                    && let Some(ref url) = cfg.url
-                    && let Ok(mut p) = reqwest::Proxy::all(url)
-                {
-                    if let (Some(u), Some(pw)) = (&cfg.username, &cfg.password) {
-                        p = p.basic_auth(u, pw);
-                    }
-                    builder = builder.proxy(p);
+            if let Some(ref cfg) = proxy
+                && let Some(ref url) = cfg.url
+                && let Ok(mut p) = reqwest::Proxy::all(url)
+            {
+                if let (Some(u), Some(pw)) = (&cfg.username, &cfg.password) {
+                    p = p.basic_auth(u, pw);
                 }
+                builder = builder.proxy(p);
+            }
 
-                let client = match builder.build() {
-                    Ok(c) => c,
+            let client = match builder.build() {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!("Twitch live HLS: client build failed: {e}");
+                    return;
+                }
+            };
+
+            let mut seen: HashSet<String> = HashSet::new();
+
+            loop {
+                let text = match handle.block_on(fetch_text(&client, &manifest_url)) {
+                    Ok(t) => t,
                     Err(e) => {
-                        tracing::error!("Twitch live HLS: client build failed: {e}");
-                        return;
+                        tracing::warn!("Twitch: live playlist refresh failed: {e}");
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        continue;
                     }
                 };
 
-                let mut seen: HashSet<String> = HashSet::new();
+                let (segments, target_duration) =
+                    parse_live_playlist(&text, &manifest_url, &mut seen);
 
-                loop {
-                    let text = match handle.block_on(fetch_text(&client, &manifest_url)) {
-                        Ok(t) => t,
-                        Err(e) => {
-                            tracing::warn!("Twitch: live playlist refresh failed: {e}");
-                            std::thread::sleep(std::time::Duration::from_secs(2));
-                            continue;
-                        }
-                    };
-
-                    let (segments, target_duration) =
-                        parse_live_playlist(&text, &manifest_url, &mut seen);
-
-                    for seg in segments {
-                        let mut raw = Vec::new();
-                        if let Err(e) = handle.block_on(fetch_segment_into(&client, &seg, &mut raw))
-                        {
-                            tracing::warn!("Twitch: segment fetch error: {e}");
-                            continue;
-                        }
-
-                        let payload = if raw.first() == Some(&0x47) {
-                            let adts = extract_adts_from_ts(&raw);
-                            if adts.is_empty() { raw } else { adts }
-                        } else {
-                            raw
-                        };
-
-                        if chunk_tx.send(payload).is_err() {
-                            return;
-                        }
+                for seg in segments {
+                    let mut raw = Vec::new();
+                    if let Err(e) = handle.block_on(fetch_segment_into(&client, &seg, &mut raw)) {
+                        tracing::warn!("Twitch: segment fetch error: {e}");
+                        continue;
                     }
 
-                    let wait = (target_duration / 2.0).max(1.0);
-                    std::thread::sleep(std::time::Duration::from_secs_f64(wait));
+                    let payload = if raw.first() == Some(&0x47) {
+                        let adts = extract_adts_from_ts(&raw);
+                        if adts.is_empty() { raw } else { adts }
+                    } else {
+                        raw
+                    };
+
+                    if chunk_tx.send(payload).is_err() {
+                        return;
+                    }
                 }
-            });
+
+                let wait = (target_duration / 2.0).max(1.0);
+                std::thread::sleep(std::time::Duration::from_secs_f64(wait));
+            }
+        });
 
         Self {
             chunk_rx,
@@ -224,8 +223,12 @@ impl PlayableTrack for TwitchTrack {
             let _guard = handle.enter();
             let url_for_reader = url.clone();
             let url_for_name = url.clone();
-            let reader = Box::new(LiveHlsReader::new(url_for_reader, local_addr, proxy, handle.clone()))
-                as Box<dyn MediaSource>;
+            let reader = Box::new(LiveHlsReader::new(
+                url_for_reader,
+                local_addr,
+                proxy,
+                handle.clone(),
+            )) as Box<dyn MediaSource>;
 
             match AudioProcessor::new(
                 reader,
@@ -241,7 +244,11 @@ impl PlayableTrack for TwitchTrack {
                         .name(format!("twitch-decoder-{}", url_for_name))
                         .spawn(move || {
                             if let Err(e) = processor.run() {
-                                tracing::error!("Twitch HLS processor error for {}: {}", url_for_log, e);
+                                tracing::error!(
+                                    "Twitch HLS processor error for {}: {}",
+                                    url_for_log,
+                                    e
+                                );
                             }
                         })
                         .expect("failed to spawn twitch decoder thread");

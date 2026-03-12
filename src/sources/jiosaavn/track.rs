@@ -73,7 +73,11 @@ impl PlayableTrack for JioSaavnTrack {
                         .name(format!("jiosaavn-decoder-{}", url))
                         .spawn(move || {
                             if let Err(e) = processor.run() {
-                                tracing::error!("JioSaavn audio processor error for {}: {}", url, e);
+                                tracing::error!(
+                                    "JioSaavn audio processor error for {}: {}",
+                                    url,
+                                    e
+                                );
                             }
                         })
                         .expect("failed to spawn jiosaavn decoder thread");
