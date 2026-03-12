@@ -39,36 +39,31 @@ pub fn register_all(
     sources: &mut Vec<BoxedSource>,
     config: &crate::config::AppConfig,
     http_pool: &Arc<HttpClientPool>,
+) -> (
+    Option<Arc<YouTubeCipherManager>>,
+    Option<Arc<YoutubeStreamContext>>,
 ) {
     // Process core sources
-    register_core_sources(sources, config, http_pool);
+    let yt_ctx = register_core_sources(sources, config, http_pool);
 
     // Process extra sources (TTS, Local)
     register_extra_sources(sources, config);
+
+    yt_ctx
 }
 
-/// Helper to initialize YouTube context separately as it's often needed at higher levels.
-pub fn init_youtube_context(
+
+
+fn register_core_sources(
+    sources: &mut Vec<BoxedSource>,
     config: &crate::config::AppConfig,
     http_pool: &Arc<HttpClientPool>,
 ) -> (
     Option<Arc<YouTubeCipherManager>>,
     Option<Arc<YoutubeStreamContext>>,
 ) {
-    if config.sources.youtube.as_ref().is_some_and(|c| c.enabled) {
-        let yt_client = http_pool.get(None);
-        let yt = YouTubeSource::new(config.sources.youtube.clone(), yt_client);
-        (Some(yt.cipher_manager()), Some(yt.stream_context()))
-    } else {
-        (None, None)
-    }
-}
+    let mut yt_ctx = (None, None);
 
-fn register_core_sources(
-    sources: &mut Vec<BoxedSource>,
-    config: &crate::config::AppConfig,
-    http_pool: &Arc<HttpClientPool>,
-) {
     macro_rules! register {
         ($enabled:expr, $name:literal, $proxy:expr, $ctor:expr) => {
             if $enabled {
@@ -96,10 +91,9 @@ fn register_core_sources(
     if config.sources.youtube.as_ref().is_some_and(|c| c.enabled) {
         tracing::info!("Loaded source: YouTube");
         let yt_client = http_pool.get(None);
-        sources.push(Box::new(YouTubeSource::new(
-            config.sources.youtube.clone(),
-            yt_client,
-        )));
+        let yt = YouTubeSource::new(config.sources.youtube.clone(), yt_client);
+        yt_ctx = (Some(yt.cipher_manager()), Some(yt.stream_context()));
+        sources.push(Box::new(yt));
     }
 
     // SoundCloud
@@ -344,6 +338,8 @@ fn register_core_sources(
         tracing::info!("Loaded source: http");
         sources.push(Box::new(HttpSource::new()));
     }
+
+    yt_ctx
 }
 
 fn register_deezer(

@@ -24,10 +24,8 @@ impl SourceManager {
         let http_pool = Arc::new(HttpClientPool::new());
         let mut sources = Vec::new();
 
-        registration::register_all(&mut sources, config, &http_pool);
-
         let (youtube_cipher_manager, youtube_stream_ctx) =
-            registration::init_youtube_context(config, &http_pool);
+            registration::register_all(&mut sources, config, &http_pool);
 
         Self {
             sources,
