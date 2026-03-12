@@ -79,13 +79,13 @@ impl FlowController {
                         frame.extend(self.pending_pcm.drain(..FRAME_SIZE_SAMPLES));
                         self.process_frame(&mut frame);
 
-                        if self
-                            .frame_tx
-                            .as_ref()
-                            .is_some_and(|tx| tx.send(AudioFrame::Pcm(frame)).is_err())
-                        {
-                            return;
-                        }
+                        if let Some(tx) = &self.frame_tx
+                            && let Err(e) = tx.send(AudioFrame::Pcm(frame)) {
+                                if let AudioFrame::Pcm(buf) = e.0 {
+                                    crate::audio::buffer::release_buffer(buf);
+                                }
+                                return;
+                            }
                     }
                 }
                 AudioFrame::Opus(packet) => {
@@ -107,7 +107,10 @@ impl FlowController {
             self.process_frame(&mut frame);
 
             if let Some(tx) = &self.frame_tx {
-                let _ = tx.send(AudioFrame::Pcm(frame));
+                if let Err(e) = tx.send(AudioFrame::Pcm(frame))
+                    && let AudioFrame::Pcm(buf) = e.0 {
+                        crate::audio::buffer::release_buffer(buf);
+                    }
             } else {
                 crate::audio::buffer::release_buffer(frame);
             }
