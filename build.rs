@@ -163,7 +163,7 @@ fn detect_pre_release() -> Option<String> {
                 }
         } else {
             // Use non-main branches as pre-release identifiers
-            if !is_main_branch(&v) && !v.starts_with('v')
+            if !is_main_branch(&v)
                 && let Some(sanitized) = sanitize_pre_release(&v) {
                     return Some(sanitized);
                 }
