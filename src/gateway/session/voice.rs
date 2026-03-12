@@ -173,7 +173,7 @@ impl VoiceSession {
                 self.config.frames_sent.fetch_add(1, Ordering::Relaxed);
                 if self.speaking_holdoff {
                     self.speaking_holdoff = false;
-                    return self.send_silence().await;
+                    self.send_silence().await?;
                 }
                 return self.send_pcm(encoder, ts_pcm, opus).await;
             }
@@ -225,7 +225,7 @@ impl VoiceSession {
 
                 if self.speaking_holdoff {
                     self.speaking_holdoff = false;
-                    return self.send_silence().await;
+                    self.send_silence().await?;
                 }
                 return self.send_pcm(encoder, pcm, opus).await;
             }
