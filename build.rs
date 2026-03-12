@@ -177,7 +177,7 @@ fn detect_pre_release() -> Option<String> {
         }
 
     // Priority 3: Git describe
-    if let Some(desc) = git_output(&["describe", "--tags", "--always", "--dirty"])
+    if let Some(desc) = git_output(&["describe", "--tags", "--always"])
         && let Some(idx) = desc.find('-')
     {
         let part = &desc[idx + 1..];
