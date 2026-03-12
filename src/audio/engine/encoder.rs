@@ -47,7 +47,10 @@ mod tests {
 
         let size = result.unwrap();
         assert!(size > 0, "Encoded size should be greater than 0");
-        assert!(size < output.len(), "Encoded size should be less than buffer");
+        assert!(
+            size < output.len(),
+            "Encoded size should be less than buffer"
+        );
     }
 
     #[test]
@@ -122,6 +125,10 @@ mod tests {
 
         assert!(size1 > 0);
         assert!(size2 > 0);
-        assert_ne!(&output1[..size1], &output2[..size2], "Encoded silence and tone payloads should differ");
+        assert_ne!(
+            &output1[..size1],
+            &output2[..size2],
+            "Encoded silence and tone payloads should differ"
+        );
     }
 }

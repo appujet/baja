@@ -17,12 +17,11 @@ use crate::{
         constants::{
             DISCOVERY_PACKET_SIZE, FRAME_DURATION_MS, IP_DISCOVERY_RETRIES,
             IP_DISCOVERY_RETRY_INTERVAL_MS, IP_DISCOVERY_TIMEOUT_SECS, MAX_OPUS_FRAME_SIZE,
-            PCM_FRAME_SAMPLES, SILENCE_FRAME, UDP_KEEPALIVE_GAP_MS, MAX_SILENCE_FRAMES,
+            MAX_SILENCE_FRAMES, PCM_FRAME_SAMPLES, SILENCE_FRAME, UDP_KEEPALIVE_GAP_MS,
         },
         udp_link::UDPVoiceTransport,
     },
 };
-
 
 pub async fn discover_ip(
     socket: &tokio::net::UdpSocket,

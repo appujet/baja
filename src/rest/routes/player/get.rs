@@ -26,7 +26,11 @@ pub async fn get_players(
             )
                 .into_response();
         };
-        session.players.iter().map(|kv| kv.value().clone()).collect()
+        session
+            .players
+            .iter()
+            .map(|kv| kv.value().clone())
+            .collect()
     };
 
     let mut players = Vec::new();
@@ -102,5 +106,9 @@ pub async fn get_player(
             .into_response();
     };
 
-    (StatusCode::OK, Json(crate::player::PlayerContext::to_response(arc).await)).into_response()
+    (
+        StatusCode::OK,
+        Json(crate::player::PlayerContext::to_response(arc).await),
+    )
+        .into_response()
 }

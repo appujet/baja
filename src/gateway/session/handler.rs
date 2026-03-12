@@ -275,7 +275,10 @@ impl<'a> SessionState<'a> {
                 match addr_str.parse::<SocketAddr>() {
                     Ok(addr) => self.udp_addr = Some(addr),
                     Err(_) => {
-                        error!("[{}] Invalid READY address: {addr_str}", self.gateway.guild_id);
+                        error!(
+                            "[{}] Invalid READY address: {addr_str}",
+                            self.gateway.guild_id
+                        );
                         return Some(SessionOutcome::Reconnect);
                     }
                 }
@@ -362,7 +365,10 @@ impl<'a> SessionState<'a> {
         let ka = match d["secret_key"].as_array() {
             Some(a) if a.len() == 32 => a,
             _ => {
-                error!("[{}] Invalid or missing secret_key in VOICE_READY", self.gateway.guild_id);
+                error!(
+                    "[{}] Invalid or missing secret_key in VOICE_READY",
+                    self.gateway.guild_id
+                );
                 return Some(SessionOutcome::Reconnect);
             }
         };
@@ -370,11 +376,15 @@ impl<'a> SessionState<'a> {
         let mut key = [0u8; 32];
         for (i, v) in ka.iter().enumerate() {
             if let Some(val) = v.as_u64()
-                && val <= 255 {
-                    key[i] = val as u8;
-                    continue;
-                }
-            error!("[{}] Invalid secret_key byte at index {i}", self.gateway.guild_id);
+                && val <= 255
+            {
+                key[i] = val as u8;
+                continue;
+            }
+            error!(
+                "[{}] Invalid secret_key byte at index {i}",
+                self.gateway.guild_id
+            );
             return Some(SessionOutcome::Reconnect);
         }
 
@@ -558,7 +568,10 @@ impl<'a> SessionState<'a> {
         let speaking_tx = if let Some(tx) = &self.speaking_tx {
             tx.clone()
         } else {
-            error!("[{}] speaking_tx is missing, cannot start voice", self.gateway.guild_id);
+            error!(
+                "[{}] speaking_tx is missing, cannot start voice",
+                self.gateway.guild_id
+            );
             return;
         };
 

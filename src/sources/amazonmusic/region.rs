@@ -11,12 +11,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
-use std::sync::LazyLock;
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashMap,
+    sync::LazyLock,
+    time::{Duration, Instant},
+};
 
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
+use futures::{StreamExt, stream::FuturesUnordered};
 use regex::Regex;
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
@@ -42,20 +43,146 @@ const EP_EU: &str = "https://eu.web.skill.music.a2z.com";
 const EP_FE: &str = "https://fe.web.skill.music.a2z.com";
 
 static REGION_CONFIGS: &[(&str, RegionConfig)] = &[
-    ("music.amazon.com", RegionConfig { skill_endpoint: EP_NA, language: "en_US", currency: "USD", device_family: "WebPlayer", feature_flags: "" }),
-    ("music.amazon.com.mx", RegionConfig { skill_endpoint: EP_NA, language: "es_MX", currency: "MXN", device_family: "WebPlayer", feature_flags: "" }),
-    ("music.amazon.com.br", RegionConfig { skill_endpoint: EP_NA, language: "pt_BR", currency: "BRL", device_family: "WebPlayer", feature_flags: "" }),
-    ("music.amazon.ca", RegionConfig { skill_endpoint: EP_NA, language: "en_CA", currency: "CAD", device_family: "WebPlayer", feature_flags: "" }),
-    ("music.amazon.co.uk", RegionConfig { skill_endpoint: EP_EU, language: "en_GB", currency: "GBP", device_family: "WebPlayer", feature_flags: "hd-supported,uhd-supported" }),
-    ("music.amazon.de", RegionConfig { skill_endpoint: EP_EU, language: "de_DE", currency: "EUR", device_family: "WebPlayer", feature_flags: "hd-supported,uhd-supported" }),
-    ("music.amazon.fr", RegionConfig { skill_endpoint: EP_EU, language: "fr_FR", currency: "EUR", device_family: "WebPlayer", feature_flags: "hd-supported,uhd-supported" }),
-    ("music.amazon.it", RegionConfig { skill_endpoint: EP_EU, language: "it_IT", currency: "EUR", device_family: "WebPlayer", feature_flags: "hd-supported,uhd-supported" }),
-    ("music.amazon.es", RegionConfig { skill_endpoint: EP_EU, language: "es_ES", currency: "EUR", device_family: "WebPlayer", feature_flags: "hd-supported,uhd-supported" }),
-    ("music.amazon.in", RegionConfig { skill_endpoint: EP_EU, language: "en_IN", currency: "INR", device_family: "WebPlayer", feature_flags: "hd-supported,uhd-supported" }),
-    ("music.amazon.sa", RegionConfig { skill_endpoint: EP_EU, language: "ar_SA", currency: "SAR", device_family: "WebPlayer", feature_flags: "" }),
-    ("music.amazon.ae", RegionConfig { skill_endpoint: EP_EU, language: "ar_AE", currency: "AED", device_family: "WebPlayer", feature_flags: "" }),
-    ("music.amazon.co.jp", RegionConfig { skill_endpoint: EP_FE, language: "ja_JP", currency: "JPY", device_family: "WebPlayer", feature_flags: "hd-supported,uhd-supported" }),
-    ("music.amazon.com.au", RegionConfig { skill_endpoint: EP_FE, language: "en_AU", currency: "AUD", device_family: "WebPlayer", feature_flags: "hd-supported,uhd-supported" }),
+    (
+        "music.amazon.com",
+        RegionConfig {
+            skill_endpoint: EP_NA,
+            language: "en_US",
+            currency: "USD",
+            device_family: "WebPlayer",
+            feature_flags: "",
+        },
+    ),
+    (
+        "music.amazon.com.mx",
+        RegionConfig {
+            skill_endpoint: EP_NA,
+            language: "es_MX",
+            currency: "MXN",
+            device_family: "WebPlayer",
+            feature_flags: "",
+        },
+    ),
+    (
+        "music.amazon.com.br",
+        RegionConfig {
+            skill_endpoint: EP_NA,
+            language: "pt_BR",
+            currency: "BRL",
+            device_family: "WebPlayer",
+            feature_flags: "",
+        },
+    ),
+    (
+        "music.amazon.ca",
+        RegionConfig {
+            skill_endpoint: EP_NA,
+            language: "en_CA",
+            currency: "CAD",
+            device_family: "WebPlayer",
+            feature_flags: "",
+        },
+    ),
+    (
+        "music.amazon.co.uk",
+        RegionConfig {
+            skill_endpoint: EP_EU,
+            language: "en_GB",
+            currency: "GBP",
+            device_family: "WebPlayer",
+            feature_flags: "hd-supported,uhd-supported",
+        },
+    ),
+    (
+        "music.amazon.de",
+        RegionConfig {
+            skill_endpoint: EP_EU,
+            language: "de_DE",
+            currency: "EUR",
+            device_family: "WebPlayer",
+            feature_flags: "hd-supported,uhd-supported",
+        },
+    ),
+    (
+        "music.amazon.fr",
+        RegionConfig {
+            skill_endpoint: EP_EU,
+            language: "fr_FR",
+            currency: "EUR",
+            device_family: "WebPlayer",
+            feature_flags: "hd-supported,uhd-supported",
+        },
+    ),
+    (
+        "music.amazon.it",
+        RegionConfig {
+            skill_endpoint: EP_EU,
+            language: "it_IT",
+            currency: "EUR",
+            device_family: "WebPlayer",
+            feature_flags: "hd-supported,uhd-supported",
+        },
+    ),
+    (
+        "music.amazon.es",
+        RegionConfig {
+            skill_endpoint: EP_EU,
+            language: "es_ES",
+            currency: "EUR",
+            device_family: "WebPlayer",
+            feature_flags: "hd-supported,uhd-supported",
+        },
+    ),
+    (
+        "music.amazon.in",
+        RegionConfig {
+            skill_endpoint: EP_EU,
+            language: "en_IN",
+            currency: "INR",
+            device_family: "WebPlayer",
+            feature_flags: "hd-supported,uhd-supported",
+        },
+    ),
+    (
+        "music.amazon.sa",
+        RegionConfig {
+            skill_endpoint: EP_EU,
+            language: "ar_SA",
+            currency: "SAR",
+            device_family: "WebPlayer",
+            feature_flags: "",
+        },
+    ),
+    (
+        "music.amazon.ae",
+        RegionConfig {
+            skill_endpoint: EP_EU,
+            language: "ar_AE",
+            currency: "AED",
+            device_family: "WebPlayer",
+            feature_flags: "",
+        },
+    ),
+    (
+        "music.amazon.co.jp",
+        RegionConfig {
+            skill_endpoint: EP_FE,
+            language: "ja_JP",
+            currency: "JPY",
+            device_family: "WebPlayer",
+            feature_flags: "hd-supported,uhd-supported",
+        },
+    ),
+    (
+        "music.amazon.com.au",
+        RegionConfig {
+            skill_endpoint: EP_FE,
+            language: "en_AU",
+            currency: "AUD",
+            device_family: "WebPlayer",
+            feature_flags: "hd-supported,uhd-supported",
+        },
+    ),
 ];
 
 static REGION_FALLBACKS: &[(&str, &str)] = &[
@@ -71,9 +198,8 @@ fn get_region_config(domain: &str) -> Option<&'static RegionConfig> {
         .map(|(_, cfg)| cfg)
 }
 
-static DOMAIN_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^https?://(?:www\.)?(music\.amazon\.[a-z.]+)").unwrap()
-});
+static DOMAIN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^https?://(?:www\.)?(music\.amazon\.[a-z.]+)").unwrap());
 
 pub fn extract_domain(url: &str) -> Option<String> {
     let caps = DOMAIN_RE.captures(url)?;
@@ -253,7 +379,10 @@ async fn fetch_from_endpoint(
         .header("content-type", "text/plain;charset=UTF-8")
         .header("origin", format!("https://{domain}"))
         .header("referer", format!("https://{domain}/"))
-        .header("sec-ch-ua", "\"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"")
+        .header(
+            "sec-ch-ua",
+            "\"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"",
+        )
         .header("sec-ch-ua-mobile", "?1")
         .header("sec-ch-ua-platform", "\"Android\"")
         .header("sec-fetch-dest", "empty")
@@ -291,13 +420,16 @@ pub async fn fetch_multi_region(
     {
         debug!("Amazon Music: trying {entity_name} on hinted domain '{hint}'");
         tried_endpoint = Some(region.skill_endpoint);
-        if let Some(data) = fetch_from_endpoint(http, id, api_path, url_path_segment, region, hint, cache).await
+        if let Some(data) =
+            fetch_from_endpoint(http, id, api_path, url_path_segment, region, hint, cache).await
             && !is_error(&data)
         {
             debug!("Amazon Music: {entity_name} resolved via hinted domain '{hint}'");
             return Some(data);
         }
-        debug!("Amazon Music: hinted domain '{hint}' failed for {entity_name}, trying other regions");
+        debug!(
+            "Amazon Music: hinted domain '{hint}' failed for {entity_name}, trying other regions"
+        );
     }
 
     let mut futs = FuturesUnordered::new();
@@ -311,7 +443,9 @@ pub async fn fetch_multi_region(
             continue;
         }
         futs.push(async move {
-            let result = fetch_from_endpoint(http, id, api_path, url_path_segment, region, domain, cache).await;
+            let result =
+                fetch_from_endpoint(http, id, api_path, url_path_segment, region, domain, cache)
+                    .await;
             result.map(|data| (data, label))
         });
     }

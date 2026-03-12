@@ -128,9 +128,11 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CircularFileWriter {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
+
     use tracing_subscriber::fmt::MakeWriter;
+
+    use super::*;
 
     fn cleanup_test_file(path: &str) {
         let _ = fs::remove_file(path);

@@ -17,8 +17,10 @@ use serde_json::{Value, json};
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
-use super::region::DomainConfigCache;
-use super::validators::{is_invalid_album, is_invalid_playlist};
+use super::{
+    region::DomainConfigCache,
+    validators::{is_invalid_album, is_invalid_playlist},
+};
 
 const CONFIG_URL: &str = "https://music.amazon.com/config.json";
 const API_BASE: &str = "https://eu.mesk.skill.music.a2z.com/api";

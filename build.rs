@@ -159,23 +159,28 @@ fn detect_pre_release() -> Option<String> {
     if let Ok(v) = env::var("GITHUB_REF_NAME") {
         if is_tag {
             if let Some(idx) = v.find('-')
-                && let Some(sanitized) = sanitize_pre_release(&v[idx + 1..]) {
-                    return Some(sanitized);
-                }
+                && let Some(sanitized) = sanitize_pre_release(&v[idx + 1..])
+            {
+                return Some(sanitized);
+            }
         } else {
             // Use non-main branches as pre-release identifiers
             if !is_main_branch(&v)
-                && let Some(sanitized) = sanitize_pre_release(&v) {
-                    return Some(sanitized);
-                }
+                && let Some(sanitized) = sanitize_pre_release(&v)
+            {
+                return Some(sanitized);
+            }
         }
     }
 
     // Priority 2: GITHUB_REF (standard tag format)
-    if is_tag && let Ok(v) = env::var("GITHUB_REF") && let Some(idx) = v.rfind('-')
-        && let Some(sanitized) = sanitize_pre_release(&v[idx + 1..]) {
-            return Some(sanitized);
-        }
+    if is_tag
+        && let Ok(v) = env::var("GITHUB_REF")
+        && let Some(idx) = v.rfind('-')
+        && let Some(sanitized) = sanitize_pre_release(&v[idx + 1..])
+    {
+        return Some(sanitized);
+    }
 
     // Priority 3: Git describe
     if let Some(desc) = git_output(&["describe", "--tags", "--always"])
@@ -186,13 +191,15 @@ fn detect_pre_release() -> Option<String> {
         if let Some(next_dash) = part.find('-') {
             let pre = &part[..next_dash];
             if !is_numeric(pre)
-                && let Some(sanitized) = sanitize_pre_release(pre) {
-                    return Some(sanitized);
-                }
-        } else if !is_numeric(part)
-            && let Some(sanitized) = sanitize_pre_release(part) {
+                && let Some(sanitized) = sanitize_pre_release(pre)
+            {
                 return Some(sanitized);
             }
+        } else if !is_numeric(part)
+            && let Some(sanitized) = sanitize_pre_release(part)
+        {
+            return Some(sanitized);
+        }
     }
 
     // Priority 4: Local branch name
@@ -200,9 +207,10 @@ fn detect_pre_release() -> Option<String> {
         && !is_main_branch(&branch)
         && branch != "HEAD"
         && !branch.is_empty()
-        && let Some(sanitized) = sanitize_pre_release(&branch) {
-            return Some(sanitized);
-        }
+        && let Some(sanitized) = sanitize_pre_release(&branch)
+    {
+        return Some(sanitized);
+    }
 
     None
 }
@@ -216,10 +224,12 @@ fn sanitize_pre_release(s: &str) -> Option<String> {
             result.push(c);
             last_was_dash = false;
         } else if (c == '/' || c == '-' || c == '_' || c.is_whitespace())
-            && !last_was_dash && !result.is_empty() {
-                result.push('-');
-                last_was_dash = true;
-            }
+            && !last_was_dash
+            && !result.is_empty()
+        {
+            result.push('-');
+            last_was_dash = true;
+        }
     }
 
     if result.ends_with('-') {
@@ -255,7 +265,10 @@ fn parse_dot_git_head() -> Option<(String, String)> {
     let head = fs::read_to_string(".git/HEAD").ok()?.trim().to_owned();
 
     if let Some(ref_path) = head.strip_prefix("ref: ") {
-        let branch = ref_path.strip_prefix("refs/heads/").unwrap_or(ref_path).to_owned();
+        let branch = ref_path
+            .strip_prefix("refs/heads/")
+            .unwrap_or(ref_path)
+            .to_owned();
         let commit = fs::read_to_string(format!(".git/{}", ref_path))
             .ok()
             .map(|s| s.trim().to_owned())

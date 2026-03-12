@@ -82,7 +82,8 @@ impl LiveHlsReader {
             };
 
             let mut seen: HashSet<String> = HashSet::new();
-            let mut seen_history: std::collections::VecDeque<String> = std::collections::VecDeque::with_capacity(50);
+            let mut seen_history: std::collections::VecDeque<String> =
+                std::collections::VecDeque::with_capacity(50);
 
             loop {
                 let text = match handle.block_on(fetch_text(&client, &manifest_url)) {
@@ -94,8 +95,7 @@ impl LiveHlsReader {
                     }
                 };
 
-                let (segments, target_duration) =
-                    parse_live_playlist(&text, &manifest_url);
+                let (segments, target_duration) = parse_live_playlist(&text, &manifest_url);
 
                 for seg in segments {
                     if seen.contains(&seg.url) {
@@ -127,9 +127,10 @@ impl LiveHlsReader {
                     if seen.insert(seg.url.clone()) {
                         seen_history.push_back(seg.url);
                         if seen_history.len() > 50
-                            && let Some(old) = seen_history.pop_front() {
-                                seen.remove(&old);
-                            }
+                            && let Some(old) = seen_history.pop_front()
+                        {
+                            seen.remove(&old);
+                        }
                     }
                 }
 
@@ -146,10 +147,7 @@ impl LiveHlsReader {
     }
 }
 
-fn parse_live_playlist(
-    text: &str,
-    base_url: &str,
-) -> (Vec<Resource>, f64) {
+fn parse_live_playlist(text: &str, base_url: &str) -> (Vec<Resource>, f64) {
     let mut segments = Vec::new();
     let mut target_duration = 6.0f64;
     let lines: Vec<&str> = text.lines().map(str::trim).collect();

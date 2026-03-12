@@ -12,7 +12,7 @@ use tracing::{debug, error, warn};
 use crate::{
     audio::{Mixer, filters::FilterChain},
     common::types::{ChannelId, GuildId, SessionId, Shared, UserId},
-    gateway::constants::{VOICE_GATEWAY_VERSION},
+    gateway::constants::VOICE_GATEWAY_VERSION,
     protocol::RustalinkEvent,
 };
 

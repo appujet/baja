@@ -183,7 +183,9 @@ impl PlayableTrack for DeezerTrack {
             if let Some(url) = playback_url {
                 let err_tx_for_setup = err_tx.clone();
                 let setup_res = tokio::task::spawn_blocking(move || {
-                    let (reader_res, final_url) = if let Some(stripped) = url.strip_prefix("deezer_encrypted:") {
+                    let (reader_res, final_url) = if let Some(stripped) =
+                        url.strip_prefix("deezer_encrypted:")
+                    {
                         let parts: Vec<&str> = stripped.splitn(2, ':').collect();
                         if parts.len() == 2 {
                             let track_id = parts[0];
@@ -225,7 +227,9 @@ impl PlayableTrack for DeezerTrack {
                     let reader = match reader_res {
                         Ok(r) => r,
                         Err(e) => {
-                            return Err(symphonia::core::errors::Error::IoError(std::io::Error::other(format!("Failed to create reader: {e}"))));
+                            return Err(symphonia::core::errors::Error::IoError(
+                                std::io::Error::other(format!("Failed to create reader: {e}")),
+                            ));
                         }
                     };
 
@@ -233,7 +237,14 @@ impl PlayableTrack for DeezerTrack {
 
                     let kind = crate::common::types::AudioFormat::from_url(&url_for_extension);
 
-                    AudioProcessor::new(reader, Some(kind), tx, cmd_rx, Some(err_tx_for_setup), config)
+                    AudioProcessor::new(
+                        reader,
+                        Some(kind),
+                        tx,
+                        cmd_rx,
+                        Some(err_tx_for_setup),
+                        config,
+                    )
                 })
                 .await
                 .expect("failed to spawn deezer setup task");
@@ -241,7 +252,7 @@ impl PlayableTrack for DeezerTrack {
                 let processor = match setup_res {
                     Ok(r) => r,
                     Err(e) => {
-                         error!(
+                        error!(
                             "DeezerTrack failed to initialize processor for {}: {}",
                             track_id_for_log, e
                         );
