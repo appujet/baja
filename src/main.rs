@@ -18,6 +18,24 @@ use dashmap::DashMap;
 use rustalink::{common::types::AnyResult, monitoring, rest, server::AppState, ws};
 use tracing::info;
 
+/// Start the Rustalink HTTP and WebSocket server using the loaded application configuration.
+///
+/// This initializes logging, monitoring, route planning, managers (sources and lyrics),
+/// shared application state (including a live `ProcessStat`), and HTTP/WebSocket routes,
+/// then binds and runs the Axum server on the configured address and port.
+///
+/// # Examples
+///
+/// ```no_run
+/// // Starts the server configured by AppConfig (not runnable in doctests).
+/// fn main() {
+///     // The real entry point uses `#[tokio::main] async fn main()`.
+/// }
+/// ```
+///
+/// # Returns
+///
+/// `Ok(())` on successful startup and server execution, or an error if initialization or runtime fails.
 #[tokio::main]
 async fn main() -> AnyResult<()> {
     let config = rustalink::config::AppConfig::load().await?;
@@ -58,6 +76,9 @@ async fn main() -> AnyResult<()> {
         youtube: youtube_ctx,
         system_state: parking_lot::Mutex::new(sysinfo::System::new_all()),
         last_system_refresh: parking_lot::Mutex::new(std::time::Instant::now()),
+        process_stat: parking_lot::Mutex::new(
+            perf_monitor::cpu::ProcessStat::cur().expect("failed to init ProcessStat"),
+        ),
     });
 
     monitoring::prometheus::init(shared_state.clone());

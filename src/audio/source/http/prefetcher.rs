@@ -97,6 +97,50 @@ fn interruptible_sleep(shared: &Arc<(Mutex<SharedState>, Condvar)>, total_ms: u6
     false
 }
 
+/// Runs the prefetch worker loop that fetches data from `url` into `shared` state,
+/// honoring backpressure, seek/stop commands, retry/backoff logic, and end-of-stream.
+///
+/// The function continuously ensures there is an active HTTP response at `current_pos`,
+/// reads chunks into `shared.chunks` while updating `shared.buffered`, responds to
+/// `PrefetchCommand::Seek` and `PrefetchCommand::Stop`, and records terminal errors or
+/// end-of-stream in `shared`. Retries use exponential backoff and reads are subject to
+/// backpressure limits to avoid unbounded buffering.
+///
+/// # Parameters
+///
+/// - `shared`: Shared synchronization state (Mutex + Condvar) used to communicate buffered
+///   chunks, commands, errors, and end-of-stream with the consumer.
+/// - `client`: HTTP client used to fetch ranged streams from `url`.
+/// - `url`: Target resource URL to prefetch from.
+/// - `current_pos`: Starting byte offset for the next fetch; updated as chunks are consumed.
+/// - `response`: Optional in-flight HTTP response stream; if present the loop will continue
+///   reading from it rather than issuing a new request.
+/// - `total_len`: Optional total length of the resource; used to detect end-of-stream.
+/// - `handle`: Tokio runtime handle used for performing async HTTP operations from this
+///   synchronous worker.
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::sync::Arc;
+/// use std::sync::{Condvar, Mutex};
+/// use reqwest::Client;
+/// use tokio::runtime::Handle;
+///
+/// // Assume SharedState::new() and PrefetchCommand exist in scope.
+/// let shared = Arc::new((Mutex::new(SharedState::new()), Condvar::new()));
+/// let client = Client::new();
+/// let url = "https://example.com/resource".to_string();
+/// let current_pos = 0u64;
+/// let response = None;
+/// let total_len = None;
+/// let handle = Handle::current();
+///
+/// // Run the prefetch loop (typically on a dedicated thread).
+/// std::thread::spawn(move || {
+///     prefetch_loop(shared, client, url, current_pos, response, total_len, handle);
+/// });
+/// ```
 pub fn prefetch_loop(
     shared: Arc<(Mutex<SharedState>, Condvar)>,
     client: reqwest::Client,
@@ -231,6 +275,20 @@ pub fn prefetch_loop(
             }
         }
 
+        {
+            let (lock, cvar) = &*shared;
+            let mut state = lock.lock();
+            while state.buffered >= MAX_HTTP_BUF_BYTES
+                && matches!(state.command, PrefetchCommand::Continue)
+                && !state.done
+            {
+                cvar.wait_for(&mut state, Duration::from_millis(100));
+            }
+            if !matches!(state.command, PrefetchCommand::Continue) {
+                continue;
+            }
+        }
+
         let res = response.as_mut().unwrap();
         match handle.block_on(res.chunk()) {
             Ok(Some(chunk)) => {
@@ -239,12 +297,6 @@ pub fn prefetch_loop(
                 let mut state = lock.lock();
 
                 if !matches!(state.command, PrefetchCommand::Continue) {
-                    continue;
-                }
-
-                if state.buffered >= MAX_HTTP_BUF_BYTES {
-                    drop(state);
-                    std::thread::sleep(Duration::from_millis(10));
                     continue;
                 }
 
@@ -273,7 +325,10 @@ pub fn prefetch_loop(
                 retry_count += 1;
 
                 if retry_count > MAX_FETCH_RETRIES {
-                    warn!("prefetch: read failed fatally after {} retries: {}", MAX_FETCH_RETRIES, e);
+                    warn!(
+                        "prefetch: read failed fatally after {} retries: {}",
+                        MAX_FETCH_RETRIES, e
+                    );
                     let (lock, cvar) = &*shared;
                     let mut state = lock.lock();
                     state.error = Some(e.to_string());

@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, sync::Arc};
 
 use davey::{AeadInPlace, Aes256Gcm, KeyInit};
+use serde::{Deserialize, Serialize};
 use tokio::net::UdpSocket;
 use xsalsa20poly1305::XSalsa20Poly1305;
 
@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Handles RTP encryption and packet construction for Discord voice.
-pub struct VoiceTransport {
+pub struct UDPVoiceTransport {
     socket: Arc<UdpSocket>,
     address: SocketAddr,
     pub ssrc: u32,
@@ -37,7 +37,28 @@ pub struct RtpState {
     pub nonce: u32,
 }
 
-impl VoiceTransport {
+impl UDPVoiceTransport {
+    /// Create a new UDPVoiceTransport configured for sending encrypted RTP packets.
+    ///
+    /// The `mode` parameter selects the AEAD encryption backend:
+    /// - `"aead_aes256_gcm_rtpsize"` — use AES-256-GCM (AES-GCM).
+    /// - any other value — use XSalsa20-Poly1305.
+    /// If `rtp_state` is `None`, a randomized `RtpState` will be generated.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use std::net::{UdpSocket, SocketAddr};
+    ///
+    /// // Bind a local socket (for example purposes) and wrap it in Arc.
+    /// let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").unwrap());
+    /// let addr: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+    /// let key = [0u8; 32];
+    ///
+    /// // Create a transport using the default (XSalsa20-Poly1305) backend.
+    /// let transport = UDPVoiceTransport::new(socket, addr, 12345, key, "xsalsa", None).unwrap();
+    /// ```
     pub fn new(
         socket: Arc<UdpSocket>,
         address: SocketAddr,

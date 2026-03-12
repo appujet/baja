@@ -24,6 +24,25 @@ pub struct JioSaavnTrack {
 }
 
 impl PlayableTrack for JioSaavnTrack {
+    /// Starts decoding the track and returns channels for audio frames, decoder commands, and initialization errors.
+    ///
+    /// The method attempts to decrypt the track's encrypted URL, adjusts the playback URL to a 320kbps variant when `is_320` is true, spawns a blocking task that opens the stream and initializes the audio processor, and returns channel endpoints for consumption.
+    ///
+    /// # Returns
+    ///
+    /// A tuple `(rx, cmd_tx, err_rx)` where:
+    /// - `rx` is a receiver of decoded `AudioFrame`s.
+    /// - `cmd_tx` is a sender for `DecoderCommand`s to control the decoder.
+    /// - `err_rx` is a receiver for up to one initialization error message (a `String`) produced if decryption, stream opening, or processor initialization fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use crate::tracks::JioSaavnTrack;
+    /// # use crate::config::player::PlayerConfig;
+    /// // Assuming `track` and `config` are available:
+    /// // let (rx, cmd_tx, err_rx) = track.start_decoding(config);
+    /// ```
     fn start_decoding(&self, config: crate::config::player::PlayerConfig) -> DecoderOutput {
         let mut playback_url = match self.decrypt_url(&self.encrypted_url) {
             Some(url) => url,
@@ -73,7 +92,11 @@ impl PlayableTrack for JioSaavnTrack {
                         .name(format!("jiosaavn-decoder-{}", url))
                         .spawn(move || {
                             if let Err(e) = processor.run() {
-                                tracing::error!("JioSaavn audio processor error for {}: {}", url, e);
+                                tracing::error!(
+                                    "JioSaavn audio processor error for {}: {}",
+                                    url,
+                                    e
+                                );
                             }
                         })
                         .expect("failed to spawn jiosaavn decoder thread");

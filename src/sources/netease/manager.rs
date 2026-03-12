@@ -1,9 +1,23 @@
+use serde_json::json;
+
 use super::api::*;
 use crate::protocol::tracks::{
     LoadResult, PlaylistData, PlaylistInfo, SearchResult, Track, TrackInfo,
 };
-use serde_json::json;
 
+/// Converts a `NeteaseSong` into a `Track`.
+///
+/// The returned `Track` contains `TrackInfo` populated from the song's fields
+/// (identifier, title, author, length, artwork URL, and a Netease song URI).
+/// The artist falls back to `"Unknown Artist"` if missing.
+///
+/// # Examples
+///
+/// ```no_run
+/// // given a `NeteaseSong` value `song`:
+/// let track = parse_track(&song).unwrap();
+/// assert_eq!(track.info.source_name, "netease");
+/// ```
 pub fn parse_track(song: &NeteaseSong) -> Option<Track> {
     let id = song.id.to_string();
 

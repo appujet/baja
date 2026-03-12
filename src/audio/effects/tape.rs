@@ -79,6 +79,29 @@ impl TapeEffect {
         }
     }
 
+    /// Processes an interleaved i16 audio frame in-place, applying resampling according to the current playback rate,
+    /// handling active start/stop ramps, and producing smooth sample values via cubic interpolation.
+    ///
+    /// The provided `frame` buffer is treated as interleaved channel samples and will be overwritten with the resampled
+    /// output. If a ramp is active, the playback rate is updated each output sample according to the ramp curve;
+    /// if there is insufficient input lookahead or the effect is silent, the remainder of `frame` is filled with zeros.
+    /// Internal read position and input-buffer state are advanced and compacted as needed.
+    ///
+    /// # Parameters
+    ///
+    /// - `frame`: Mutable slice of interleaved i16 samples (length = frames * channels) that will be replaced with the
+    ///   processed output.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut effect = TapeEffect::new(48000, 2);
+    /// // fill an input frame with some data (here silence)
+    /// let mut frame = vec![0i16; 512];
+    /// // process will overwrite `frame` with resampled output or silence
+    /// effect.process(&mut frame);
+    /// assert_eq!(frame.len(), 512);
+    /// ```
     pub fn process(&mut self, frame: &mut [i16]) {
         if frame.is_empty() || !self.is_active() {
             return;
@@ -155,7 +178,8 @@ impl TapeEffect {
         if self.read_pos > (self.sample_rate as f64 * channels as f64 * 2.0) {
             let integral = (self.read_pos.floor() as usize / channels) * channels;
             self.input_buffer.copy_within(integral.., 0);
-            self.input_buffer.truncate(self.input_buffer.len() - integral);
+            self.input_buffer
+                .truncate(self.input_buffer.len() - integral);
             self.read_pos -= integral as f64;
         }
     }

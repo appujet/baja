@@ -137,6 +137,20 @@ impl PlayerContext {
         self.stop_signal.store(true, Ordering::Release);
     }
 
+    /// Cleanly shuts down playback and associated tasks, aborting the gateway task and stopping the audio mixer.
+    ///
+    /// This stops the current track, aborts an active gateway_task if present, and stops all mixers/effects in the engine.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use tokio::runtime::Runtime;
+    /// # let rt = Runtime::new().unwrap();
+    /// # rt.block_on(async {
+    /// // given a mutable PlayerContext `ctx`
+    /// ctx.destroy().await;
+    /// # });
+    /// ```
     pub async fn destroy(&mut self) {
         self.stop_track();
 
@@ -149,7 +163,37 @@ impl PlayerContext {
         mixer.stop_all();
     }
 
-    pub fn to_player_response(&self) -> Player {
+    /// Constructs a snapshot Player value representing the current playback and connection state.
+    ///
+    /// The returned Player contains the current track metadata, volume, paused flag, playback
+    /// timing (timestamp and position), connection and voice details, active filters, and an
+    /// optional `dave` field when the engine exposes Dave state.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use tokio::runtime::Runtime;
+    /// # let rt = Runtime::new().unwrap();
+    /// # rt.block_on(async {
+    /// // `ctx` is a `PlayerContext` instance.
+    /// let player = ctx.to_player_response().await;
+    /// println!("Player for guild: {}", player.guild_id);
+    /// # });
+    /// ```
+    pub async fn to_player_response(&self) -> Player {
+        let dave = {
+            let engine = self.engine.lock().await;
+            if let Some(dave_shared) = &engine.dave {
+                let dave = dave_shared.lock().await;
+                Some(crate::player::state::DaveState {
+                    protocol_version: dave.protocol_version(),
+                    privacy_code: dave.voice_privacy_code(),
+                })
+            } else {
+                None
+            }
+        };
+
         Player {
             guild_id: self.guild_id.clone(),
             track: self.track_info.clone(),
@@ -172,6 +216,7 @@ impl PlayerContext {
                 channel_id: self.voice.channel_id.clone(),
             },
             filters: self.filters.clone(),
+            dave,
         }
     }
 }

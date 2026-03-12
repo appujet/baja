@@ -1,6 +1,5 @@
 use std::{process, sync::atomic::Ordering};
 
-use perf_monitor::cpu::processor_numbers;
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, ProcessRefreshKind, RefreshKind};
 
 use crate::{
@@ -8,7 +7,29 @@ use crate::{
     server::{AppState, session::Session},
 };
 
-/// Collects system and process-level metrics.
+/// Gathers current system- and process-level metrics and assembles a `protocol::Stats`.
+///
+/// The returned `Stats` includes player counts, uptime, memory usage (process and system),
+/// CPU information (core count, normalized system load, normalized lavalink load), and
+/// optionally per-player frame statistics when `session` is provided.
+///
+/// # Parameters
+///
+/// - `app_state`: Global application state containing system information, process stats,
+///   sessions, and server configuration used to compute uptime and frame metrics.
+/// - `session`: Optional session used to compute per-player frame statistics; if `None`
+///   or if no actionable frame data exists, `frame_stats` will be `None`.
+///
+/// # Returns
+///
+/// A `protocol::Stats` struct populated with:
+/// - `players` and `playing_players`: aggregated counts across all sessions;
+/// - `uptime`: milliseconds since `app_state.start_time`;
+/// - `memory`: `free` (available system memory), `used` and `allocated` (process memory),
+///   and `reservable` (total system memory);
+/// - `cpu`: `cores` (number of CPUs), `system_load` (0.0–1.0), and `lavalink_load`
+///   (process CPU load normalized to 0.0–1.0);
+/// - `frame_stats`: computed per-player frame metrics when available.
 pub fn collect_stats(app_state: &AppState, session: Option<&Session>) -> protocol::Stats {
     let mut system = app_state.system_state.lock();
 
@@ -27,23 +48,23 @@ pub fn collect_stats(app_state: &AppState, session: Option<&Session>) -> protoco
     system.refresh_processes_specifics(
         sysinfo::ProcessesToUpdate::Some(&[pid]),
         true,
-        ProcessRefreshKind::nothing().with_cpu().with_memory(),
+        ProcessRefreshKind::nothing().with_memory(),
     );
 
     let cores = system.cpus().len() as u32;
-    let logical_cores = processor_numbers().unwrap_or(cores as usize) as u32;
+    let logical_cores = cores.max(1);
 
-    let (lavalink_load, process_used_memory) = if let Some(proc) = system.process(pid) {
-        let load = (proc.cpu_usage() as f64 / 100.0 / logical_cores as f64).clamp(0.0, 1.0);
-        (load, proc.memory())
-    } else {
-        (0.0, 0)
+    let lavalink_load = {
+        let mut stat = app_state.process_stat.lock();
+        stat.cpu().unwrap_or(0.0).clamp(0.0, logical_cores as f64) / logical_cores as f64
     };
+
+    let process_used_memory = system.process(pid).map(|p| p.memory()).unwrap_or(0);
 
     let system_load = if system.cpus().is_empty() {
         0.0
     } else {
-        system.global_cpu_usage() as f64 / 100.0
+        (system.global_cpu_usage() as f64 / 100.0).clamp(0.0, 1.0)
     };
 
     let mut total_players = 0;

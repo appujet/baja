@@ -12,6 +12,18 @@ pub struct SincResampler {
 }
 
 impl SincResampler {
+    /// Constructs a SincResampler configured to convert audio between two sample rates.
+    ///
+    /// The resampler is initialized with a fixed 32-tap windowed sinc filter, a
+    /// per-channel input buffer pre-filled with zeros, and a resampling ratio set
+    /// to `source_rate as f32 / target_rate as f32`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let r = SincResampler::new(48000, 48000, 2);
+    /// assert!(r.is_passthrough());
+    /// ```
     pub fn new(source_rate: u32, target_rate: u32, channels: usize) -> Self {
         let taps = 32;
         let mut table = Vec::with_capacity(taps);
@@ -20,7 +32,7 @@ impl SincResampler {
 
         for i in 0..taps {
             let offset = i as f32 - half_taps;
-            
+
             let a0 = 0.42;
             let a1 = 0.5;
             let a2 = 0.08;

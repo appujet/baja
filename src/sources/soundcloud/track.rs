@@ -183,6 +183,25 @@ impl PlayableTrack for SoundCloudTrack {
     }
 }
 
+/// Initializes an AudioProcessor for the provided media reader and runs it on a dedicated thread; if initialization fails, sends an error message on `err_tx`.
+///
+/// On success the function spawns a new OS thread named `soundcloud-decoder-{identifier}` that executes the processor's `run()` loop. On failure the function sends a descriptive error string through `err_tx`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use flume;
+/// // Prepare a reader, channels and config (placeholders)
+/// let reader: Box<dyn symphonia::core::io::MediaSource> = /* create or obtain a MediaSource */ unimplemented!();
+/// let (tx, _rx) = flume::unbounded::<crate::player::audio::AudioFrame>();
+/// let (cmd_tx, cmd_rx) = flume::unbounded::<crate::player::audio::DecoderCommand>();
+/// let (err_tx, _err_rx) = flume::bounded::<String>(1);
+/// let config = crate::config::player::PlayerConfig::default();
+/// let identifier = "example".to_string();
+///
+/// // Start the processor (will spawn a thread on success or send an error on failure)
+/// run_processor(reader, None, tx, cmd_rx, err_tx, config, identifier);
+/// ```
 fn run_processor(
     reader: Box<dyn symphonia::core::io::MediaSource>,
     kind: Option<crate::common::types::AudioFormat>,
@@ -204,7 +223,10 @@ fn run_processor(
                 .expect("failed to spawn soundcloud decoder thread");
         }
         Err(e) => {
-            error!("SoundCloud: failed to init AudioProcessor for {} (kind={:?}): {}", identifier, kind, e);
+            error!(
+                "SoundCloud: failed to init AudioProcessor for {} (kind={:?}): {}",
+                identifier, kind, e
+            );
             let _ = err_tx.send(format!("Failed to initialize processor: {e}"));
         }
     }

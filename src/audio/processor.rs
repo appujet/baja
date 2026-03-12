@@ -50,6 +50,7 @@ pub struct AudioProcessor {
     channels: usize,
     config: PlayerConfig,
     recoverable_errors: u32,
+    downmix_buf: Vec<i16>,
 }
 
 impl AudioProcessor {
@@ -71,6 +72,36 @@ impl AudioProcessor {
         )
     }
 
+    /// Creates a new AudioProcessor using the provided engine and media source.
+    ///
+    /// Attempts to open the media source, initialize decoder and resampler according to
+    /// the source sample rate and `config.resampling_quality`, and returns an initialized
+    /// AudioProcessor ready to run.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Self)` containing the initialized AudioProcessor on success, or `Err(Error)` if
+    /// opening the format or initialization fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Placeholder example showing intended usage; real values must be provided.
+    /// # use std::sync::mpsc::channel;
+    /// # use flume;
+    /// # fn placeholder() {
+    /// let source = Box::new(/* your MediaSource */);
+    /// let kind = None;
+    /// let engine = Box::new(/* your Engine implementing BoxedEngine */);
+    /// let (cmd_tx, cmd_rx) = flume::unbounded::<crate::audio::processor::DecoderCommand>();
+    /// let error_tx = None;
+    /// let config = crate::config::PlayerConfig::default();
+    ///
+    /// let _processor = crate::audio::processor::AudioProcessor::with_engine(
+    ///     source, kind, engine, cmd_rx, error_tx, config
+    /// );
+    /// # }
+    /// ```
     pub fn with_engine(
         source: Box<dyn MediaSource>,
         kind: Option<AudioFormat>,
@@ -121,9 +152,30 @@ impl AudioProcessor {
             channels,
             config,
             recoverable_errors: 0,
+            downmix_buf: Vec::with_capacity(1920),
         })
     }
 
+    /// Runs the audio transcode loop until stopped or input is exhausted.
+    ///
+    /// This processes input packets from the opened format, decodes audio frames,
+    /// optionally downmixes to the mixer channel count, resamples to the target
+    /// sample rate, and pushes PCM frames to the configured engine. The loop
+    /// responds to incoming `DecoderCommand`s (seek/stop) and resets resampling or
+    /// decoding state as needed when a seek occurs.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Err` if a non-recoverable packet read or decode error occurs and
+    /// is reported via the optional error channel. Unexpected EOF from the input
+    /// stream is treated as normal termination (not an error).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Assuming `proc` is an initialized AudioProcessor:
+    /// // proc.run().unwrap();
+    /// ```
     pub fn run(&mut self) -> Result<(), Error> {
         let _span = span!(Level::DEBUG, "audio_processor").entered();
 
@@ -200,8 +252,6 @@ impl AudioProcessor {
                             };
                         }
 
-                        let mut pooled = Vec::with_capacity(samples.len());
-
                         let pcm_data = if frame_channels == MIXER_CHANNELS {
                             samples
                         } else {
@@ -214,7 +264,8 @@ impl AudioProcessor {
                                 );
                             }
                             let num_frames = samples.len() / frame_channels;
-                            let mut downmixed = Vec::with_capacity(num_frames * MIXER_CHANNELS);
+                            self.downmix_buf.clear();
+                            self.downmix_buf.reserve(num_frames * MIXER_CHANNELS);
 
                             for i in 0..num_frames {
                                 let frame = &samples[i * frame_channels..(i + 1) * frame_channels];
@@ -232,16 +283,15 @@ impl AudioProcessor {
                                 let left_count = frame_channels.div_ceil(2);
                                 let right_count = frame_channels / 2;
 
-                                downmixed.push((l / left_count as i32) as i16);
+                                self.downmix_buf.push((l / left_count as i32) as i16);
                                 if right_count > 0 {
-                                    downmixed.push((r / right_count as i32) as i16);
+                                    self.downmix_buf.push((r / right_count as i32) as i16);
                                 } else {
                                     // Upmix mono to stereo
-                                    downmixed.push((l / left_count as i32) as i16);
+                                    self.downmix_buf.push((l / left_count as i32) as i16);
                                 }
                             }
-                            pooled.extend(downmixed);
-                            &pooled[..]
+                            &self.downmix_buf[..]
                         };
 
                         let capacity = (pcm_data.len() as f64 * TARGET_SAMPLE_RATE as f64
@@ -268,7 +318,10 @@ impl AudioProcessor {
                     if self.recoverable_errors == 1 {
                         warn!("Decode error (recoverable): {e}");
                     } else if self.recoverable_errors.is_multiple_of(100) {
-                        warn!("Decode error (recoverable, x{}): {e}", self.recoverable_errors);
+                        warn!(
+                            "Decode error (recoverable, x{}): {e}",
+                            self.recoverable_errors
+                        );
                     }
                 }
                 Err(e) => {

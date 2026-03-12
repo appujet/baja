@@ -23,6 +23,36 @@ pub struct GaanaTrack {
 }
 
 impl PlayableTrack for GaanaTrack {
+    /// Starts decoding the Gaana track and returns channels for consuming audio frames,
+    /// sending decoder commands, and receiving initialization/runtime errors.
+    ///
+    /// The decoding work is performed asynchronously: this method spawns a Tokio task
+    /// to fetch the stream URL and initialize an audio processor. If initialization
+    /// succeeds, a dedicated thread runs the processor; otherwise an error string is
+    /// sent through the returned error channel.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` — Player configuration used to size buffers and control processing.
+    ///
+    /// # Returns
+    ///
+    /// A tuple `(rx, cmd_tx, err_rx)` where:
+    /// - `rx` yields `AudioFrame` values produced by the decoder.
+    /// - `cmd_tx` is used to send `DecoderCommand` messages to control the decoder.
+    /// - `err_rx` yields `String` error messages produced during setup or runtime.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use crate::tracks::GaanaTrack;
+    /// # use crate::config::player::PlayerConfig;
+    /// # async fn example(track: &GaanaTrack) {
+    /// let config = PlayerConfig::default();
+    /// let (rx, cmd_tx, err_rx) = track.start_decoding(config);
+    /// // rx: receive audio frames, cmd_tx: send control commands, err_rx: receive errors
+    /// # }
+    /// ```
     fn start_decoding(&self, config: crate::config::player::PlayerConfig) -> DecoderOutput {
         let (tx, rx) = flume::bounded::<AudioFrame>((config.buffer_duration_ms / 20) as usize);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
@@ -73,7 +103,8 @@ impl PlayableTrack for GaanaTrack {
                             cmd_rx,
                             Some(err_tx_for_setup),
                             config,
-                        ).map_err(|e| e.to_string())
+                        )
+                        .map_err(|e| e.to_string())
                     } else {
                         Err("GaanaTrack: Failed to create reader".to_string())
                     }
@@ -87,13 +118,21 @@ impl PlayableTrack for GaanaTrack {
                             .name(format!("gaana-decoder-{}", track_id_for_log))
                             .spawn(move || {
                                 if let Err(e) = processor.run() {
-                                    tracing::error!("GaanaTrack audio processor error for {}: {}", track_id_for_log, e);
+                                    tracing::error!(
+                                        "GaanaTrack audio processor error for {}: {}",
+                                        track_id_for_log,
+                                        e
+                                    );
                                 }
                             })
                             .expect("failed to spawn gaana decoder thread");
                     }
                     Err(e) => {
-                        tracing::error!("GaanaTrack failed to initialize processor for {}: {}", track_id_for_log, e);
+                        tracing::error!(
+                            "GaanaTrack failed to initialize processor for {}: {}",
+                            track_id_for_log,
+                            e
+                        );
                         let _ = err_tx.send(format!("Failed to initialize processor: {e}"));
                     }
                 }

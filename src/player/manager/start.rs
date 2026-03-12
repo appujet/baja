@@ -30,7 +30,33 @@ pub struct PlaybackStartConfig {
     pub start_time_ms: Option<u64>,
 }
 
-/// Start playing a new track on `player`.
+/// Starts playback of a track on the given player according to the provided configuration.
+///
+/// This will stop any currently playing track, decode and resolve the requested track (with a
+/// 30-second timeout), begin decoding and add the track to the audio engine mixer, send a
+/// TrackStart event to the session, spawn lyric fetching, and spawn a monitor task that watches
+/// playback state. If track resolution fails or building the track response fails, the function
+/// returns early and no playback is started.
+///
+/// # Parameters
+///
+/// - `player`: Mutable reference to the player context whose state will be modified to start
+///   playback.
+/// - `config`: Configuration describing the track to start, the session, managers, start time,
+///   update interval, and optional user data.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example() {
+/// // Prepare a PlayerContext and PlaybackStartConfig according to your application.
+/// let mut player = /* PlayerContext */ unimplemented!();
+/// let config = /* PlaybackStartConfig */ unimplemented!();
+///
+/// // Start playback (async)
+/// start_playback(&mut player, config).await;
+/// # }
+/// ```
 pub async fn start_playback(player: &mut PlayerContext, config: PlaybackStartConfig) {
     stop_current_track(player, &config.session).await;
 
@@ -125,7 +151,7 @@ pub async fn start_playback(player: &mut PlayerContext, config: PlaybackStartCon
         handle.pause();
     }
 
-    let Some(track_response) = player.to_player_response().track else {
+    let Some(track_response) = player.to_player_response().await.track else {
         error!(
             "Failed to build track response for guild {}",
             player.guild_id
@@ -172,11 +198,32 @@ pub async fn start_playback(player: &mut PlayerContext, config: PlaybackStartCon
     player.track_task = Some(track_task);
 }
 
-/// Stop the currently playing track and emit `TrackEnd: Replaced` if needed.
+/// Stop playback and clean up player state.
+///
+/// If a track is currently playing (handle exists and is not stopped) and the player
+/// has a current track, emits a `TrackEnd` event with reason `Replaced`. Then signals
+/// the playback stop, aborts any running track task, stops the track handle, clears
+/// playback-related fields (track, track_info, position, end_time), accumulates
+/// historical frame counters onto the session, and stops all mixer channels.
+///
+/// # Examples
+///
+/// ```
+/// # use tokio::runtime::Runtime;
+/// # // setup_player and setup_session are hypothetical helpers for the example
+/// # fn setup_player() -> PlayerContext { unimplemented!() }
+/// # fn setup_session() -> Session { unimplemented!() }
+/// let rt = Runtime::new().unwrap();
+/// rt.block_on(async {
+///     let mut player = setup_player();
+///     let session = setup_session();
+///     stop_current_track(&mut player, &session).await;
+/// });
+/// ```
 async fn stop_current_track(player: &mut PlayerContext, session: &Session) {
     if let Some(handle) = &player.track_handle
         && handle.get_state() != PlaybackState::Stopped
-        && let Some(track) = player.to_player_response().track
+        && let Some(track) = player.to_player_response().await.track
     {
         session.send_message(&protocol::OutgoingMessage::Event {
             event: Box::new(RustalinkEvent::TrackEnd {

@@ -93,6 +93,33 @@ impl FlowController {
         }
     }
 
+    /// Attempts to retrieve the next ready PCM frame from the controller without blocking.
+    ///
+    /// While the decoder is still active, this method consumes available incoming frames from the internal
+    /// receiver into an internal buffer until at least `FRAME_SIZE_SAMPLES` samples are accumulated
+    /// or the receiver becomes empty or disconnected. Incoming Opus packets are saved as the latest
+    /// opus packet and incoming PCM chunks are appended to the pending buffer and then released back
+    /// to the buffer pool. If enough PCM samples are available, a new `PooledBuffer` containing the
+    /// next `FRAME_SIZE_SAMPLES` samples is returned after applying the controller's audio effects.
+    /// If the decoder has finished and no full frame is available, returns `AudioError::DecoderFinished`.
+    /// Otherwise, returns `Ok(None)` to indicate that no complete frame is ready yet.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Some(frame))` with a processed `PooledBuffer` when a full frame was produced, `Ok(None)` when
+    /// no full frame is available but the decoder is still active, or `Err(AudioError::DecoderFinished)`
+    /// when the decoder has finished and no more frames can be produced.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assume `fc` is a mutable FlowController already receiving audio.
+    /// if let Ok(Some(frame)) = fc.try_pop_frame() {
+    ///     // `frame` contains FRAME_SIZE_SAMPLES processed PCM samples ready for consumption.
+    /// } else {
+    ///     // No full frame ready yet, or decoder finished.
+    /// }
+    /// ```
     pub fn try_pop_frame(&mut self) -> Result<Option<PooledBuffer>, AudioError> {
         if !self.decoder_done {
             while self.pending_pcm.len() < FRAME_SIZE_SAMPLES {
@@ -101,7 +128,10 @@ impl FlowController {
                         self.pending_pcm.clear();
                         self.decoder_done = false;
                     }
-                    Ok(AudioFrame::Pcm(chunk)) => self.pending_pcm.extend_from_slice(&chunk),
+                    Ok(AudioFrame::Pcm(chunk)) => {
+                        self.pending_pcm.extend_from_slice(&chunk);
+                        crate::audio::buffer::release_buffer(chunk);
+                    }
                     Ok(AudioFrame::Opus(packet)) => {
                         self.latest_opus = Some(packet);
                     }

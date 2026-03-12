@@ -12,6 +12,31 @@ use crate::{
     server::AppState,
 };
 
+/// Update a player's state for the given session and guild.
+///
+/// Locates the session (returns 404 if missing), then applies player-level updates from the request body:
+/// - basic playback state (position, paused, volume) unless a new track is being loaded,
+/// - filter changes,
+/// - voice state and voice gateway connection,
+/// - track start/stop/user-data updates or end-time adjustments.
+/// The `noReplace` query parameter, when true, prevents replacing an existing track.
+/// Responds with HTTP 200 and the updated player state as JSON on success, or an appropriate error response on failure.
+///
+/// # Examples
+///
+/// ```
+/// # async fn example() {
+/// use std::sync::Arc;
+/// use http::StatusCode;
+/// // Construct `Path`, `Query`, `State`, and `Json` values appropriate for your app (omitted).
+/// // let path = Path((session_id, guild_id));
+/// // let query = Query(...);
+/// // let state = State(Arc::new(app_state));
+/// // let body = Json(player_update);
+/// // let resp = update_player(path, query, state, body).await;
+/// // assert_eq!(resp.into_response().status(), StatusCode::OK);
+/// # }
+/// ```
 pub async fn update_player(
     Path((session_id, guild_id)): Path<(
         crate::common::types::SessionId,
@@ -88,7 +113,7 @@ pub async fn update_player(
         };
     }
 
-    let response = player.to_player_response();
+    let response = player.to_player_response().await;
     (StatusCode::OK, Json(response)).into_response()
 }
 

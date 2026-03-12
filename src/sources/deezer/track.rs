@@ -24,6 +24,33 @@ pub struct DeezerTrack {
 }
 
 impl PlayableTrack for DeezerTrack {
+    /// Begins decoding this track: resolves a playback URL, initializes a media reader and audio
+    /// processor, and spawns background tasks/threads to stream decoded audio frames.
+    ///
+    /// The function spawns an asynchronous task to resolve the track's playback URL (with retries
+    /// and token handling), then spawns a blocking setup and a dedicated thread to run the
+    /// AudioProcessor. Errors during setup or runtime are sent to the returned error receiver when
+    /// possible and are also logged.
+    ///
+    /// # Parameters
+    ///
+    /// * `config` - Player configuration used to determine buffer sizing and audio processor options.
+    ///
+    /// # Returns
+    ///
+    /// A `DecoderOutput` tuple `(audio_frame_rx, command_tx, error_rx)`:
+    /// - `audio_frame_rx`: receiver for decoded `AudioFrame`s produced by the background processor.
+    /// - `command_tx`: sender for `DecoderCommand`s to control the running processor.
+    /// - `error_rx`: receiver for error messages produced during setup or decoding.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Assuming `track` is a DeezerTrack and `cfg` is a PlayerConfig:
+    /// let (_audio_rx, cmd_tx, _err_rx) = track.start_decoding(cfg);
+    /// // Commands can be sent to control playback:
+    /// let _ = cmd_tx.send(crate::audio::DecoderCommand::Stop);
+    /// ```
     fn start_decoding(&self, config: crate::config::player::PlayerConfig) -> DecoderOutput {
         let (tx, rx) = flume::bounded::<AudioFrame>((config.buffer_duration_ms / 20) as usize);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
@@ -183,26 +210,27 @@ impl PlayableTrack for DeezerTrack {
             if let Some(url) = playback_url {
                 let err_tx_for_setup = err_tx.clone();
                 let setup_res = tokio::task::spawn_blocking(move || {
-                    let custom_reader = if let Some(stripped) = url.strip_prefix("deezer_encrypted:") {
-                        let parts: Vec<&str> = stripped.splitn(2, ':').collect();
-                        if parts.len() == 2 {
-                            let track_id = parts[0];
-                            let media_url = parts[1];
-                            DeezerReader::new(
-                                media_url,
-                                track_id,
-                                &master_key,
-                                local_addr,
-                                proxy.clone(),
-                            )
-                            .ok()
-                            .map(|r| Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
+                    let custom_reader =
+                        if let Some(stripped) = url.strip_prefix("deezer_encrypted:") {
+                            let parts: Vec<&str> = stripped.splitn(2, ':').collect();
+                            if parts.len() == 2 {
+                                let track_id = parts[0];
+                                let media_url = parts[1];
+                                DeezerReader::new(
+                                    media_url,
+                                    track_id,
+                                    &master_key,
+                                    local_addr,
+                                    proxy.clone(),
+                                )
+                                .ok()
+                                .map(|r| Box::new(r) as Box<dyn symphonia::core::io::MediaSource>)
+                            } else {
+                                None
+                            }
                         } else {
                             None
-                        }
-                    } else {
-                        None
-                    };
+                        };
 
                     let reader = custom_reader.unwrap_or_else(|| {
                         Box::new(
@@ -231,13 +259,19 @@ impl PlayableTrack for DeezerTrack {
                             .name(format!("deezer-decoder-{}", track_id_for_log))
                             .spawn(move || {
                                 if let Err(e) = processor.run() {
-                                    error!("DeezerTrack audio processor error for {}: {}", track_id_for_log, e);
+                                    error!(
+                                        "DeezerTrack audio processor error for {}: {}",
+                                        track_id_for_log, e
+                                    );
                                 }
                             })
                             .expect("failed to spawn deezer decoder thread");
                     }
                     Err(e) => {
-                        error!("DeezerTrack failed to initialize processor for {}: {}", track_id_for_log, e);
+                        error!(
+                            "DeezerTrack failed to initialize processor for {}: {}",
+                            track_id_for_log, e
+                        );
                         let _ = err_tx.send(format!("Failed to initialize processor: {e}"));
                     }
                 }

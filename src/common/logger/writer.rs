@@ -89,9 +89,29 @@ impl CircularFileWriter {
 }
 
 impl io::Write for CircularFileWriter {
+    /// Appends the provided bytes to the target file, counts newline characters, and when enough newlines
+    /// have been written triggers a background prune to keep the file within `max_lines`.
+    ///
+    /// The method increments the internal newline counter by the number of `\n` bytes in `buf`.
+    /// When the counter reaches a heuristic threshold it closes the current file handle (if any),
+    /// resets the counter, marks pruning as in-progress, and spawns a background prune task.
+    ///
+    /// # Returns
+    ///
+    /// The number of bytes written from `buf`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::io::Write;
+    ///
+    /// let mut w = CircularFileWriter::new("test.log".into(), 100);
+    /// let n = w.write(b"hello\n").unwrap();
+    /// assert_eq!(n, 6);
+    /// ```
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut state = self.state.lock();
-        
+
         let file = self.ensure_file_open(&mut state)?;
         file.write_all(buf)?;
 

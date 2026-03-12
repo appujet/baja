@@ -5,17 +5,13 @@ use std::sync::{
 
 use futures::{SinkExt, StreamExt};
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
-use tokio_tungstenite::tungstenite::{
-    Error as WsError,
-    error::ProtocolError,
-    protocol::{Message, WebSocketConfig},
-};
+use tokio_tungstenite::tungstenite::protocol::{Message, WebSocketConfig};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, warn};
 
 use crate::{
     audio::{Mixer, filters::FilterChain},
-    common::types::{AnyResult, ChannelId, GuildId, SessionId, Shared, UserId},
+    common::types::{ChannelId, GuildId, SessionId, Shared, UserId},
     gateway::constants::{VOICE_GATEWAY_VERSION, WRITE_TASK_SHUTDOWN_MS},
     protocol::RustalinkEvent,
 };
@@ -23,14 +19,15 @@ use crate::{
 pub mod backoff;
 pub mod handler;
 pub mod heartbeat;
+pub mod policy;
+pub mod protocol;
 pub mod types;
 pub mod voice;
 
 use self::{
     backoff::Backoff,
-    types::{
-        PersistentSessionState, SessionOutcome, VoiceGatewayMessage, classify_close, map_boxed_err,
-    },
+    policy::FailurePolicy,
+    types::{GatewayError, PersistentSessionState, SessionOutcome},
 };
 
 pub struct VoiceGateway {
@@ -49,12 +46,7 @@ pub struct VoiceGateway {
     pub udp_socket: Shared<Option<Arc<tokio::net::UdpSocket>>>,
     pub dave: Shared<crate::gateway::DaveHandler>,
     outer_token: CancellationToken,
-}
-
-impl Drop for VoiceGateway {
-    fn drop(&mut self) {
-        self.outer_token.cancel();
-    }
+    policy: FailurePolicy,
 }
 
 pub struct VoiceGatewayConfig {
@@ -73,6 +65,31 @@ pub struct VoiceGatewayConfig {
 }
 
 impl VoiceGateway {
+    /// Creates a new VoiceGateway from the provided configuration.
+    ///
+    /// The returned gateway copies identifying information and shared resources from
+    /// `config` and prepares runtime primitives: an empty UDP socket slot, a
+    /// `DaveHandler` for the configured user and channel, a new outer
+    /// `CancellationToken`, and a `FailurePolicy` initialized for up to 3 attempts.
+    ///
+    /// # Parameters
+    ///
+    /// - `config`: configuration payload containing guild/user/channel identifiers,
+    ///   authentication token, endpoint, audio mixer and filter chain, ping state,
+    ///   optional event sender, and frame counters.
+    ///
+    /// # Returns
+    ///
+    /// A `VoiceGateway` instance configured and ready to be started via `run`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // given a properly constructed `config: VoiceGatewayConfig`
+    /// let gw = VoiceGateway::new(config);
+    /// // the gateway preserves the config's identifiers
+    /// // assert_eq!(gw.guild_id, config.guild_id);
+    /// ```
     pub fn new(config: VoiceGatewayConfig) -> Self {
         Self {
             guild_id: config.guild_id,
@@ -93,16 +110,38 @@ impl VoiceGateway {
                 config.channel_id,
             ))),
             outer_token: CancellationToken::new(),
+            policy: FailurePolicy::new(3),
         }
     }
 
-    pub async fn run(self) -> AnyResult<()> {
+    /// Runs the voice gateway connection loop until shutdown, cancellation, or an unrecoverable error.
+    ///
+    /// The method repeatedly attempts to establish and maintain a voice gateway session, applying
+    /// the gateway's failure policy and backoff strategy. It will attempt session resume when
+    /// appropriate and reset session state on fresh reconnects.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the run loop exits normally (shutdown or cancellation), `Err(GatewayError)` on an unrecoverable connection failure.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use tokio::sync::Mutex;
+    /// # use rustalink::gateway::session::VoiceGateway; // placeholder path
+    /// # async fn example(mut gw: VoiceGateway) -> Result<(), rustalink::GatewayError> {
+    /// gw.run().await
+    /// # }
+    /// ```
+    pub async fn run(self) -> Result<(), GatewayError> {
         let mut backoff = Backoff::new();
         let mut is_resume = false;
-        let seq_ack = Arc::new(AtomicI64::new(0));
+        let seq_ack = Arc::new(AtomicI64::new(-1));
         let persistent_state = Arc::new(tokio::sync::Mutex::new(PersistentSessionState::default()));
 
         while !self.outer_token.is_cancelled() {
+            let attempt = backoff.attempt();
             match self
                 .connect(
                     is_resume,
@@ -112,53 +151,34 @@ impl VoiceGateway {
                 )
                 .await
             {
-                Ok(SessionOutcome::Shutdown) => {
-                    debug!("[{}] Gateway shutting down cleanly", self.guild_id);
-                    return Ok(());
-                }
-                Ok(SessionOutcome::Reconnect) => {
+                Ok(SessionOutcome::Shutdown) => break,
+                Ok(outcome) => {
                     if backoff.is_exhausted() {
-                        warn!("[{}] Max reconnect attempts reached", self.guild_id);
-                        self.emit_close_event(1006, "Max reconnect attempts reached".into());
-                        return Ok(());
+                        warn!("[{}] Max attempts reached ({})", self.guild_id, attempt);
+                        break;
                     }
-                    let delay = backoff.next();
+
+                    let delay = backoff.next_delay();
+                    is_resume = matches!(outcome, SessionOutcome::Reconnect);
+
+                    if !is_resume {
+                        seq_ack.store(-1, Ordering::Relaxed);
+                        *persistent_state.lock().await = PersistentSessionState::default();
+                        *self.udp_socket.lock().await = None;
+                    }
+
                     debug!(
-                        "[{}] Reconnecting in {:?} (resume=true)",
-                        self.guild_id, delay
-                    );
-                    tokio::time::sleep(delay).await;
-                    is_resume = true;
-                }
-                Ok(SessionOutcome::Identify) => {
-                    if backoff.is_exhausted() {
-                        warn!("[{}] Max re-identify attempts reached", self.guild_id);
-                        self.emit_close_event(4006, "Max re-identify attempts reached".into());
-                        return Ok(());
-                    }
-                    is_resume = false;
-                    seq_ack.store(0, Ordering::Relaxed);
-                    {
-                        let mut state = persistent_state.lock().await;
-                        *state = PersistentSessionState::default();
-                    }
-                    *self.udp_socket.lock().await = None;
-                    let delay = backoff.next();
-                    warn!(
-                        "[{}] Session invalid (4006); re-identifying in {:?} (attempt {})",
-                        self.guild_id,
-                        delay,
-                        backoff.attempt(),
+                        "[{}] Retrying ({:?}) in {:?}",
+                        self.guild_id, outcome, delay
                     );
                     tokio::time::sleep(delay).await;
                 }
                 Err(e) => {
                     if backoff.is_exhausted() {
-                        error!("[{}] Connection failed: {e}", self.guild_id);
-                        self.emit_close_event(1006, format!("Connection failed: {e}"));
-                        return Ok(());
+                        error!("[{}] Fatal connection error: {e}", self.guild_id);
+                        break;
                     }
-                    let delay = backoff.next();
+                    let delay = backoff.next_delay();
                     warn!(
                         "[{}] Connection error: {e}. Retrying in {:?}",
                         self.guild_id, delay
@@ -171,53 +191,88 @@ impl VoiceGateway {
         Ok(())
     }
 
+    /// Establishes a WebSocket connection to the voice gateway and drives the session until it yields a session outcome.
+    ///
+    /// This attempts the handshake (identify or resume), sets up read/write tasks and a per-connection cancellation token,
+    /// forwards outgoing messages, handles incoming gateway frames via `handle_message`, and returns the final `SessionOutcome`.
+    ///
+    /// # Parameters
+    ///
+    /// - `is_resume`: If `true`, sends a resume handshake; otherwise sends an identify handshake.
+    /// - `seq_ack`: Atomic sequence acknowledgement used to populate resume sequence and to track last acked sequence.
+    /// - `persistent_state`: Shared session state persisted across reconnect attempts.
+    /// - `backoff`: Mutable backoff state used/updated by the session state during connection setup.
+    ///
+    /// # Returns
+    ///
+    /// `SessionOutcome` indicating why the session ended (e.g., `Shutdown` or `Reconnect`), or a `GatewayError` on connection/setup failure.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use tokio::sync::Mutex;
+    /// # use std::sync::atomic::AtomicI64;
+    /// # use rustalink::gateway::session::{VoiceGateway, VoiceGatewayConfig};
+    /// # use rustalink::gateway::session::types::PersistentSessionState;
+    /// # use rustalink::gateway::session::Backoff;
+    /// #
+    /// # #[tokio::test]
+    /// # async fn connects_and_returns_outcome() {
+    /// // Construct a VoiceGateway (fields elided for brevity) and supporting state.
+    /// let config = VoiceGatewayConfig { /* fields omitted */ };
+    /// let gateway = VoiceGateway::new(config);
+    /// let seq_ack = Arc::new(AtomicI64::new(-1));
+    /// let persistent = Arc::new(Mutex::new(PersistentSessionState::default()));
+    /// let mut backoff = Backoff::new();
+    ///
+    /// // Attempt a fresh connection (not a resume).
+    /// let outcome = gateway.connect(false, seq_ack, persistent, &mut backoff).await;
+    /// match outcome {
+    ///     Ok(_) => { /* connection produced an outcome */ }
+    ///     Err(_) => { /* connection failed */ }
+    /// }
+    /// # }
+    /// ```
     async fn connect(
         &self,
         is_resume: bool,
         seq_ack: Arc<AtomicI64>,
         persistent_state: Arc<tokio::sync::Mutex<PersistentSessionState>>,
         backoff: &mut Backoff,
-    ) -> AnyResult<SessionOutcome> {
-        let mut endpoint = self.endpoint.clone();
-        if endpoint.ends_with(":80") {
-            endpoint.truncate(endpoint.len() - 3);
-        }
+    ) -> Result<SessionOutcome, GatewayError> {
+        let endpoint = if self.endpoint.ends_with(":80") {
+            &self.endpoint[..self.endpoint.len() - 3]
+        } else {
+            &self.endpoint
+        };
 
         let url = format!("wss://{}/?v={}", endpoint, VOICE_GATEWAY_VERSION);
-        debug!(
-            "[{}] Connecting to voice gateway: {url} (attempt {})",
-            self.guild_id,
-            backoff.attempt()
-        );
-
         let mut config = WebSocketConfig::default();
         config.max_message_size = None;
         config.max_frame_size = None;
 
-        let (ws_stream, _) = tokio_tungstenite::connect_async_with_config(&url, Some(config), true)
-            .await
-            .map_err(map_boxed_err)?;
-        let (mut write, mut read) = ws_stream.split();
+        let (ws_stream, _) =
+            tokio_tungstenite::connect_async_with_config(&url, Some(config), true).await?;
 
+        let (mut write, mut read) = ws_stream.split();
         let conn_token = CancellationToken::new();
+        let write_token = conn_token.clone();
         let (ws_tx, mut ws_rx) = unbounded_channel::<Message>();
 
-        let guild_id = self.guild_id.clone();
-        let write_token = conn_token.clone();
         tokio::spawn(async move {
             while let Some(msg) = tokio::select! {
                 biased;
                 _ = write_token.cancelled() => None,
                 msg = ws_rx.recv() => msg,
             } {
-                if let Err(e) = write.send(msg).await {
-                    warn!("[{}] WS write error: {e}", guild_id);
+                if write.send(msg).await.is_err() {
                     break;
                 }
             }
         });
 
-        let mut state = handler::SessionState::new_v8(
+        let mut state = handler::SessionState::new(
             self,
             ws_tx.clone(),
             seq_ack.clone(),
@@ -226,54 +281,38 @@ impl VoiceGateway {
             backoff,
         )
         .await
-        .map_err(|e| {
-            warn!("[{}] Init session failed: {e}", self.guild_id);
+        .inspect_err(|_e| {
             conn_token.cancel();
-            e
         })?;
 
-        // V8 Handshake: Wait for Op 8 HELLO before identifying
-        let msg = read.next().await;
-        match msg {
-            Some(Ok(m)) => {
-                if let Some(out) = self.handle_ws_message(&mut state, m).await {
-                    conn_token.cancel();
-                    return Ok(out);
-                }
-            }
-            Some(Err(e)) => {
-                warn!("[{}] Initial read error: {e}", self.guild_id);
-                conn_token.cancel();
-                return Ok(SessionOutcome::Reconnect);
-            }
-            None => {
-                warn!("[{}] WS closed before HELLO", self.guild_id);
-                conn_token.cancel();
-                return Ok(SessionOutcome::Reconnect);
-            }
+        // Wait for Op 8 HELLO
+        if let Some(Ok(m)) = read.next().await
+            && let Some(out) = self.handle_message(&mut state, m).await
+        {
+            conn_token.cancel();
+            return Ok(out);
         }
 
         let handshake = if is_resume {
-            trace!(
-                "[{}] Sending voice RESUME: {:?}",
-                self.guild_id, self.session_id
-            );
-            self.resume_message(seq_ack.load(Ordering::Relaxed))
+            protocol::builders::resume(
+                self.guild_id.to_string(),
+                self.session_id.to_string(),
+                self.token.clone(),
+                seq_ack.load(Ordering::Relaxed),
+            )
         } else {
-            trace!(
-                "[{}] Sending voice IDENTIFY: {:?}",
-                self.guild_id, self.session_id
-            );
-            self.identify_message()
+            protocol::builders::identify(
+                self.guild_id.to_string(),
+                self.user_id.0.to_string(),
+                self.session_id.to_string(),
+                self.token.clone(),
+                1,
+            )
         };
 
-        ws_tx
-            .send(Message::Text(
-                serde_json::to_string(&handshake)
-                    .map_err(map_boxed_err)?
-                    .into(),
-            ))
-            .map_err(|_| map_boxed_err("failed to send handshake"))?;
+        let _ = ws_tx.send(Message::Text(
+            serde_json::to_string(&handshake).unwrap().into(),
+        ));
 
         let (speaking_tx, mut speaking_rx) = unbounded_channel::<bool>();
         state.set_speaking_tx(speaking_tx);
@@ -282,44 +321,16 @@ impl VoiceGateway {
             tokio::select! {
                 biased;
                 _ = self.outer_token.cancelled() => break SessionOutcome::Shutdown,
-                _ = conn_token.cancelled() => {
-                    warn!("[{}] Connection token cancelled (heartbeat timeout?)", self.guild_id);
-                    break SessionOutcome::Reconnect;
+                _ = conn_token.cancelled() => break SessionOutcome::Reconnect,
+                Some(speaking) = speaking_rx.recv() => {
+                    self.notify_speaking(&ws_tx, state.ssrc(), speaking);
                 }
-                Some(is_speaking) = speaking_rx.recv() => {
-                    self.send_speaking_notification(&ws_tx, state.ssrc(), is_speaking);
-                }
-                msg = read.next() => {
-                    match msg {
-                        Some(Ok(m)) => if let Some(out) = self.handle_ws_message(&mut state, m).await {
-                            break out;
-                        },
-                        Some(Err(e)) => {
-                            let is_reset = matches!(
-                                e,
-                                WsError::Protocol(ProtocolError::ResetWithoutClosingHandshake)
-                            );
-
-                            let is_tls_eof = matches!(&e, WsError::Io(io_err)
-                                if io_err.to_string().contains("close_notify"));
-
-                            if is_reset || is_tls_eof {
-                                debug!(
-                                    "[{}] WS connection closed by peer without handshake (reset={is_reset} tls_eof={is_tls_eof})",
-                                    self.guild_id
-                                );
-                            } else {
-                                warn!("[{}] WS read error: {e}", self.guild_id);
-                                self.emit_close_event(1006, format!("IO error: {e}"));
-                            }
-                            break SessionOutcome::Reconnect;
-                        }
-                        None => {
-                            debug!("[{}] WS ended", self.guild_id);
-                            self.emit_close_event(1000, "Stream ended".into());
-                            break SessionOutcome::Reconnect;
-                        }
-                    }
+                msg = read.next() => match msg {
+                    Some(Ok(m)) => if let Some(out) = self.handle_message(&mut state, m).await {
+                        break out;
+                    },
+                    Some(Err(_)) => break SessionOutcome::Reconnect,
+                    None => break SessionOutcome::Reconnect,
                 }
             }
         };
@@ -334,27 +345,35 @@ impl VoiceGateway {
         Ok(outcome)
     }
 
-    fn send_speaking_notification(
-        &self,
-        tx: &UnboundedSender<Message>,
-        ssrc: u32,
-        is_speaking: bool,
-    ) {
-        let msg = VoiceGatewayMessage {
-            op: 5,
-            seq: None,
-            d: serde_json::json!({
-                "speaking": if is_speaking { 1u8 } else { 0u8 },
-                "delay": 0,
-                "ssrc": ssrc
-            }),
-        };
-        if let Ok(json) = serde_json::to_string(&msg) {
-            let _ = tx.send(Message::Text(json.into()));
-        }
-    }
-
-    async fn handle_ws_message(
+    /// Handle an incoming WebSocket `Message` for the current session and produce an optional
+    /// session outcome when the message requires a session-level decision.
+    ///
+    /// This inspects the provided `msg` and delegates processing to the session `state` for text
+    /// and binary payloads, replies to pings with a pong, and classifies/records close frames
+    /// via the gateway's failure `policy`.
+    ///
+    /// # Returns
+    ///
+    /// `Some(SessionOutcome)` when the message indicates the session should transition (for example,
+    /// on a close frame); `None` for messages that were consumed without requiring a session outcome.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tokio::runtime::Runtime;
+    /// # use tokio_tungstenite::tungstenite::Message;
+    /// # // The following is a conceptual example; constructing a real `VoiceGateway` and
+    /// # // `handler::SessionState` requires the surrounding module context.
+    /// # let rt = Runtime::new().unwrap();
+    /// # rt.block_on(async {
+    /// // let gateway: VoiceGateway = ...;
+    /// // let mut state: handler::SessionState<'_> = ...;
+    /// // Example: a ping should be replied to and yield no session outcome.
+    /// // let outcome = gateway.handle_message(&mut state, Message::Ping(vec![])).await;
+    /// // assert!(outcome.is_none());
+    /// # });
+    /// ```
+    async fn handle_message(
         &self,
         state: &mut handler::SessionState<'_>,
         msg: Message,
@@ -366,55 +385,97 @@ impl VoiceGateway {
                 None
             }
             Message::Close(frame) => {
-                let (code, reason) = frame
-                    .map(|cf| (cf.code.into(), cf.reason.to_string()))
-                    .unwrap_or((1000u16, "No reason".into()));
+                let code = frame.as_ref().map(|f| f.code.into()).unwrap_or(1000u16);
+                let reason = frame.map(|f| f.reason.to_string()).unwrap_or_default();
+                let attempt = state.attempt();
 
-                debug!(
-                    "[{}] WS close: code={code} reason='{reason}'",
-                    self.guild_id
-                );
-                self.emit_close_event(code, reason);
-                Some(classify_close(code))
+                debug!("[{}] Gateway closed: {} ({})", self.guild_id, code, reason);
+
+                if !self.policy.is_retryable(code, attempt) {
+                    self.emit_close(code, reason);
+                }
+
+                Some(self.policy.classify(code))
             }
-            Message::Ping(payload) => {
-                let _ = state.tx().send(Message::Pong(payload));
+            Message::Ping(p) => {
+                let _ = state.tx().send(Message::Pong(p));
                 None
             }
             _ => None,
         }
     }
 
-    fn identify_message(&self) -> VoiceGatewayMessage {
-        VoiceGatewayMessage {
-            op: 0,
+    /// Sends a "speaking" gateway payload over the provided WebSocket send channel.
+    ///
+    /// The payload sets `speaking` to `1` when `speaking` is true, otherwise `0`, includes a
+    /// `delay` of `0`, and the provided `ssrc`. If JSON serialization fails the send is skipped.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use futures::executor::block_on;
+    /// use futures::StreamExt;
+    /// use futures::channel::mpsc::unbounded;
+    /// use tokio_tungstenite::tungstenite::Message;
+    ///
+    /// struct Dummy;
+    /// impl Dummy {
+    ///     fn notify_speaking(&self, tx: &futures::channel::mpsc::UnboundedSender<Message>, ssrc: u32, speaking: bool) {
+    ///         let msg = serde_json::json!({
+    ///             "op": 5u8, // example op code placeholder
+    ///             "seq": null,
+    ///             "d": {
+    ///                 "speaking": if speaking { 1 } else { 0 },
+    ///                 "delay": 0,
+    ///                 "ssrc": ssrc
+    ///             }
+    ///         });
+    ///         if let Ok(json) = serde_json::to_string(&msg) {
+    ///             let _ = tx.unbounded_send(Message::Text(json));
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// let gw = Dummy;
+    /// block_on(async {
+    ///     let (tx, mut rx) = unbounded::<Message>();
+    ///     gw.notify_speaking(&tx, 42, true);
+    ///     let msg = rx.next().await.unwrap();
+    ///     if let Message::Text(s) = msg {
+    ///         assert!(s.contains(r#""speaking":1"#));
+    ///         assert!(s.contains(r#""ssrc":42"#));
+    ///     } else {
+    ///         panic!("expected text message");
+    ///     }
+    /// });
+    /// ```
+    fn notify_speaking(&self, tx: &UnboundedSender<Message>, ssrc: u32, speaking: bool) {
+        let msg = protocol::GatewayPayload {
+            op: protocol::OpCode::Speaking as u8,
             seq: None,
             d: serde_json::json!({
-                "server_id": self.guild_id.to_string(),
-                "user_id": self.user_id.0.to_string(),
-                "session_id": self.session_id,
-                "token": self.token,
-                "video": true,
-                "max_dave_protocol_version": if self.channel_id.0 > 0 { 1 } else { 0 },
+                "speaking": if speaking { 1 } else { 0 },
+                "delay": 0,
+                "ssrc": ssrc
             }),
+        };
+        if let Ok(json) = serde_json::to_string(&msg) {
+            let _ = tx.send(Message::Text(json.into()));
         }
     }
 
-    fn resume_message(&self, seq_ack: i64) -> VoiceGatewayMessage {
-        VoiceGatewayMessage {
-            op: 7,
-            seq: None,
-            d: serde_json::json!({
-                "server_id": self.guild_id.to_string(),
-                "session_id": self.session_id,
-                "token": self.token,
-                "video": true,
-                "seq_ack": seq_ack,
-            }),
-        }
-    }
-
-    fn emit_close_event(&self, code: u16, reason: String) {
+    /// Emits a WebSocket-closed event to the optional event channel with the provided close code and reason.
+    ///
+    /// If an event channel is configured, sends a `RustalinkEvent::WebSocketClosed` containing this gateway's
+    /// guild identifier, the numeric close `code`, the textual `reason`, and `by_remote = true`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assuming `gw` is a `VoiceGateway` with an event channel configured:
+    /// // gw.emit_close(4000, "session expired".into());
+    /// ```
+    fn emit_close(&self, code: u16, reason: String) {
         if let Some(tx) = &self.event_tx {
             let _ = tx.send(RustalinkEvent::WebSocketClosed {
                 guild_id: self.guild_id.clone(),

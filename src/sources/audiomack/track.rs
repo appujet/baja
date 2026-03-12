@@ -72,6 +72,23 @@ pub async fn fetch_stream_url(client: &Arc<reqwest::Client>, identifier: &str) -
     None
 }
 
+/// Extracts a direct audio stream URL from an HTTP response body, if one is present.
+///
+/// Attempts to read the response body as text and then:
+/// - treats a plain text body that looks like a stream URL as a valid result, or
+/// - parses JSON and searches common fields (`signedUrl`, `signed_url`, `streamUrl`, `stream_url`, `url`) for a stream URL.
+/// Returns the first candidate that appears to be a direct audio stream (hosts or extensions commonly used by Audiomack), or `None` if no suitable URL is found.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async {
+/// let resp = reqwest::get("https://api.audiomack.com/v1/music/play/some-id").await.unwrap();
+/// if let Some(url) = crate::audiomack::parse_response(resp).await {
+///     println!("stream url: {}", url);
+/// }
+/// # };
+/// ```
 async fn parse_response(resp: reqwest::Response) -> Option<String> {
     if !resp.status().is_success() {
         return None;
@@ -93,7 +110,9 @@ async fn parse_response(resp: reqwest::Response) -> Option<String> {
     }
 
     let json: serde_json::Value = serde_json::from_str(&text).ok()?;
-    if let Some(s) = json.as_str() && is_stream(s) {
+    if let Some(s) = json.as_str()
+        && is_stream(s)
+    {
         return Some(s.to_owned());
     }
 
@@ -106,7 +125,9 @@ async fn parse_response(resp: reqwest::Response) -> Option<String> {
         .or_else(|| results.get("url"))
         .and_then(|v| v.as_str());
 
-    if let Some(url) = potential_url && is_stream(url) {
+    if let Some(url) = potential_url
+        && is_stream(url)
+    {
         return Some(url.to_owned());
     }
 

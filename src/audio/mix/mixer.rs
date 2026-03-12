@@ -188,6 +188,24 @@ impl Mixer {
         self.audio_mixer.enabled = false;
     }
 
+    /// Mixes all active tracks and layers into the provided output buffer.
+    ///
+    /// This fills `buf` with the mixed PCM samples from the mixer's tracks and any configured
+    /// mix layers, updating internal playback positions and track states as frames are consumed
+    /// or completed.
+    ///
+    /// # Returns
+    ///
+    /// `true` if any audio samples (from tracks or layers) were produced and written into `buf`, `false` otherwise.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut mixer = Mixer::new(48000);
+    /// let mut buf = vec![0i16; 1920];
+    /// let has_audio = mixer.mix(&mut buf);
+    /// assert_eq!(has_audio, false);
+    /// ```
     pub fn mix(&mut self, buf: &mut [i16]) -> bool {
         let out_len = buf.len();
 
@@ -263,6 +281,7 @@ impl Mixer {
                             track.pending_pos = 0;
                         }
                         filled += n;
+                        crate::audio::buffer::release_buffer(frame);
                     }
                     Ok(None) => break 'pull,
                     Err(_) => {

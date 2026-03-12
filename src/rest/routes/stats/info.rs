@@ -4,16 +4,44 @@ use axum::{extract::State, response::Json};
 
 use crate::{player::Filters, protocol, server::AppState};
 
-/// GET /v4/info
+/// Return server metadata including semantic version, build/git information, and enabled components.
+///
+/// The response includes:
+/// - a `version` object with semver, major/minor/patch and optional pre-release identifier (augmented from `RUSTALINK_PRE_RELEASE` when present),
+/// - build time and git branch/commit/timestamp (sourced from `BUILD_TIME`, `GIT_BRANCH`, `GIT_COMMIT`, `GIT_COMMIT_TIME`),
+/// - runtime identifiers (`jvm`, `lavaplayer`),
+/// - available `source_managers`, enabled `filters`, and `plugins` (currently empty).
+///
+/// # Examples
+///
+/// ```no_run
+/// use std::sync::Arc;
+/// use axum::extract::State;
+///
+/// # async fn demo() {
+/// // Construct an `AppState` (omitted) and call the handler:
+/// // let app_state = Arc::new(AppState::new(...));
+/// // let Json(info) = get_info(State(app_state)).await;
+/// // println!("server semver: {}", info.version.semver);
+/// # }
+/// ```
 pub async fn get_info(State(state): State<Arc<AppState>>) -> Json<protocol::Info> {
     tracing::info!("GET /v4/info");
 
     let version_str = env!("CARGO_PKG_VERSION");
-    let (major, minor, patch, pre_release) = parse_semver(version_str);
+    let (major, minor, patch, mut pre_release) = parse_semver(version_str);
+
+    let mut semver = version_str.to_string();
+    if pre_release.is_none()
+        && let Some(pre) = option_env!("RUSTALINK_PRE_RELEASE")
+    {
+        pre_release = Some(pre.to_string());
+        semver = format!("{}-{}", version_str, pre);
+    }
 
     Json(protocol::Info {
         version: protocol::Version {
-            semver: version_str.to_string(),
+            semver,
             major: if major == 0 { 4 } else { major },
             minor,
             patch,

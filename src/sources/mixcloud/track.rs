@@ -17,6 +17,27 @@ pub struct MixcloudTrack {
 }
 
 impl PlayableTrack for MixcloudTrack {
+    /// Start decoding the Mixcloud track and provide channels to interact with the decoder.
+    ///
+    /// Spawns background tasks to initialize the appropriate reader (HLS or stream), create and run
+    /// an AudioProcessor, and deliver decoded audio frames and error notifications via channels.
+    ///
+    /// # Returns
+    ///
+    /// A tuple `(rx, cmd_tx, err_rx)` where:
+    /// - `rx` is a `flume::Receiver<AudioFrame>` that yields decoded audio frames.
+    /// - `cmd_tx` is a `flume::Sender<DecoderCommand>` used to send commands to the decoder.
+    /// - `err_rx` is a `flume::Receiver<String>` that yields initialization or runtime error messages.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (frames_rx, cmd_tx, err_rx) = track.start_decoding(config);
+    /// // Example: attempt to receive one frame (non-blocking usage omitted for brevity)
+    /// if let Ok(frame) = frames_rx.recv() {
+    ///     // use `frame`
+    /// }
+    /// ```
     fn start_decoding(&self, config: crate::config::player::PlayerConfig) -> DecoderOutput {
         let (tx, rx) = flume::bounded::<AudioFrame>((config.buffer_duration_ms / 20) as usize);
         let (cmd_tx, cmd_rx) = flume::unbounded::<DecoderCommand>();
@@ -91,7 +112,11 @@ impl PlayableTrack for MixcloudTrack {
                         .name(format!("mixcloud-decoder-{}", uri))
                         .spawn(move || {
                             if let Err(e) = processor.run() {
-                                tracing::error!("Mixcloud audio processor error for {}: {}", uri, e);
+                                tracing::error!(
+                                    "Mixcloud audio processor error for {}: {}",
+                                    uri,
+                                    e
+                                );
                             }
                         })
                         .expect("failed to spawn mixcloud decoder thread");
