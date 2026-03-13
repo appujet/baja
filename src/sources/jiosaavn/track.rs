@@ -62,10 +62,8 @@ impl PlayableTrack for JioSaavnTrack {
                 }
             };
 
-            let kind = std::path::Path::new(&url)
-                .extension()
-                .and_then(|s| s.to_str())
-                .map(crate::common::types::AudioFormat::from_ext);
+            // JioSaavn always delivers AAC inside an MP4/M4A container.
+            let kind = Some(crate::common::types::AudioFormat::Mp4);
 
             match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone()), config) {
                 Ok(mut processor) => {

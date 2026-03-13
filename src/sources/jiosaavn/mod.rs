@@ -17,7 +17,7 @@ pub mod track;
 fn url_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| {
-        Regex::new(r"https?://(?:www\.)?jiosaavn\.com/(?:(?<type>album|featured|song|s/playlist|artist)/)(?:[^/]+/)(?<id>[A-Za-z0-9_,-]+)").unwrap()
+        Regex::new(r"https?://(?:www\.)?(?:jiosaavn|saavn)\.com/(?:(?<type>p/album|s/featured|s/artist|s/song|album|featured|song|s/playlist|artist)/)(?:[^/]+/)+(?<id>[A-Za-z0-9_,-]+)").unwrap()
     })
 }
 
@@ -125,7 +125,14 @@ impl crate::sources::plugin::SourcePlugin for JioSaavnSource {
                 return LoadResult::Empty {};
             }
 
-            if type_ == "song" {
+            let canonical_type = match type_ {
+                "p/album" => "album",
+                "s/artist" => "artist",
+                "s/featured" => "featured",
+                other => other,
+            };
+
+            if canonical_type == "song" || canonical_type == "s/song" {
                 if let Some(track_data) = self.fetch_metadata(id).await
                     && let Some(track) = parser::parse_track(&track_data)
                 {
@@ -133,7 +140,7 @@ impl crate::sources::plugin::SourcePlugin for JioSaavnSource {
                 }
                 return LoadResult::Empty {};
             } else {
-                return self.resolve_list(type_, id).await;
+                return self.resolve_list(canonical_type, id).await;
             }
         }
 
