@@ -241,12 +241,17 @@ impl YouTubeClient for WebEmbeddedClient {
             .unwrap_or("UNKNOWN");
 
         if playability != "OK" {
+            let reason = body
+                .get("playabilityStatus")
+                .and_then(|p| p.get("reason"))
+                .and_then(|r| r.as_str())
+                .unwrap_or("unknown reason");
             tracing::warn!(
-                "WebEmbedded player: video {} not playable (status={})",
+                "WebEmbedded player: video {} not playable (status={}, reason={}); attempting streamingData fallback",
                 track_id,
-                playability
+                playability,
+                reason
             );
-            return Ok(None);
         }
 
         let streaming_data = match body.get("streamingData") {

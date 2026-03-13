@@ -206,6 +206,34 @@ impl YouTubeSource {
     }
 
     async fn refresh_visitor_data(http: &reqwest::Client) -> Option<String> {
+        match http
+            .get("https://www.youtube.com/embed")
+            .header("Cookie", "YSC=cz5kYp3ZuIE; VISITOR_INFO1_LIVE=U-0T5oUyzf8;")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
+            .send()
+            .await
+        {
+            Ok(res) if res.status().is_success() => {
+                if let Ok(text) = res.text().await {
+                    let re = regex::Regex::new(r#""VISITOR_DATA":"([^"]+)""#).ok();
+                    if let Some(vd) = re.as_ref().and_then(|r| r.captures(&text)).and_then(|c| c.get(1)) {
+                        let raw = vd.as_str();
+                        let decoded = urlencoding::decode(raw)
+                            .map(|s| s.into_owned())
+                            .unwrap_or_else(|_| raw.to_string());
+                        tracing::debug!("YouTube: visitorData refreshed from embed page.");
+                        return Some(decoded);
+                    }
+                }
+            }
+            Ok(res) => {
+                tracing::warn!("YouTube embed page returned status {}; falling back to guide API.", res.status());
+            }
+            Err(e) => {
+                tracing::warn!("YouTube embed page request failed: {}; falling back to guide API.", e);
+            }
+        }
+
         let body = json!({
             "context": {
                 "client": {
@@ -216,7 +244,6 @@ impl YouTubeSource {
                 }
             }
         });
-
         match http
             .post("https://www.youtube.com/youtubei/v1/guide")
             .json(&body)
@@ -230,15 +257,15 @@ impl YouTubeSource {
                         .and_then(|rc| rc.get("visitorData"))
                         .and_then(|vd| vd.as_str())
                 {
-                    // Always URL-decode to ensure clean base64 is stored (no %3D%3D etc.)
                     let decoded = urlencoding::decode(vd)
                         .map(|s| s.into_owned())
                         .unwrap_or_else(|_| vd.to_string());
+                    tracing::debug!("YouTube: visitorData refreshed via guide API fallback.");
                     return Some(decoded);
                 }
             }
             Err(e) => {
-                tracing::warn!("Failed to fetch visitor data: {}", e);
+                tracing::warn!("Failed to fetch visitor data via guide API: {}", e);
             }
         }
         None
@@ -320,8 +347,6 @@ impl YouTubeSource {
         ordered
     }
 
-    /// Returns all clients not already tried, drawn from all three pools,
-    /// deduped by name and ordered by music preference.
     fn fallback_clients<'a>(
         &'a self,
         tried: &[&Arc<dyn YouTubeClient>],

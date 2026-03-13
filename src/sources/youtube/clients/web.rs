@@ -263,18 +263,15 @@ impl YouTubeClient for WebClient {
             .and_then(|v| v.as_str())
             .or_else(|| context.get("visitorData").and_then(|v| v.as_str()));
 
-        let po_token: Option<String> = None;
-        let visitor_data = visitor_data.map(|s| s.to_string());
-
         // Web client requires cipher resolution (signatureTimestamp / n-param).
         let signature_timestamp = cipher_manager.get_signature_timestamp().await.ok();
         let body = self
             .player_request(
                 track_id,
-                visitor_data.as_deref(),
+                visitor_data,
                 signature_timestamp,
                 &oauth,
-                po_token.as_deref(),
+                None,
             )
             .await?;
 
@@ -291,12 +288,11 @@ impl YouTubeClient for WebClient {
                 .and_then(|r| r.as_str())
                 .unwrap_or("unknown reason");
             tracing::warn!(
-                "Web player: video {} not playable (status={}, reason={})",
+                "Web player: video {} not playable (status={}, reason={}); attempting streamingData fallback",
                 track_id,
                 playability,
                 reason
             );
-            return Ok(None);
         }
 
         let streaming_data = match body.get("streamingData") {

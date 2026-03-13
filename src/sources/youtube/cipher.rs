@@ -93,7 +93,7 @@ impl YouTubeCipherManager {
         Ok(CachedPlayerScript {
             url: full_url,
             signature_timestamp,
-            expire_timestamp_ms: Instant::now() + Duration::from_secs(24 * 60 * 60),
+            expire_timestamp_ms: Instant::now() + Duration::from_secs(12 * 60 * 60),
         })
     }
 
