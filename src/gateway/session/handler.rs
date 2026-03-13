@@ -431,7 +431,6 @@ impl<'a> SessionState<'a> {
 
     async fn on_resumed(&mut self) -> Option<SessionOutcome> {
         debug!("[{}] Resumed", self.gateway.guild_id);
-        self.backoff.reset();
 
         let (addr, key, ssrc, mode) = {
             let state = self.persistent_state.lock().await;
@@ -509,6 +508,7 @@ impl<'a> SessionState<'a> {
         );
 
         if self.dave.lock().await.prepare_transition(tid, ver) {
+            debug!("[{}] DAVE Transition Ready (tid={})", self.gateway.guild_id, tid);
             self.send_json(23, serde_json::json!({ "transition_id": tid }));
         }
         None
