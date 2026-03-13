@@ -286,7 +286,7 @@ jobs:
           BODY_JSON=$(echo "$BODY" | jq -Rs .)
           cat <<EOF > discord_payload.json
           {
-            "username": "${{ github.event.repository.name }} Updates",
+            "username": "${{ github.event.repository.name }}",
             "avatar_url": "https://github.com/${{ github.repository_owner }}.png",
             "embeds": [
               {
