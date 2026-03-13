@@ -45,6 +45,11 @@ pub struct DeezerSource {
     pub token_tracker: Arc<DeezerTokenTracker>,
 }
 
+const DECRYPTION_KEY_HASH: [u8; 32] = [
+    52, 76, 41, 138, 120, 133, 48, 72, 198, 74, 16, 75, 82, 101, 186, 223, 15, 190, 111, 218, 176,
+    71, 103, 11, 181, 136, 155, 247, 66, 203, 218, 240,
+];
+
 impl DeezerSource {
     pub fn new(
         config: crate::config::DeezerConfig,
@@ -58,6 +63,16 @@ impl DeezerSource {
         if arls.is_empty() {
             return Err("Deezer arls must be set".to_owned());
         }
+
+        if let Some(ref key) = config.master_decryption_key {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(key.as_bytes());
+            if hasher.finalize().as_slice() != DECRYPTION_KEY_HASH {
+                tracing::warn!("Deezer master decryption key is possibly invalid, playback may not work!");
+            }
+        }
+
         let token_tracker = Arc::new(DeezerTokenTracker::new(client.clone(), arls));
 
         Ok(Self {
