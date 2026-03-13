@@ -103,11 +103,47 @@ impl PlayableTrack for DeezerTrack {
                         continue;
                     }
 
-                    let track_token = match json
-                        .get("results")
-                        .and_then(|r| r.get("TRACK_TOKEN"))
-                        .and_then(|v| v.as_str())
+                    let mut results = match json.get("results") {
+                        Some(r) => r.clone(),
+                        None => {
+                            token_tracker.invalidate_token(tokens.arl_index).await;
+                            retry_count += 1;
+                            continue;
+                        }
+                    };
+
+                    // If main track has no RIGHTS, use FALLBACK track if available
+                    let rights = results.get("RIGHTS");
+                    let mut effective_track_id = track_id.clone();
+                    if (rights.is_none()
+                        || rights
+                            .and_then(|v| v.as_array())
+                            .map(|a| a.is_empty())
+                            .unwrap_or(
+                                rights
+                                    .and_then(|v| v.as_object())
+                                    .map(|o| o.is_empty())
+                                    .unwrap_or(true),
+                            ))
+                        && let Some(fallback) = results.get("FALLBACK")
+                        && !fallback.get("TRACK_TOKEN").map(|v| v.is_null()).unwrap_or(true)
                     {
+                        if let Some(fallback_id) = fallback.get("SNG_ID").and_then(|v| v.as_str()) {
+                            effective_track_id = fallback_id.to_owned();
+                        } else if let Some(fallback_id) =
+                            fallback.get("SNG_ID").and_then(|v| v.as_i64())
+                        {
+                            effective_track_id = fallback_id.to_string();
+                        }
+
+                        debug!(
+                            "DeezerTrack: Track {} has no RIGHTS, using FALLBACK {}",
+                            track_id, effective_track_id
+                        );
+                        results = fallback.clone();
+                    }
+
+                    let track_token = match results.get("TRACK_TOKEN").and_then(|v| v.as_str()) {
                         Some(t) => t,
                         None => {
                             token_tracker.invalidate_token(tokens.arl_index).await;
@@ -171,7 +207,7 @@ impl PlayableTrack for DeezerTrack {
                         .and_then(|u| u.as_str());
 
                     if let Some(url) = url_opt {
-                        break Some(format!("deezer_encrypted:{track_id}:{url}"));
+                        break Some(format!("deezer_encrypted:{effective_track_id}:{url}"));
                     } else {
                         token_tracker.invalidate_token(tokens.arl_index).await;
                         retry_count += 1;
@@ -327,9 +363,34 @@ pub(super) async fn verify_track_resolvable(
         return None;
     }
 
-    let track_token = json
-        .get("results")
-        .and_then(|r| r.get("TRACK_TOKEN"))
+    let mut results = match json.get("results") {
+        Some(r) => r.clone(),
+        None => {
+            token_tracker.invalidate_token(tokens.arl_index).await;
+            return None;
+        }
+    };
+
+    // If main track has no RIGHTS, use FALLBACK track if available
+    let rights = results.get("RIGHTS");
+    if (rights.is_none()
+        || rights
+            .and_then(|v| v.as_array())
+            .map(|a| a.is_empty())
+            .unwrap_or(
+                rights
+                    .and_then(|v| v.as_object())
+                    .map(|o| o.is_empty())
+                    .unwrap_or(true),
+            ))
+        && let Some(fallback) = results.get("FALLBACK")
+        && !fallback.get("TRACK_TOKEN").map(|v| v.is_null()).unwrap_or(true)
+    {
+        results = fallback.clone();
+    }
+
+    let track_token = results
+        .get("TRACK_TOKEN")
         .and_then(|v| v.as_str())?
         .to_owned();
 
