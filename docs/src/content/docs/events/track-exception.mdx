@@ -1,0 +1,47 @@
+---
+title: TrackExceptionEvent
+description: WebSocket event sent when a track encounters an error during playback.
+---
+import { Badge, Code } from "@astrojs/starlight/components";
+
+The `TrackExceptionEvent` is sent by the server to the client if a track playback fails due to an exception.
+
+---
+
+## Structure
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `op` | string | Always `event` |
+| `type` | string | Always `TrackExceptionEvent` |
+| `guildId` | string | The Discord guild ID |
+| `track` | object | The [Track](/Rustalink/api#type-track) that failed |
+| `exception` | object | Details about the error |
+
+<details>
+<summary><b>Exception Object Fields</b></summary>
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `message` | string | The error message |
+| `severity` | string | `common`, `suspicious`, or `fatal` |
+| `cause` | string | The cause of the error |
+</details>
+
+---
+
+## Example Payload
+
+```json
+{
+  "op": "event",
+  "type": "TrackExceptionEvent",
+  "guildId": "1234567890",
+  "track": { "encoded": "...", "info": { ... } },
+  "exception": {
+    "message": "Out of memory",
+    "severity": "fatal",
+    "cause": "Native memory allocation failed"
+  }
+}
+```

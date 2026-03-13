@@ -1,0 +1,45 @@
+---
+title: Introduction
+description: High-performance Rust audio server for Discord.
+---
+
+Welcome to **Rustalink**, a high-performance, resource-efficient, and protocol-compatible audio server for Discord, written entirely in Rust.
+
+Rustalink is designed to be a modern alternative to legacy JRE-based solutions, prioritizing low latency and minimal resource footprint.
+
+---
+
+## Why Rustalink?
+
+| Feature | Rustalink | Legacy (JRE) |
+| :--- | :--- | :--- |
+| **Runtime** | Native Binary (Rust) | JVM (Java) |
+| **GC Pauses** | None (Deterministic) | Frequent (Stop-the-world) |
+| **Memory Footprint** | Low (~10MB idle) | High (100MB+ idle) |
+| **Startup Time** | Instant (&lt;10ms) | Slow (Seconds) |
+| **Concurrency** | Async (Tokio) | Multi-threaded |
+
+---
+
+## Core Philosophy
+
+- **Performance First**: Engineered from the ground up for maximum throughput and predictable latency.
+- **Safety & Stability**: Leveraging Rust's memory safety guarantees to eliminate common crashes and vulnerabilities.
+- **Modern Standards**: Built on top of industry-standard libraries like Tokio and Axum.
+
+---
+
+## Key Features
+
+- **Drop-in Compatibility**: Fully supports the Lavalink v4 protocol. Your existing clients will work without modification.
+- **Blazing Fast Decoding**: Powered by Symphonia for pure Rust audio demuxing and decoding.
+- **Advanced DSP Engine**: studio-grade 32-bit floating-point audio processing.
+- **Extensive Filter Support**: Bassboost, Equalizer, Karaoke, Tremolo, Vibrato, and more.
+- **Resource Efficiency**: Significantly lower memory footprint and CPU utilization than Java-based alternatives.
+- **Lyrics Support**: Integrated lyrics search and synchronized lyrics streaming.
+
+---
+
+## Getting Started
+
+Ready to experience the power of Rust? Head over to the [Installation guide](/Rustalink/) to set up your first node.

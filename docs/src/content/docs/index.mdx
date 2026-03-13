@@ -1,0 +1,56 @@
+---
+title: Rustalink Documentation
+description: High-performance, low-latency Rust audio server for Discord.
+template: splash
+hero:
+  tagline: Engineered for performance. Built for scale.
+  image:
+    file: ../../assets/rastalink.svg
+  actions:
+    - text: Getting Started
+      link: /Rustalink/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/bongodevs/Rustalink
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why Rustalink?
+
+<CardGrid stagger>
+  <Card title="Blazing Fast" icon="rocket">
+    Built with Rust and Tokio for minimal overhead and maximum throughput.
+  </Card>
+  <Card title="Low Latency" icon="bolt">
+    Deterministic memory management ensures consistent audio delivery without GC pauses.
+  </Card>
+  <Card title="Feature Rich" icon="setting">
+    Native support for Equalizer, Bassboost, Timescale, and many more audio filters.
+  </Card>
+  <Card title="Developer Friendly" icon="document">
+    Comprehensive REST and WebSocket API with multi-language client support.
+  </Card>
+</CardGrid>
+
+---
+
+## Explore the Docs
+
+<CardGrid>
+  <Card title="Installation" icon="add-document">
+    Get Rustalink up and running on [Linux](/Rustalink/index/), [Docker](/Rustalink/docker/), or [Pterodactyl](/Rustalink/pterodactyl/).
+  </Card>
+  <Card title="Architecture" icon="laptop">
+    Understand the [inner workings](/Rustalink/architecture/) of our shared-nothing, async engine.
+  </Card>
+  <Card title="API Reference" icon="list-format">
+    Detailed documentation for [REST endpoints](/Rustalink/api/) and [WebSocket events](/Rustalink/api/#websocket-events).
+  </Card>
+  <Card title="Troubleshooting" icon="warning">
+    Solutions to [common issues](/Rustalink/troubleshooting/) and optimization tips.
+  </Card>
+</CardGrid>

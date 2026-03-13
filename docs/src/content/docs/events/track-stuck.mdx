@@ -1,0 +1,33 @@
+---
+title: TrackStuckEvent
+description: WebSocket event sent when a track gets stuck during playback.
+---
+import { Badge, Code } from "@astrojs/starlight/components";
+
+The `TrackStuckEvent` is sent by the server to the client when a track stops providing audio data for longer than the internal threshold.
+
+---
+
+## Structure
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `op` | string | Always `event` |
+| `type` | string | Always `TrackStuckEvent` |
+| `guildId` | string | The Discord guild ID |
+| `track` | object | The [Track](/Rustalink/api#type-track) that is stuck |
+| `thresholdMs` | number | The threshold in milliseconds that was exceeded |
+
+---
+
+## Example Payload
+
+```json
+{
+  "op": "event",
+  "type": "TrackStuckEvent",
+  "guildId": "1234567890",
+  "track": { "encoded": "...", "info": { ... } },
+  "thresholdMs": 10000
+}
+```

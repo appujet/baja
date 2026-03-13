@@ -1,0 +1,35 @@
+:root {
+	/* Brand colors extracted from logo */
+	--brand-orange: #ff5100;
+	--brand-orange-light: #ff5100;
+	--brand-orange-dark: #d34516;
+
+	/* Starlight accent colors */
+	--sl-color-accent-low: #3a1a0b;
+	--sl-color-accent: var(--brand-orange);
+	--sl-color-accent-high: var(--brand-orange-light);
+
+	/* Text selection and other utilities */
+	--sl-color-selection: var(--brand-orange-dark);
+}
+
+/* Dark mode overrides (optional, but good for premium feel) */
+:root[data-theme='dark'] {
+	--sl-color-accent-low: #4a1f0a;
+	--sl-color-accent: #ff5100;
+	--sl-color-accent-high: #f46420;
+}
+
+/* Glassmorphism effects for certain components */
+.starlight-aside {
+	border-radius: 12px;
+	backdrop-filter: blur(8px);
+    background-color: rgba(var(--sl-color-accent-low-rgb), 0.1);
+}
+
+/* Premium card hover effect */
+.card:hover {
+	transform: translateY(-4px);
+	transition: transform 0.3s ease;
+	border-color: var(--sl-color-accent);
+}

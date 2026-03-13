@@ -1,0 +1,35 @@
+---
+title: WebSocketClosedEvent
+description: WebSocket event sent when a voice WebSocket connection is closed.
+---
+import { Badge, Code } from "@astrojs/starlight/components";
+
+The `WebSocketClosedEvent` is sent by the server to the client when a Discord voice WebSocket connection is closed.
+
+---
+
+## Structure
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `op` | string | Always `event` |
+| `type` | string | Always `WebSocketClosedEvent` |
+| `guildId` | string | The Discord guild ID |
+| `code` | number | The Discord [close code](https://discord.com/developers/docs/topics/opcodes-and-status-codes#voice-voice-close-event-codes) |
+| `reason` | string | The close reason |
+| `byRemote` | boolean | Whether the connection was closed by Discord |
+
+---
+
+## Example Payload
+
+```json
+{
+  "op": "event",
+  "type": "WebSocketClosedEvent",
+  "guildId": "1234567890",
+  "code": 4014,
+  "reason": "Disconnected",
+  "byRemote": true
+}
+```

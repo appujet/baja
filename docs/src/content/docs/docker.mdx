@@ -1,0 +1,56 @@
+---
+title: Docker
+description: Zero-hassle deployment of Rustalink using Docker and Docker Compose.
+---
+import { Badge, Steps } from "@astrojs/starlight/components";
+
+Docker is the recommended way to deploy Rustalink for a consistent and isolated environment.
+
+---
+
+## Deployment Summary
+
+| Feature | Value |
+| :--- | :--- |
+| **Registry** | `ghcr.io/bongodevs/rustalink:latest` |
+| **Tag** | `latest` |
+| **Port Mapping** | `2333:2333` (Lavalink default) |
+
+---
+
+## Setup with Compose
+
+<Steps>
+
+1. **Create Directory**
+   Create a dedicated folder for your Rustalink deployment.
+2. **Prepare Files**
+   Place your `config.toml` in the directory so it can be mounted.
+3. **Deploy**
+   Create the `docker-compose.yml` file and launch the service.
+
+</Steps>
+
+```yaml
+services:
+  rustalink:
+    image: ghcr.io/bongodevs/rustalink:latest
+    container_name: rustalink
+    restart: unless-stopped
+    ports:
+      - "2333:2333"
+    environment:
+      - RUST_LOG=info
+    volumes:
+      - ./config.toml:/app/config.toml
+```
+
+---
+
+## Management
+
+| Command | Action |
+| :--- | :--- |
+| `docker-compose up -d` | Start the container in background |
+| `docker-compose logs -f` | View real-time server logs |
+| `docker-compose restart` | Apply configuration changes |

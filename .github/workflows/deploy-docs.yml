@@ -33,16 +33,13 @@ jobs:
 
       - name: Install dependencies
         working-directory: docs
-        run: bun install
+        run: bun install --no-frozen-lockfile
 
-      - name: Build with VitePress
-        working-directory: docs
-        run: bun run docs:build
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Install, build, and upload your site
+        uses: withastro/action@v3
         with:
-          path: docs/.vitepress/dist
+          path: ./docs
+          package-manager: bun
 
   deploy:
     environment:

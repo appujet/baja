@@ -1,0 +1,39 @@
+---
+title: LyricsLineEvent
+description: WebSocket event sent for synchronized lyrics playback.
+---
+import { Badge, Code } from "@astrojs/starlight/components";
+
+The `LyricsLineEvent` is sent periodically by the server to the client during playback if the player is subscribed to synchronized lyrics. It indicates which line of the lyrics should be active at the current moment.
+
+---
+
+## Structure
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `op` | string | Always `event` |
+| `type` | string | Always `LyricsLineEvent` |
+| `guildId` | string | The Discord guild ID |
+| `lineIndex` | number | The 0-indexed index of the current line |
+| `line` | object | The [Lyrics Line](/Rustalink/events/lyrics-found#lyrics-line-fields) object |
+| `skipped` | boolean | `true` if this line was reached by seeking or skipping |
+
+---
+
+## Example Payload
+
+```json
+{
+  "op": "event",
+  "type": "LyricsLineEvent",
+  "guildId": "1234567890",
+  "lineIndex": 5,
+  "line": {
+    "timestamp": 45000,
+    "duration": 2000,
+    "line": "We're going to the moon!"
+  },
+  "skipped": false
+}
+```

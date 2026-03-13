@@ -1,0 +1,77 @@
+---
+title: Configuration
+description: Rustalink configuration via config.toml, covering server, audio, and plugin settings.
+---
+import { Badge, Tabs, TabItem } from "@astrojs/starlight/components";
+
+Rustalink uses a `config.toml` file for predictable and readable settings.
+
+---
+
+## Basic Configuration
+
+| Section | Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| **Server** | `port` | number | `2333` | Port for REST and WebSocket |
+| **Server** | `address` | string | `0.0.0.0` | Binding network address |
+| **Server** | `password` | string | - | Authorization password |
+| **Audio** | `item_timeout_ms` | number | `3000` | Audio stream resolve timeout |
+
+---
+
+## Example Config
+
+```toml
+[server]
+port = 2333
+address = "0.0.0.0"
+password = "youshallnotpass"
+
+[audio]
+item_timeout_ms = 3000
+
+[plugins]
+# Plugin-specific settings
+```
+
+## Common Configuration Presets
+
+<Tabs>
+  <TabItem label="High Performance">
+    Optimized for 500+ concurrent players and low latency.
+    ```toml
+    [server]
+    password = "change_me"
+    # Buffered for unstable networks
+    item_timeout_ms = 5000
+
+    [audio]
+    # Increase buffer duration for smoother playback
+    buffer_duration_ms = 400
+    ```
+  </TabItem>
+  <TabItem label="Resource Efficient">
+    Optimized for small VPS with limited RAM.
+    ```toml
+    [server]
+    password = "change_me"
+    item_timeout_ms = 2000
+
+    [audio]
+    # Lower buffer duration to save memory
+    buffer_duration_ms = 200
+    ```
+  </TabItem>
+</Tabs>
+
+---
+
+## Customizing Logging
+
+Rustalink uses the standard Rust logging architecture. You can control verbosity using the `RUST_LOG` environment variable.
+
+| Level | Description |
+| :--- | :--- |
+| `error` | Only critical failures |
+| `info` | Default production level |
+| `debug` | Detailed development logs |

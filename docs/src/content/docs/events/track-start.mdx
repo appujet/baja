@@ -1,0 +1,34 @@
+---
+title: TrackStartEvent
+description: WebSocket event sent when a track starts playing.
+---
+import { Badge, Code } from "@astrojs/starlight/components";
+
+The `TrackStartEvent` is sent by the server to the client whenever a track begins playback.
+
+---
+
+## Structure
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `op` | string | Always `event` |
+| `type` | string | Always `TrackStartEvent` |
+| `guildId` | string | The Discord guild ID |
+| `track` | object | The [Track](/Rustalink/api#type-track) that started playing |
+
+---
+
+## Example Payload
+
+```json
+{
+  "op": "event",
+  "type": "TrackStartEvent",
+  "guildId": "1234567890",
+  "track": {
+    "encoded": "...",
+    "info": { ... }
+  }
+}
+```

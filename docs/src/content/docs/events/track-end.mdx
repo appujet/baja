@@ -1,0 +1,48 @@
+---
+title: TrackEndEvent
+description: WebSocket event sent when a track ends playback.
+---
+import { Badge, Code } from "@astrojs/starlight/components";
+
+The `TrackEndEvent` is sent by the server to the client whenever a track finishes playing, is stopped, or is replaced.
+
+---
+
+## Structure
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `op` | string | Always `event` |
+| `type` | string | Always `TrackEndEvent` |
+| `guildId` | string | The Discord guild ID |
+| `track` | object | The [Track](/Rustalink/api#type-track) that ended |
+| `reason` | string | The reason why the track ended |
+
+---
+
+## End Reasons
+
+| Reason | Description |
+| :--- | :--- |
+| `finished` | The track finished playing naturally |
+| `loadFailed` | The track failed to load |
+| `stopped` | The track was explicitly stopped |
+| `replaced` | The track was replaced by another track |
+| `cleanup` | The player was cleaned up due to inactivity |
+
+---
+
+## Example Payload
+
+```json
+{
+  "op": "event",
+  "type": "TrackEndEvent",
+  "guildId": "1234567890",
+  "track": {
+    "encoded": "...",
+    "info": { ... }
+  },
+  "reason": "finished"
+}
+```

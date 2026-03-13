@@ -1,0 +1,253 @@
+---
+title: API Reference
+description: Slim and responsive documentation for Rustalink REST API and WebSocket events.
+---
+import { Badge, Tabs, TabItem, Code, Card, CardGrid, Steps } from "@astrojs/starlight/components";
+
+Rustalink implements the Lavalink v4 API. Authenticate using the `Authorization` header.
+
+```http
+Authorization: youshallnotpass
+```
+
+---
+
+## Common Types
+
+These types are used across various REST and WebSocket payloads.
+
+| Type | Description | Details |
+| :--- | :--- | :--- |
+| **Track** | Audio track metadata | [View](#type-track) |
+| **Stats** | Server usage statistics | [View](#type-stats) |
+| **Player State** | Current player runtime data | [View](#type-player-state) |
+
+<details id="type-track">
+<summary><b>Track Object Fields</b></summary>
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `encoded` | string | The base64 encoded track data |
+| `info` | object | [Track Info details](#type-track-info) |
+| `pluginInfo` | object | Additional info provided by plugins |
+| `userData` | object | Custom data attached via Update Player |
+
+<h5 id="type-track-info" style="margin-top: 1rem">Track Info Fields</h5>
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `identifier` | string | The track identifier |
+| `isSeekable` | boolean | Whether the track is seekable |
+| `author` | string | The track author |
+| `length` | number | The track length in milliseconds |
+| `isStream` | boolean | Whether the track is a stream |
+| `position` | number | The track position in milliseconds |
+| `title` | string | The track title |
+| `uri` | string | The track URI |
+| `artworkUrl` | string | The track artwork URL |
+| `isrc` | string | The track [ISRC](https://en.wikipedia.org/wiki/International_Standard_Recording_Code) |
+| `sourceName` | string | The track source name |
+</details>
+
+<details id="type-stats">
+<summary><b>Stats Object Fields</b></summary>
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `players` | number | Connected players |
+| `playingPlayers` | number | Active players |
+| `uptime` | number | Uptime in ms |
+| `memory` | object | `free`, `used`, `allocated`, `reservable` |
+| `cpu` | object | `cores`, `systemLoad`, `lavalinkLoad` |
+| `frameStats` | object | `sent`, `nulled`, `deficit` |
+</details>
+
+---
+
+## Server Operations
+
+| Endpoint | Description | Details |
+| :--- | :--- | :--- |
+| <Badge text="GET" variant="success" /> `/v4/info` | Basic server metadata | [View](#v4info) |
+| <Badge text="GET" variant="success" /> `/v4/stats` | Performance metrics | [View](#v4stats) |
+| <Badge text="GET" variant="success" /> `/version` | Plaintext version | [View](#version) |
+
+<details id="v4info">
+<summary><b>GET `/v4/info` Details</b></summary>
+Returns version, build time, and supported sources/filters.
+<Tabs>
+  <TabItem label="Response Schema">
+    | Field | Type | Description |
+    | :--- | :--- | :--- |
+    | `version` | object | `semver`, `major`, `minor`, `patch`, `preRelease` |
+    | `buildTime` | number | Build timestamp in ms |
+    | `git` | object | `branch`, `commit`, `commitTime` |
+    | `jvm` | string | JVM version (or Rust version in our case) |
+    | `lavaplayer` | string | Lavaplayer version |
+    | `sourceManagers` | string[] | Enabled source managers |
+    | `filters` | string[] | Supported filter names |
+    | `plugins` | object[] | List of loaded plugins |
+  </TabItem>
+  <TabItem label="Example">
+    <Code code={`{
+      "version": { "semver": "1.0.5", "major": 1, "minor": 0, "patch": 5 },
+      "jvm": "Rust",
+      "lavaplayer": "symphonia",
+      "sourceManagers": ["youtube", "spotify", "jiosaavn"],
+      "filters": ["volume", "equalizer", "karaoke"],
+      "plugins": []
+    }`} lang="json" title="GET /v4/info Response" />
+  </TabItem>
+</Tabs>
+</details>
+
+<details id="v4stats">
+<summary><b>GET `/v4/stats` Details</b></summary>
+Uptime, memory, and CPU usage stats.
+<Tabs>
+  <TabItem label="Example Response">
+    <Code code={`{
+      "players": 1,
+      "playingPlayers": 1,
+      "uptime": 298962,
+      "memory": { "free": 19219042304, "used": 49045504, "allocated": 0, "reservable": 0 },
+      "cpu": { "cores": 8, "systemLoad": 0.31, "lavalinkLoad": 0.00006 }
+    }`} lang="json" title="GET /v4/stats Response" />
+  </TabItem>
+</Tabs>
+</details>
+
+---
+
+## Track Operations
+
+| Endpoint | Description | Details |
+| :--- | :--- | :--- |
+| <Badge text="GET" variant="success" /> `/v4/loadtracks` | Resolve a track/URL | [View](#v4loadtracks) |
+| <Badge text="GET" variant="success" /> `/v4/loadsearch` | Search for tracks | [View](#v4loadsearch) |
+| <Badge text="GET" variant="success" /> `/v4/decodetrack` | Decode single track | [View](#v4decodetrack) |
+| <Badge text="POST" variant="note" /> `/v4/decodetracks` | Decode multiple | [View](#v4decodetracks) |
+
+<details id="v4loadtracks">
+<summary><b>GET `/v4/loadtracks` Details</b></summary>
+
+**Query Parameters:**
+| Name | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `identifier` | string | Yes | The URL or search query to resolve |
+
+**Response Body:**
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `loadType` | string | `track`, `playlist`, `search`, `empty`, `error` |
+| `data` | object / array | Depends on `loadType`. [Track details](#type-track) or Playlist info. |
+
+**Example Response:**
+<Code code={`{
+  "loadType": "track",
+  "data": { 
+    "encoded": "QAAAd2sAC0hlbGxvIFdvcmxk...", 
+    "info": { "title": "Hello World", "author": "Rust", "length": 240000, ... } 
+  }
+}`} lang="json" title="GET /v4/loadtracks Response" />
+</details>
+
+<details id="v4loadsearch">
+<summary><b>GET `/v4/loadsearch` Details</b></summary>
+**Parameters:**
+- `query` (Query, Required): Search query string.
+- `types` (Query, Optional): Comma-separated list of types: `track`, `album`, `artist`, `playlist`, `text`.
+</details>
+
+---
+
+## Player Management
+
+| Endpoint | Description | Details |
+| :--- | :--- | :--- |
+| <Badge text="GET" variant="success" /> `/v4/sessions/{id}/players` | List all players | [View](#list-players) |
+| <Badge text="PATCH" variant="caution" /> `/v4/sessions/{id}/players/{gid}` | Update player state | [View](#update-player) |
+| <Badge text="DELETE" variant="danger" /> `/v4/sessions/{id}/players/{gid}` | Destroy player | [View](#destroy-player) |
+
+<details id="update-player">
+<summary><b>PATCH Update Player Details</b></summary>
+
+**Query Params:**
+- `noReplace` (Optional): If `true`, the track will not be replaced if one is already playing.
+
+**Body Fields:**
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `track` | object | Track data containing `encoded` or `identifier`. |
+| `position` | number | Seek position in milliseconds. |
+| `endTime` | number | Track end time in milliseconds. |
+| `volume` | number | The player volume (0-1000). |
+| `paused` | boolean | Whether the player is paused. |
+| `filters` | object | Audio filters (equalizer, karaoke, etc). |
+| `voice` | object | `token`, `endpoint`, `sessionId`. |
+
+<Tabs>
+  <TabItem label="Example Payload">
+    <Code code={`{
+      "track": { "encoded": "QAAAd2sAC0hlbGxvIFdvcmxk..." },
+      "volume": 80,
+      "paused": false,
+      "voice": {
+        "token": "...",
+        "endpoint": "...",
+        "sessionId": "..."
+      }
+    }`} lang="json" title="PATCH /v4/sessions/{id}/players/{gid} Body" />
+  </TabItem>
+</Tabs>
+</details>
+
+---
+
+## WebSocket Events
+
+Events are sent from server to client with an `op: "event"`.
+
+| Type | Trigger | Details |
+| :--- | :--- | :--- |
+| `TrackStartEvent` | Track starts playing | [View](/Rustalink/events/track-start) |
+| `TrackEndEvent` | Track ends | [View](/Rustalink/events/track-end) |
+| `TrackExceptionEvent` | Playback error | [View](/Rustalink/events/track-exception) |
+| `TrackStuckEvent` | Playback stuck | [View](/Rustalink/events/track-stuck) |
+| `WebSocketClosedEvent` | Voice socket error | [View](/Rustalink/events/websocket-closed) |
+| `LyricsFoundEvent` | Lyrics were found | [View](/Rustalink/events/lyrics-found) |
+| `LyricsNotFoundEvent` | No lyrics found | [View](/Rustalink/events/lyrics-not-found) |
+| `LyricsLineEvent` | Synced lyrics line | [View](/Rustalink/events/lyrics-line) |
+
+
+---
+
+## Rustalink Extras
+
+| Services | Description | Details |
+| :--- | :--- | :--- |
+| **Lyrics** | Real-time and static lyrics | [View](#extra-lyrics) |
+| **YouTube** | Tools for YouTube streams | [View](#extra-youtube) |
+
+<details id="extra-lyrics">
+<summary><b>Lyrics API Details</b></summary>
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/v4/lyrics` | GET | Search lyrics by query or track. |
+| `/v4/sessions/{id}/players/{gid}/lyrics/subscribe` | POST | Enable synchronized lyrics. |
+| `/v4/sessions/{id}/players/{gid}/track/lyrics` | GET | Get lyrics for current track. |
+</details>
+
+<details id="extra-youtube">
+<summary><b>YouTube Utilities Details</b></summary>
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/youtube` | GET | Check YouTube source health. |
+| `/youtube/stream/{vid}` | GET | Get direct stream URL for a video. |
+| `/youtube/oauth/{token}` | GET | Refresh OAuth credentials. |
+
+**Example:**
+`GET /youtube/stream/dQw4w9WgXcQ` returns the direct audio stream URL.
+</details>

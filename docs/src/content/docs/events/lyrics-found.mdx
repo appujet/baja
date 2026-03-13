@@ -1,0 +1,55 @@
+---
+title: LyricsFoundEvent
+description: WebSocket event sent when lyrics are successfully found for a track.
+---
+import { Badge, Code } from "@astrojs/starlight/components";
+
+The `LyricsFoundEvent` is sent by the server to the client after a lyrics search (via the REST API or player subscription) is successful.
+
+---
+
+## Structure
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `op` | string | Always `event` |
+| `type` | string | Always `LyricsFoundEvent` |
+| `guildId` | string | The Discord guild ID |
+| `lyrics` | object | The lyrics data object |
+
+### Lyrics Object Fields
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `sourceName` | string | The name of the lyrics source (e.g., "Genius", "Musixmatch") |
+| `provider` | string (optional) | The provider of the lyrics |
+| `text` | string (optional) | The full plaintext lyrics |
+| `lines` | array (optional) | An array of [Lyrics Line](#lyrics-line-fields) objects |
+
+### Lyrics Line Fields
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `timestamp` | number | Start time of the line in milliseconds |
+| `duration` | number (optional) | Duration of the line in milliseconds |
+| `line` | string | The text content of the line |
+
+---
+
+## Example Payload
+
+```json
+{
+  "op": "event",
+  "type": "LyricsFoundEvent",
+  "guildId": "1234567890",
+  "lyrics": {
+    "sourceName": "Musixmatch",
+    "synced": true,
+    "lines": [
+      { "timestamp": 0, "duration": 3000, "line": "Hello from the other side" },
+      { "timestamp": 3500, "duration": 2500, "line": "I must have called a thousand times" }
+    ]
+  }
+}
+```

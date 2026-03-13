@@ -1,0 +1,56 @@
+---
+title: Troubleshooting
+description: Common issues and solutions when deploying or using Rustalink.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+This guide covers the most frequent issues encountered by users and provides step-by-step solutions to resolve them.
+
+---
+
+## Connection Issues
+
+### WebSocket 401 Unauthorized
+If your client fails to connect with a `401` error, verify your authorization header.
+
+<Aside type="caution">
+  The `authorization` header must match exactly what is defined in your `config.toml` under `[server] auth_password`.
+</Aside>
+
+### Client Timeout
+If the connection times out after 10-20 seconds:
+1. Ensure the port (default `2333`) is open in your firewall.
+2. Check if you are using a reverse proxy (like Nginx/Cloudflare) and ensure WebSocket support is enabled.
+
+---
+
+## Audio Quality
+
+### Audio Stuttering / Lag
+Stuttering is usually caused by network congestion or CPU starvation.
+
+<Steps>
+1. **Check CPU Usage**: Ensure the host isn't hitting 100% CPU. Audio encoding is intensive.
+2. **Network Jitter**: Check the connection between Rustalink and Discord's voice servers.
+3. **Buffering**: Increase the `buffer_duration_ms` in your configuration if the network is unstable.
+</Steps>
+
+### High Memory Usage
+Rustalink is designed to be lean. If you see memory usage exceeding 200-300MB per 100 players:
+- Check if you have extremely large queues.
+- Ensure you are using the latest stable version.
+
+---
+
+## Docker Specifics
+
+### Localhost Access
+If running in Docker, `localhost` refers to the container itself. 
+- Use `0.0.0.0` as the address in `config.toml` to allow external connections.
+- Ensure you have mapped the ports correctly: `-p 2333:2333`.
+
+---
+
+## Still having issues?
+Join our community on [Discord](https://discord.gg/your-invite-link) or open an issue on [GitHub](https://github.com/bongodevs/Rustalink/issues).

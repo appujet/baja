@@ -1,0 +1,43 @@
+---
+title: Filters
+description: Studio-grade audio filters in Rustalink with 32-bit floating-point precision.
+---
+import { Badge, Card, CardGrid } from "@astrojs/starlight/components";
+
+Rustalink features a high-fidelity DSP engine with `f32` precision, ensuring crystal-clear audio manipulation.
+
+---
+
+## DSP Engine Features
+
+| Feature | Impact |
+| :--- | :--- |
+| **32-Bit Floating Point** | Eliminates integer quantization noise |
+| **Low Latency** | Near-real-time filter application |
+| **Extensible** | Support for custom plugin filters |
+
+---
+
+## Supported Filters
+
+<CardGrid>
+  <Card title="Volume" icon="setting">Gain and normalization adjustments.</Card>
+  <Card title="Equalizer" icon="setting">15-band studio-grade EQ.</Card>
+  <Card title="Timescale" icon="rocket">Adjust speed, pitch, and rate.</Card>
+  <Card title="Spatial" icon="external">Rotation (8D) and Vibrato/Tremolo.</Card>
+</CardGrid>
+
+---
+
+## Technical Overview
+
+| Filter | Impact | Details |
+| :--- | :--- | :--- |
+| **Equalizer** | <Badge text="Low" variant="success" /> | 15-band studio-grade EQ |
+| **Timescale** | <Badge text="High" variant="danger" /> | Adjust speed, pitch, and rate |
+| **Tremolo** | <Badge text="Low" variant="success" /> | Volume oscillation |
+| **Vibrato** | <Badge text="Low" variant="success" /> | Pitch oscillation |
+| **Rotation** | <Badge text="Medium" variant="caution" /> | 8D spatial panning |
+| **Distortion** | <Badge text="Medium" variant="caution" /> | Saturation & clipping |
+| **ChannelMix** | <Badge text="Low" variant="success" /> | Audio routing |
+| **LowPass** | <Badge text="Medium" variant="caution" /> | High-frequency softening |

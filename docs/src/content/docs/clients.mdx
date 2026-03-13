@@ -1,0 +1,45 @@
+---
+title: Client Libraries
+description: Certified libraries for connecting to the Rustalink engine.
+---
+
+import { Badge, Aside } from '@astrojs/starlight/components';
+
+Rustalink is fully compatible with the **Lavalink v4 protocol**. Any client that supports this protocol—and the mandatory DAVE encryption—will work out of the box.
+
+<Aside type="caution" title="DAVE Protocol Compliance">
+  Starting **March 1st, 2026**, Discord requires all voice clients to support the **DAVE (End-to-End Encryption)** protocol. Rustalink is fully compliant. Ensure your library version is up to date.
+</Aside>
+
+---
+
+## Technical Compatibility Matrix
+
+| Client | Platform | Compatible With | DAVE Support | Information |
+| :--- | :--- | :--- | :---: | :--- |
+| [Lavalink-Client](https://github.com/lavalink-devs/Lavalink-Client) | Java/Kotlin/JVM | JDA/Discord4J/**Any** | ✅ | Uses reactor |
+| [Lavalink.kt](https://github.com/DRSchlaubi/Lavalink.kt) | Kotlin | Kord/JDA/**Any** | ✅ | Kotlin Coroutines |
+| [DisGoLink](https://github.com/disgoorg/disgolink) | Go | **Any** | ✅ | |
+| [lavalink.py](https://github.com/devoxin/lavalink.py) | Python | **Any** | ✅ | |
+| [Mafic](https://github.com/ooliver1/mafic) | Python | discord.py **V2**/nextcord/disnake/py-cord | ✅ | |
+| [Pomice](https://github.com/cloudwithax/pomice) | Python | discord.py **V2** | ✅ | |
+| [hikari-ongaku](https://github.com/MPlatypus/hikari-ongaku) | Python | Hikari | ✅ | `asyncio`-based |
+| [lavaplay.py](https://github.com/HazemMeqdad/lavaplay.py) | Python | **Any** | ✅ | `asyncio` (1.0.13a+) |
+| [Moonlink.js](https://github.com/1Lucas1apk/moonlink.js) | Node.js | **Any** | ✅ | |
+| [Magmastream](https://gitryx.com/MagmaStream/magmastream) | Node.js | **Any** | ✅ | |
+| [Shoukaku](https://github.com/Deivu/Shoukaku) | Node.js | **Any** | ✅ | |
+| [Lavalink-Client](https://github.com/tomato6966/Lavalink-Client) | Node.js | d.js/DiscordDeno/Eris/**Any** | ✅ | `async` |
+| [FastLink](https://github.com/PerformanC/FastLink) | Node.js | **Any** | ✅ | |
+| [Riffy](https://github.com/riffy-team/riffy) | Node.js | **Any** | ✅ | |
+| [lavaclient](https://github.com/lavaclient/lavaclient) | Node.js | **Any** | ✅ | v5+ |
+| [Rainlink](https://github.com/RainyXeon/Rainlink) | Node.js | **Any** | ✅ | |
+| [DisCatSharp](https://github.com/Aiko-IT-Systems/DisCatSharp) | .NET | DisCatSharp | ✅ | v10.4.2+ |
+| [Lavalink4NET](https://github.com/angelobreuer/Lavalink4NET) | .NET | Discord.Net/DSharpPlus/Remora/NetCord | ✅ | v4+ |
+| [Coglink](https://github.com/PerformanC/Coglink) | C | Concord | ✅ | |
+| [Anchorage](https://github.com/Deivu/Anchorage) | Rust | **Any** | ✅ | `tokio`-based |
+| [lavalink-rs](https://gitlab.com/vicky5124/lavalink-rs) | Rust / Python | **Any** | ✅ | Shared core |
+
+---
+
+## Protocol Certification
+If your library supports **Lavalink v4 Open-API** and **DAVE**, it is certified for Rustalink. For custom integrations, refer to our [Architecture docs](/Rustalink/architecture/).

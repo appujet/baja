@@ -1,0 +1,29 @@
+---
+title: LyricsNotFoundEvent
+description: WebSocket event sent when no lyrics could be found for a track.
+---
+import { Badge, Code } from "@astrojs/starlight/components";
+
+The `LyricsNotFoundEvent` is sent by the server to the client when a lyrics search fails to find any matching lyrics.
+
+---
+
+## Structure
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `op` | string | Always `event` |
+| `type` | string | Always `LyricsNotFoundEvent` |
+| `guildId` | string | The Discord guild ID |
+
+---
+
+## Example Payload
+
+```json
+{
+  "op": "event",
+  "type": "LyricsNotFoundEvent",
+  "guildId": "1234567890"
+}
+```
