@@ -11,12 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-
-use std::{
-    sync::LazyLock,
-    time::Duration,
-};
+use std::{sync::LazyLock, time::Duration};
 
 use futures::{StreamExt, stream::FuturesUnordered};
 use regex::Regex;
@@ -351,8 +346,16 @@ pub async fn fetch_multi_region(
     {
         debug!("Amazon Music: trying {entity_name} on hinted domain '{hint}'");
         tried_endpoint = Some(region.skill_endpoint);
-        if let Some(data) =
-            fetch_from_endpoint(http, id, api_path, url_path_segment, region, hint, base_config).await
+        if let Some(data) = fetch_from_endpoint(
+            http,
+            id,
+            api_path,
+            url_path_segment,
+            region,
+            hint,
+            base_config,
+        )
+        .await
             && !is_error(&data)
         {
             debug!("Amazon Music: {entity_name} resolved via hinted domain '{hint}'");
@@ -376,9 +379,16 @@ pub async fn fetch_multi_region(
         // Clone base config reference for the async move block
         let base_config = base_config.clone();
         futs.push(async move {
-            let result =
-                fetch_from_endpoint(http, id, api_path, url_path_segment, region, domain, &base_config)
-                    .await;
+            let result = fetch_from_endpoint(
+                http,
+                id,
+                api_path,
+                url_path_segment,
+                region,
+                domain,
+                &base_config,
+            )
+            .await;
             result.map(|data| (data, label))
         });
     }
