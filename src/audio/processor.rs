@@ -263,7 +263,7 @@ impl AudioProcessor {
                     self.sample_buf = Some(buf);
                 }
                 Err(Error::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => break,
-                Err(Error::DecodeError(e)) => {
+                Err(Error::DecodeError(e)) | Err(Error::Unsupported(e)) => {
                     self.recoverable_errors += 1;
                     if self.recoverable_errors == 1 {
                         warn!("Decode error (recoverable): {e}");
@@ -273,6 +273,11 @@ impl AudioProcessor {
                             self.recoverable_errors
                         );
                     }
+                }
+                Err(Error::ResetRequired) => {
+                    self.decoder.reset();
+                    self.sample_buf = None;
+                    warn!("Decoder reset required — resetting state and continuing");
                 }
                 Err(e) => {
                     self.send_error(format!("Decode error: {e}"));
