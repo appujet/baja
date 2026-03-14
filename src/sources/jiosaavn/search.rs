@@ -22,7 +22,7 @@ impl JioSaavnSource {
             ("q", query),
         ];
 
-        if let Some(json) = get_json(&self.client, &params).await {
+        if let Some(json) = get_json(&self.client, &self.api_url, &params).await {
             if let Some(results) = json.get("results").and_then(|v| v.as_array()) {
                 if results.is_empty() {
                     return LoadResult::Empty {};
@@ -57,7 +57,7 @@ impl JioSaavnSource {
             ("query", query),
         ];
 
-        let json = get_json(&self.client, &params).await?;
+        let json = get_json(&self.client, &self.api_url, &params).await?;
 
         let mut tracks = Vec::new();
         let mut albums = Vec::new();
@@ -89,7 +89,7 @@ impl JioSaavnSource {
                 ("pids", &pids_str),
             ];
 
-            if let Some(details_json) = get_json(&self.client, &details_params).await {
+            if let Some(details_json) = get_json(&self.client, &self.api_url, &details_params).await {
                 for track in &mut tracks {
                     if let Some(detail) = details_json.get(&track.info.identifier) {
                         if let Some(duration) = detail

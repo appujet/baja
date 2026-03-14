@@ -31,7 +31,7 @@ impl JioSaavnSource {
             ("entity_type", "queue"),
         ];
 
-        let station_id = get_json(&self.client, &params).await.and_then(|json| {
+        let station_id = get_json(&self.client, &self.api_url, &params).await.and_then(|json| {
             json.get("stationid")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_owned())
@@ -49,7 +49,7 @@ impl JioSaavnSource {
                 ("k", &k_limit),
             ];
 
-            if let Some(json) = get_json(&self.client, &params).await
+            if let Some(json) = get_json(&self.client, &self.api_url, &params).await
                 && let Some(obj) = json.as_object()
             {
                 let tracks: Vec<_> = obj
@@ -88,7 +88,7 @@ impl JioSaavnSource {
                 ("language", "unknown"),
             ];
 
-            if let Some(json) = get_json(&self.client, &params).await
+            if let Some(json) = get_json(&self.client, &self.api_url, &params).await
                 && let Some(arr) = json.as_array()
             {
                 let tracks: Vec<_> = arr

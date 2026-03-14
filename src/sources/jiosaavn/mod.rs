@@ -25,6 +25,7 @@ pub struct JioSaavnSource {
     pub(crate) client: Arc<reqwest::Client>,
     pub(crate) secret_key: Vec<u8>,
     pub(crate) proxy: Option<crate::config::HttpProxyConfig>,
+    pub(crate) api_url: String,
     // Limits
     pub(crate) search_limit: usize,
     pub(crate) recommendations_limit: usize,
@@ -46,6 +47,7 @@ impl JioSaavnSource {
             album_load_limit,
             artist_load_limit,
             proxy,
+            api_url,
         ) = if let Some(c) = config {
             (
                 c.decryption
@@ -57,9 +59,10 @@ impl JioSaavnSource {
                 c.album_load_limit,
                 c.artist_load_limit,
                 c.proxy,
+                c.api_url.unwrap_or_else(|| "https://www.jiosaavn.com/api.php".to_owned()),
             )
         } else {
-            ("38346591".to_owned(), 10, 10, 50, 50, 20, None)
+            ("38346591".to_owned(), 10, 10, 50, 50, 20, None, "https://www.jiosaavn.com/api.php".to_owned())
         };
 
         Ok(Self {
@@ -71,6 +74,7 @@ impl JioSaavnSource {
             playlist_load_limit,
             album_load_limit,
             artist_load_limit,
+            api_url,
         })
     }
 }

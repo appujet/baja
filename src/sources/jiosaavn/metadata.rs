@@ -18,7 +18,7 @@ impl JioSaavnSource {
             ("token", id),
             ("type", "song"),
         ];
-        get_json(&self.client, &params).await.and_then(|json| {
+        get_json(&self.client, &self.api_url, &params).await.and_then(|json| {
             json.get("songs")
                 .and_then(|s| s.get(0))
                 .cloned()
@@ -57,7 +57,7 @@ impl JioSaavnSource {
             params.push(("n", &n_str));
         }
 
-        if let Some(data) = get_json(&self.client, &params).await {
+        if let Some(data) = get_json(&self.client, &self.api_url, &params).await {
             let list = data
                 .get("list")
                 .or_else(|| data.get("topSongs"))

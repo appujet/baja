@@ -92,6 +92,7 @@ recommendations_limit = 10
 playlist_load_limit = 50
 album_load_limit = 50
 artist_load_limit = 20
+# apiUrl = "http://localhost:3000/" # Custom API URL (see https://github.com/bongodevs/jiosaavn-proxy-api), removes proxy agent requirement
 # decryption = { secretKey = "your-secret-key" }
 # proxy = { url = "http://proxy:8080", username = "user", password = "pass" }
 

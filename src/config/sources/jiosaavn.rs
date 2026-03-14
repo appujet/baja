@@ -7,6 +7,8 @@ use crate::config::sources::{default_limit_10, default_limit_20, default_limit_5
 pub struct JioSaavnConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(rename = "apiUrl")]
+    pub api_url: Option<String>,
     pub decryption: Option<JioSaavnDecryptionConfig>,
     pub proxy: Option<HttpProxyConfig>,
     #[serde(default = "default_limit_10")]
@@ -25,6 +27,7 @@ impl Default for JioSaavnConfig {
     fn default() -> Self {
         Self {
             enabled: true,
+            api_url: None,
             decryption: None,
             proxy: None,
             search_limit: 10,
