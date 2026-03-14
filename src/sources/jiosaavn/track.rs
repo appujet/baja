@@ -5,6 +5,7 @@ use des::{
     Des,
     cipher::{BlockDecrypt, KeyInit, generic_array::GenericArray},
 };
+use tracing::{error, warn};
 
 use crate::{
     audio::{
@@ -53,40 +54,54 @@ impl PlayableTrack for JioSaavnTrack {
         let proxy = self.proxy.clone();
 
         tokio::task::spawn_blocking(move || {
-            let reader = match super::reader::JioSaavnReader::new(&url, local_addr, proxy) {
-                Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
-                Err(e) => {
-                    tracing::error!("Failed to create JioSaavnReader for {url}: {e}");
-                    let _ = err_tx.send(format!("Failed to open stream: {e}"));
-                    return;
-                }
-            };
-
-            let kind = std::path::Path::new(&url)
+            let mut kind = std::path::Path::new(&url)
                 .extension()
                 .and_then(|s| s.to_str())
                 .map(crate::common::types::AudioFormat::from_ext)
                 .filter(|f| *f != crate::common::types::AudioFormat::Unknown)
                 .or(Some(crate::common::types::AudioFormat::Mp4));
 
-            match AudioProcessor::new(reader, kind, tx, cmd_rx, Some(err_tx.clone()), config) {
-                Ok(mut processor) => {
-                    std::thread::Builder::new()
-                        .name(format!("jiosaavn-decoder-{}", url))
-                        .spawn(move || {
-                            if let Err(e) = processor.run() {
-                                tracing::error!(
-                                    "JioSaavn audio processor error for {}: {}",
-                                    url,
-                                    e
-                                );
-                            }
-                        })
-                        .expect("failed to spawn jiosaavn decoder thread");
-                }
-                Err(e) => {
-                    tracing::error!("JioSaavn failed to initialize processor for {}: {}", url, e);
-                    let _ = err_tx.send(format!("Failed to initialize processor: {e}"));
+            let mut attempt = 0;
+            const MAX_ATTEMPTS: u32 = 2;
+
+            loop {
+                attempt += 1;
+                
+                let reader = match super::reader::JioSaavnReader::new(&url, local_addr, proxy.clone()) {
+                    Ok(r) => Box::new(r) as Box<dyn symphonia::core::io::MediaSource>,
+                    Err(e) => {
+                        error!("Failed to create JioSaavnReader for {url}: {e}");
+                        let _ = err_tx.send(format!("Failed to open stream: {e}"));
+                        return;
+                    }
+                };
+
+                match AudioProcessor::new(reader, kind, tx.clone(), cmd_rx.clone(), Some(err_tx.clone()), config.clone()) {
+                    Ok(mut processor) => {
+                        let thread_url = url.clone();
+                        if let Err(e) = std::thread::Builder::new()
+                            .name(format!("jiosaavn-decoder-{}", url))
+                            .spawn(move || {
+                                if let Err(e) = processor.run() {
+                                    error!("JioSaavn audio processor error for {}: {}", thread_url, e);
+                                }
+                            }) 
+                        {
+                            error!("JioSaavn: failed to spawn decoder thread: {e}");
+                            let _ = err_tx.send(format!("Failed to spawn decoder thread: {e}"));
+                        }
+                        return;
+                    }
+                    Err(e) if attempt < MAX_ATTEMPTS => {
+                        warn!("JioSaavn: processor init failed for {} (attempt {}): {} — retrying without format hint", url, attempt, e);
+                        kind = None;
+                        continue;
+                    }
+                    Err(e) => {
+                        error!("JioSaavn failed to initialize processor for {}: {}", url, e);
+                        let _ = err_tx.send(format!("Failed to initialize processor: {e}"));
+                        return;
+                    }
                 }
             }
         });
