@@ -315,13 +315,13 @@ impl<'a> SessionState<'a> {
                 .as_u64()
                 .unwrap_or(DAVE_INITIAL_VERSION as u64) as u16;
             let mut dave = self.dave.lock().await;
-            if ver > 0 {
+            if ver <= 0 {
+                dave.reset();
+            } else {
                 dave.set_protocol_version(ver);
                 if let Ok(kp) = dave.setup_session(ver) {
                     self.send_binary(26, &kp);
                 }
-            } else {
-                dave.reset();
             }
         }
 

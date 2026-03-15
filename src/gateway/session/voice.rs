@@ -287,13 +287,10 @@ impl VoiceSession {
         pcm: &[i16],
         opus: &mut [u8],
     ) -> Result<(), GatewayError> {
-        let size = match encoder.encode(pcm, opus) {
-            Ok(s) => s,
-            Err(e) => {
-                error!("Opus encode failed: {e}");
-                0
-            }
-        };
+        let size = encoder.encode(pcm, opus).unwrap_or_else(|e| {
+            error!("Opus encode failed: {e}");
+            0
+        });
 
         if size > 0 {
             self.send_raw(&opus[..size]).await?;
