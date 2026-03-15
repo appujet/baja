@@ -23,6 +23,9 @@ export default defineConfig({
         { icon: 'github', label: 'GitHub', href: 'https://github.com/bongodevs/Rustalink' },
         { icon: 'discord', label: 'Discord', href: 'https://discord.gg/vzjqrUpWxJ' }
       ],
+      components: {
+        SocialIcons: './src/components/CustomSocialIcons.astro',
+      },
       editLink: {
         baseUrl: 'https://github.com/bongodevs/Rustalink/edit/main/docs/',
       },
