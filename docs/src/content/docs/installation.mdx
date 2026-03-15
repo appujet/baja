@@ -1,0 +1,95 @@
+---
+title: Installation
+description: Install Rustalink on Linux, macOS, or Windows with all required build dependencies.
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+Install Rustalink from source using the commands for your operating system.
+
+## System Setup
+
+<Tabs>
+	<TabItem label="Linux (Ubuntu/Debian)">
+		```bash
+		# System dependencies used in CI builds
+		sudo apt-get update
+		sudo apt-get install -y \
+			cmake \
+			pkg-config \
+			libclang-dev \
+			clang \
+			git \
+			build-essential \
+			perl
+
+		# Install Rust stable toolchain
+		curl https://sh.rustup.rs -sSf | sh -s -- -y
+		source "$HOME/.cargo/env"
+
+		# Build Rustalink
+		cargo build --release --locked
+		```
+
+		Optional cross-compile dependencies for Linux ARM64:
+
+		```bash
+		sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+		rustup target add aarch64-unknown-linux-gnu
+		export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+		cargo build --release --locked --target aarch64-unknown-linux-gnu
+		```
+	</TabItem>
+
+	<TabItem label="macOS">
+		```bash
+		# Apple command-line tools
+		xcode-select --install
+
+		# Dependencies used in CI builds
+		brew install cmake pkg-config
+
+		# Install Rust stable toolchain
+		curl https://sh.rustup.rs -sSf | sh -s -- -y
+		source "$HOME/.cargo/env"
+
+		# Build Rustalink
+		cargo build --release --locked
+		```
+
+		Optional target setup for Apple Silicon / Intel cross-target builds:
+
+		```bash
+		rustup target add x86_64-apple-darwin aarch64-apple-darwin
+		```
+	</TabItem>
+
+	<TabItem label="Windows">
+		```powershell
+		# Install build tools and dependencies
+		winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+		winget install --id Kitware.CMake --exact
+		winget install --id Git.Git --exact
+
+		# Install Rust stable (MSVC)
+		winget install --id Rustlang.Rustup --exact
+		rustup default stable-x86_64-pc-windows-msvc
+
+		# Build Rustalink
+		cargo build --release --locked
+		```
+
+		Optional Windows ARM64 target:
+
+		```powershell
+		rustup target add aarch64-pc-windows-msvc
+		cargo build --release --locked --target aarch64-pc-windows-msvc
+		```
+	</TabItem>
+</Tabs>
+
+## Next Steps
+
+1. Copy the sample config and adjust values for your environment.
+2. Start Rustalink with your preferred runtime method.
+3. See Docker and Pterodactyl pages if you prefer containerized deployment.

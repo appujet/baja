@@ -31,6 +31,7 @@ export default defineConfig({
           label: 'Getting Started',
           items: [
             { label: 'Introduction', slug: 'introduction' },
+            { label: 'Installation', slug: 'installation' },
             { label: 'Configuration', slug: 'configuration' },
             { label: 'Docker', slug: 'docker' },
             { label: 'Pterodactyl', slug: 'pterodactyl' },
